@@ -1,0 +1,17 @@
+# Dependencies & cache
+node_modules/
+.wrangler/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build & temporary artifacts
+*.log
+*.tmp
+*.new
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
