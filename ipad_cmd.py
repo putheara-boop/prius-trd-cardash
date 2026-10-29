@@ -9,6 +9,7 @@ def run_ssh(cmd):
         '-o', 'StrictHostKeyChecking=no',
         '-o', 'HostKeyAlgorithms=+ssh-rsa',
         '-o', 'PubkeyAcceptedKeyTypes=+ssh-rsa',
+        '-o', 'PubkeyAcceptedAlgorithms=+ssh-rsa',
         'root@127.0.0.1',
         cmd
     ]
