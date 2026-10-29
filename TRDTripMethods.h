@@ -1,4 +1,4 @@
--(void)openTrip{[self.settingsSheet dismiss];self.tripMode=YES;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:0];[self refreshTrip];[self.view setNeedsLayout];}
+-(void)openTrip{[self.settingsSheet dismiss];self.carplayMode=NO;self.carplayGridMode=NO;self.tripMode=YES;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:0];[self refreshTrip];[self.view setNeedsLayout];}
 -(void)toggleTrip{[self refreshTrip];}
 -(void)saveTrip{if(self.trip){NSUserDefaults *p=[NSUserDefaults standardUserDefaults];[p setObject:[self.trip summary] forKey:@"TRDTripSummary"];[p synchronize];self.lastTripSavedAt=[NSDate date];}}
 -(void)resetTripMenu{TRDSettingsMenu *menu=[self settingsMenu:@"RESET TRIP?" message:@"Clear accumulated distance, moving time and maximum speed? Automatic tracking will continue."];[menu addAction:[TRDSettingAction actionWithTitle:@"Reset this trip" style:0 handler:^(TRDSettingAction *a){self.trip=[TRDTrip new];[self saveTrip];[self refreshTrip];}]];[self presentSettingsMenu:menu];}
@@ -11,7 +11,8 @@
 -(void)musicHold:(UILongPressGestureRecognizer *)gesture{if(gesture.state==UIGestureRecognizerStateBegan)[self showMusicSources:self.navButtons[1]];}
 -(void)homeHold:(UILongPressGestureRecognizer *)gesture{if(gesture.state!=UIGestureRecognizerStateBegan)return;[self quickPages];}
 -(void)quickPages{TRDSettingsMenu *menu=[self settingsMenu:@"QUICK VIEWS" message:@"Hold MUSIC for audio sources"];[menu addAction:[TRDSettingAction actionWithTitle:@"Trip / GPS" style:0 handler:^(TRDSettingAction *a){[self openTrip];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"Google Maps" style:0 handler:^(TRDSettingAction *a){[self openMap];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"Full Clock" style:0 handler:^(TRDSettingAction *a){UIButton *button=[UIButton new];button.tag=6;[self card:button];}]];[self presentSettingsMenu:menu];}
--(BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch{if(gesture==self.returnTap&&[touch.view isDescendantOfView:self.miniPlayer])return NO;if(touch.view){if(self.carplayMode&&(touch.view==self.carplayDock||[touch.view isDescendantOfView:self.carplayDock]))return NO;if([touch.view isKindOfClass:[UIButton class]]||[touch.view.superview isKindOfClass:[UIButton class]])return NO;}return YES;}
+-(BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch{if(gesture==self.returnTap&&[touch.view isDescendantOfView:self.miniPlayer])return NO;return YES;}
+-(BOOL)gestureRecognizer:(UIGestureRecognizer *)g1 shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)g2{return YES;}
 -(void)testMiniPlay{[self.miniPlayer.play sendActionsForControlEvents:UIControlEventTouchUpInside];}
 -(void)testMiniPrev{[self.miniPlayer.prev sendActionsForControlEvents:UIControlEventTouchUpInside];}
 -(void)testMiniNext{[self.miniPlayer.next sendActionsForControlEvents:UIControlEventTouchUpInside];}

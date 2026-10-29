@@ -227,6 +227,11 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)carplayTapMusic;
 -(void)carplayGridMusic;
 -(void)carplayGridMap;
+-(void)carplayGridTrip;
+-(void)carplayGridSettings;
+-(void)handleEdgePan:(UIScreenEdgePanGestureRecognizer *)gesture;
+@property UISwipeGestureRecognizer *swL,*swR;
+@property UIScreenEdgePanGestureRecognizer *edgeR;
 -(void)openYouTubeSource;
 @property NSDate *movingSince,*stationarySince;
 @property UIButton *driveButton;
@@ -363,12 +368,16 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.carplayGridButtons=[NSMutableArray array];
   NSArray *gridTitles=@[@"Music",@"Maps",@"YouTube",@"Camera",@"EQ Sound",@"Trip Log",@"Settings",@"TRD Dash"];
   NSInteger gKinds[]={2,3,1,4,11,6,5,10};
-  SEL gSels[]={@selector(carplayGridMusic),@selector(carplayGridMap),@selector(openYouTubeSource),@selector(openCamera),@selector(openDriveEQ),@selector(openTrip),@selector(carSettings),@selector(homePage)};
+  SEL gSels[]={@selector(carplayGridMusic),@selector(carplayGridMap),@selector(openYouTubeSource),@selector(openCamera),@selector(openDriveEQ),@selector(carplayGridTrip),@selector(carplayGridSettings),@selector(homePage)};
   NSArray *gridColors=@[[UIColor colorWithRed:.92 green:.18 blue:.32 alpha:1],[UIColor colorWithRed:.12 green:.68 blue:.35 alpha:1],[UIColor colorWithRed:.88 green:.12 blue:.12 alpha:1],[UIColor colorWithRed:.15 green:.55 blue:.85 alpha:1],[UIColor colorWithRed:.58 green:.22 blue:.85 alpha:1],[UIColor colorWithRed:.10 green:.55 blue:.75 alpha:1],[UIColor colorWithRed:.38 green:.42 blue:.48 alpha:1],[UIColor colorWithRed:.85 green:.10 blue:.18 alpha:1]];
   for(int i=0;i<8;i++){UIButton *gb=[UIButton buttonWithType:UIButtonTypeCustom];gb.layer.cornerRadius=22;gb.backgroundColor=[UIColor colorWithWhite:.13 alpha:1];gb.layer.borderWidth=1.5;gb.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;gb.showsTouchWhenHighlighted=YES;UIView *ib=[[UIView alloc]init];ib.tag=101;ib.backgroundColor=gridColors[i];ib.layer.cornerRadius=18;ib.clipsToBounds=YES;ib.userInteractionEnabled=NO;[gb addSubview:ib];DashIcon *gic=[DashIcon new];gic.kind=gKinds[i];gic.tag=103;gic.backgroundColor=[UIColor clearColor];gic.contentMode=UIViewContentModeRedraw;gic.userInteractionEnabled=NO;[ib addSubview:gic];UILabel *gt=[[UILabel alloc]init];gt.tag=102;gt.text=gridTitles[i];gt.font=[UIFont boldSystemFontOfSize:15];gt.textColor=[UIColor whiteColor];gt.textAlignment=NSTextAlignmentCenter;gt.userInteractionEnabled=NO;[gb addSubview:gt];[gb addTarget:self action:gSels[i] forControlEvents:UIControlEventTouchUpInside];[self.carplayAppGrid addSubview:gb];[self.carplayGridButtons addObject:gb];}
 
-  UISwipeGestureRecognizer *swL=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(openCarPlay)];swL.direction=UISwipeGestureRecognizerDirectionLeft;swL.delegate=self;swL.cancelsTouchesInView=NO;swL.delaysTouchesBegan=NO;[self.view addGestureRecognizer:swL];
-  UISwipeGestureRecognizer *swR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];swR.direction=UISwipeGestureRecognizerDirectionRight;swR.delegate=self;swR.cancelsTouchesInView=NO;swR.delaysTouchesBegan=NO;[self.view addGestureRecognizer:swR];
+  self.swL=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(openCarPlay)];self.swL.direction=UISwipeGestureRecognizerDirectionLeft;self.swL.delegate=self;self.swL.cancelsTouchesInView=NO;self.swL.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.swL];
+  self.swR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];self.swR.direction=UISwipeGestureRecognizerDirectionRight;self.swR.delegate=self;self.swR.cancelsTouchesInView=NO;self.swR.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.swR];
+  UISwipeGestureRecognizer *dockSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];dockSwR.direction=UISwipeGestureRecognizerDirectionRight;dockSwR.delegate=self;dockSwR.cancelsTouchesInView=NO;dockSwR.delaysTouchesBegan=NO;[self.carplayDock addGestureRecognizer:dockSwR];
+  UISwipeGestureRecognizer *gridSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];gridSwR.direction=UISwipeGestureRecognizerDirectionRight;gridSwR.delegate=self;gridSwR.cancelsTouchesInView=NO;gridSwR.delaysTouchesBegan=NO;[self.carplayAppGrid addGestureRecognizer:gridSwR];
+  UISwipeGestureRecognizer *mapSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];mapSwR.direction=UISwipeGestureRecognizerDirectionRight;mapSwR.delegate=self;mapSwR.cancelsTouchesInView=NO;mapSwR.delaysTouchesBegan=NO;[self.mapContainer addGestureRecognizer:mapSwR];
+  self.edgeR=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:self action:@selector(handleEdgePan:)];self.edgeR.edges=UIRectEdgeLeft;self.edgeR.delegate=self;self.edgeR.cancelsTouchesInView=NO;self.edgeR.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.edgeR];
  self.returnTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(leaveClock)];self.returnTap.enabled=NO;self.returnTap.delegate=self;[self.view addGestureRecognizer:self.returnTap];[UIDevice currentDevice].batteryMonitoringEnabled=YES;dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);Class manager=NSClassFromString(@"BluetoothManager");if([manager respondsToSelector:@selector(sharedInstance)])self.bluetooth=[manager performSelector:@selector(sharedInstance)];dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",RTLD_LAZY);[self update];if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}
 }
 -(BOOL)prefersStatusBarHidden{return YES;}
@@ -410,21 +419,23 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.carplayTurnBanner.frame=CGRectMake(10,10,mapW-20,54);
 
     CGFloat rx=90+mapW+12,rw=w-rx-12;
-    CGFloat mediaH=(fullH-36)*0.55;
+    CGFloat mediaH=(fullH-36)*0.53;
     self.carplayMediaCard.frame=CGRectMake(rx,12,rw,mediaH);
 
-    self.artwork.hidden=NO;self.artwork.frame=CGRectMake(rx+16,28,72,72);self.artwork.layer.cornerRadius=14;
+    self.artwork.hidden=NO;self.artwork.frame=CGRectMake(rx+16,22,96,96);self.artwork.layer.cornerRadius=18;self.artwork.layer.borderWidth=1.5;self.artwork.layer.borderColor=[UIColor colorWithWhite:.35 alpha:1].CGColor;
     self.artPlaceholder.frame=self.artwork.frame;self.artPlaceholder.hidden=self.artwork.image!=nil;
-    self.sourceBadge.hidden=NO;self.sourceBadge.frame=CGRectMake(rx+rw-78,24,64,20);
-    self.song.hidden=NO;self.song.font=[UIFont boldSystemFontOfSize:19];self.song.frame=CGRectMake(rx+98,24,rw-180,26);self.song.textAlignment=NSTextAlignmentLeft;
-    self.artist.hidden=NO;self.artist.font=[UIFont systemFontOfSize:14];self.artist.frame=CGRectMake(rx+98,52,rw-180,20);
-    self.trackProgress.hidden=NO;self.trackProgress.frame=CGRectMake(rx+16,112,rw-32,3);
-    self.trackTime.hidden=NO;self.trackTime.font=[UIFont systemFontOfSize:11];self.trackTime.frame=CGRectMake(rx+16,120,rw-32,16);
+    self.sourceBadge.hidden=NO;self.sourceBadge.frame=CGRectMake(rx+rw-82,20,66,22);
+    self.artist.hidden=NO;self.artist.font=[UIFont boldSystemFontOfSize:17];self.artist.textColor=[UIColor colorWithRed:0 green:.85 blue:1 alpha:1];self.artist.frame=CGRectMake(rx+122,20,rw-212,22);self.artist.textAlignment=NSTextAlignmentLeft;self.artist.adjustsFontSizeToFitWidth=YES;self.artist.minimumScaleFactor=.8;
+    self.song.hidden=NO;self.song.font=[UIFont boldSystemFontOfSize:23];self.song.textColor=[UIColor whiteColor];self.song.numberOfLines=2;self.song.lineBreakMode=NSLineBreakByTruncatingTail;self.song.frame=CGRectMake(rx+122,46,rw-136,68);self.song.textAlignment=NSTextAlignmentLeft;self.song.adjustsFontSizeToFitWidth=YES;self.song.minimumScaleFactor=.75;
+    self.trackProgress.hidden=NO;self.trackProgress.frame=CGRectMake(rx+16,126,rw-32,5);self.trackProgress.layer.cornerRadius=2.5;self.trackProgress.clipsToBounds=YES;self.trackProgress.progressTintColor=[UIColor colorWithRed:1 green:.20 blue:.35 alpha:1];
+    self.trackTime.hidden=NO;self.trackTime.font=[UIFont boldSystemFontOfSize:13];self.trackTime.textColor=[UIColor colorWithRed:0 green:.85 blue:1 alpha:1];self.trackTime.frame=CGRectMake(rx+16,135,rw-32,20);self.trackTime.textAlignment=NSTextAlignmentRight;
 
-    self.controls.hidden=NO;self.controls.frame=CGRectMake(rx+16,mediaH-70,rw-32,68);
+    self.carStatus.hidden=NO;self.carStatus.font=[UIFont boldSystemFontOfSize:13];self.carStatus.textColor=[UIColor colorWithWhite:.80 alpha:1];self.carStatus.backgroundColor=[UIColor colorWithWhite:.14 alpha:.85];self.carStatus.layer.cornerRadius=7;self.carStatus.clipsToBounds=YES;self.carStatus.textAlignment=NSTextAlignmentCenter;self.carStatus.frame=CGRectMake(rx+16,164,rw-32,24);
+
+    self.controls.hidden=NO;self.controls.frame=CGRectMake(rx+16,mediaH-74,rw-32,66);
     [self.controls viewWithTag:23].hidden=YES;
     CGFloat csw=(rw-56)/3;
-    for(int i=0;i<3;i++){UIView *cb=[self.controls viewWithTag:20+i];cb.frame=CGRectMake(i*(csw+12),0,csw,68);cb.layer.cornerRadius=34;[cb viewWithTag:105].frame=CGRectMake(csw/2-20,14,40,40);}
+    for(int i=0;i<3;i++){UIView *cb=[self.controls viewWithTag:20+i];cb.frame=CGRectMake(i*(csw+12),0,csw,66);cb.layer.cornerRadius=33;[cb viewWithTag:105].frame=CGRectMake(csw/2-20,13,40,40);}
 
     CGFloat telY=12+mediaH+12,telH=fullH-telY-12;
     self.carplayTelemetryCard.frame=CGRectMake(rx,telY,rw,telH);
@@ -440,9 +451,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
    self.carplayHomeBtn.layer.borderColor=self.carplayGridMode?[UIColor whiteColor].CGColor:[UIColor colorWithWhite:.28 alpha:1].CGColor;
    self.carplayHomeBtn.backgroundColor=self.carplayGridMode?[UIColor colorWithWhite:.28 alpha:1]:[UIColor colorWithWhite:.16 alpha:1];
    for(int i=0;i<self.carplayDockButtons.count;i++){UIButton *db=self.carplayDockButtons[i];BOOL active=(i==0&&!self.carplayGridMode);db.layer.borderColor=active?[UIColor colorWithRed:.25 green:.55 blue:1 alpha:1].CGColor:[UIColor colorWithWhite:.22 alpha:1].CGColor;db.backgroundColor=active?[UIColor colorWithRed:.12 green:.22 blue:.38 alpha:1]:[UIColor colorWithWhite:.12 alpha:1];}
-   if(!self.carplayGridMode){[self.view bringSubviewToFront:self.mapContainer];[self.view bringSubviewToFront:self.carplayMediaCard];[self.view bringSubviewToFront:self.carplayTelemetryCard];[self.view bringSubviewToFront:self.controls];[self.view bringSubviewToFront:self.artwork];[self.view bringSubviewToFront:self.song];[self.view bringSubviewToFront:self.artist];[self.view bringSubviewToFront:self.trackProgress];[self.view bringSubviewToFront:self.trackTime];[self.view bringSubviewToFront:self.sourceBadge];}
+   if(!self.carplayGridMode){[self.view bringSubviewToFront:self.mapContainer];[self.view bringSubviewToFront:self.carplayMediaCard];[self.view bringSubviewToFront:self.carplayTelemetryCard];[self.view bringSubviewToFront:self.controls];[self.view bringSubviewToFront:self.artwork];[self.view bringSubviewToFront:self.song];[self.view bringSubviewToFront:self.artist];[self.view bringSubviewToFront:self.trackProgress];[self.view bringSubviewToFront:self.trackTime];[self.view bringSubviewToFront:self.sourceBadge];[self.view bringSubviewToFront:self.carStatus];}
    else{[self.view bringSubviewToFront:self.carplayAppGrid];}
    [self.view bringSubviewToFront:self.carplayDock];
+   if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}
    return;
   }
 
@@ -596,9 +608,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)carplayTapMusic{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}[self openActiveSourceApp];}
 -(void)carplayGridMusic{self.carplayGridMode=NO;[self.view setNeedsLayout];[self openActiveSourceApp];}
 -(void)carplayGridMap{self.carplayGridMode=NO;[self.view setNeedsLayout];}
+-(void)carplayGridTrip{self.carplayMode=NO;self.carplayGridMode=NO;[self openTrip];}
+-(void)carplayGridSettings{[self carSettings];}
+-(void)handleEdgePan:(UIScreenEdgePanGestureRecognizer *)gesture{if(gesture.state==UIGestureRecognizerStateBegan||gesture.state==UIGestureRecognizerStateRecognized){if(self.carplayMode)[self homePage];}}
 -(void)openYouTubeSource{notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];}
 -(void)navigate:(UIButton *)button{switch(button.tag){case 60:[self homePage];break;case 66:[self openCarPlay];break;case 61:[self openMusic];break;case 62:[self openCarPlay];break;case 63:[self openDriveEQ];break;case 64:[self screenOff];break;case 65:[self openCamera];break;}}
--(void)homePage{notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)homePage{notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)openMusic{notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=YES;self.driveMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];self.ticks=0;[self update];}
 -(void)openMap{self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];[self updateMapCar];}
 -(void)loadMapHTML{NSString *path=@"/Applications/CarDash.app/map.html";if([[NSFileManager defaultManager]fileExistsAtPath:path])[self.mapWebView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:path]]];}
@@ -634,7 +649,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  if(![request writeToFile:TRDAutoFile(@"autoplay.plist") atomically:YES])return;
  v=(Dashboard *)self.window.rootViewController;[v send:@"com.legacymusic.app"];
 }
--(BOOL)application:(UIApplication *)app openURL:(NSURL *)url options:(NSDictionary *)options{if([url.host isEqualToString:@"home"])[(Dashboard *)self.window.rootViewController homePage];if([url.host isEqualToString:@"music"])[(Dashboard *)self.window.rootViewController openMusic];if([url.host isEqualToString:@"welcome"])[(Dashboard *)self.window.rootViewController showWelcome];return YES;}
+-(BOOL)application:(UIApplication *)app openURL:(NSURL *)url options:(NSDictionary *)options{Dashboard *v=(Dashboard *)self.window.rootViewController;if([url.host isEqualToString:@"home"])[v homePage];if([url.host isEqualToString:@"carplay"])[v openCarPlay];if([url.host isEqualToString:@"grid"])[v toggleCarPlayGrid];if([url.host isEqualToString:@"trip"])[v openTrip];if([url.host isEqualToString:@"music"])[v openMusic];if([url.host isEqualToString:@"welcome"])[v showWelcome];if([url.host isEqualToString:@"capture"])[v capture];return YES;}
 -(BOOL)application:(UIApplication *)app openURL:(NSURL *)url sourceApplication:(NSString *)source annotation:(id)annotation{return [self application:app openURL:url options:@{}];}
 -(void)applicationDidEnterBackground:(UIApplication *)app{Dashboard *v=(Dashboard *)self.window.rootViewController;[NSObject cancelPreviousPerformRequestsWithTarget:v selector:@selector(refreshNowPlaying) object:nil];[v.settingsSheet dismiss];[v releaseArtwork];v.metadataGeneration++;v.metadataPending=NO;[v.audioBars stop];[v.driveCar stop];[v.timer invalidate];v.timer=nil;[v saveTrip];[UIApplication sharedApplication].idleTimerDisabled=NO;[v captureLifecycle];}
 -(void)applicationDidBecomeActive:(UIApplication *)app{notify_post("com.codex.trd.network.internet");Dashboard *v=(Dashboard *)self.window.rootViewController;[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;if(!v.timer)v.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:v selector:@selector(update) userInfo:nil repeats:YES];v.timer.tolerance=.1;[v startGPS];[v update];[v captureLifecycle];}
