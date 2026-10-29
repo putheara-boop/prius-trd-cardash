@@ -155,10 +155,6 @@ static id networkRouteObserver;
 @implementation TRDBrowseReturn
 +(void)selected:(id)source{dispatch_async(dispatch_get_main_queue(),^{
  NSDictionary *arm=[NSDictionary dictionaryWithContentsOfFile:Arm];NSString *bundle=NSBundle.mainBundle.bundleIdentifier;
- if([bundle isEqual:@"com.legacymusic.app"]&&[UIApplication sharedApplication].applicationState==UIApplicationStateActive){
-  NSArray *queue=[(id<TRDBrowseNinjaPlayer>)source queue];NSInteger index=[(id<TRDBrowseNinjaPlayer>)source currentIndex];if(index<0||index>=(NSInteger)queue.count)return;
-  arm=@{@"bundle":bundle,@"token":[NSUUID UUID].UUIDString,@"pending":@YES,@"created":[NSDate date],@"expires":[NSDate dateWithTimeIntervalSinceNow:30],@"baselineTitle":@"",@"origin":@"ninja-playback-any-entry"};if(![arm writeToFile:Arm atomically:YES])return;
- }
  if(![arm[@"pending"]boolValue]||![arm[@"bundle"]isEqual:bundle]||![arm[@"expires"]isKindOfClass:[NSDate class]]||[arm[@"expires"]timeIntervalSinceNow]<=0||[UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
  if(!bridge){bridge=[TRDBrowseReturn new];[[NSNotificationCenter defaultCenter]addObserver:bridge selector:@selector(stop) name:UIApplicationDidEnterBackgroundNotification object:nil];}[bridge stop];bridge.source=source;bridge.token=arm[@"token"];bridge.oldTitle=arm[@"baselineTitle"]?:@"";bridge.lastTime=-1;bridge.deadline=[NSDate dateWithTimeIntervalSinceNow:25];
  if([bundle isEqual:@"com.legacymusic.app"]){NSArray *queue=[(id<TRDBrowseNinjaPlayer>)source queue];NSInteger index=[(id<TRDBrowseNinjaPlayer>)source currentIndex];id track=index>=0&&index<(NSInteger)queue.count?queue[index]:nil;bridge.expectedTrackID=[track respondsToSelector:@selector(videoId)]?[track videoId]:nil;}
@@ -189,13 +185,13 @@ static id networkRouteObserver;
 #import "RoadAudio.h"
 #import "TRDNinjaAutoplay.h"
 static void(*oldMusic)(id,SEL,id,NSUInteger);
-static void Music(id obj,SEL sel,id queue,NSUInteger index){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-selection");if(!TRDAutoStarting)queue=TRDExpandQueue(obj,queue,&index);oldMusic(obj,sel,queue,index);if(!TRDAutoStarting){TRDSaveQueue();[TRDBrowseReturn selected:obj];}[TRDRoadAudio install];}
+static void Music(id obj,SEL sel,id queue,NSUInteger index){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-selection");if(!TRDAutoStarting)queue=TRDExpandQueue(obj,queue,&index);oldMusic(obj,sel,queue,index);if(!TRDAutoStarting){TRDSaveQueue();}[TRDRoadAudio install];}
 static void(*oldPause)(id,SEL);
 static void AutoPause(id obj,SEL sel){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-pause");oldPause(obj,sel);TRDSaveQueue();}
 static void(*oldSeek)(id,SEL,double);
 static void AutoSeek(id obj,SEL sel,double seconds){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-seek");oldSeek(obj,sel,seconds);dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_main_queue(),^{TRDSaveQueue();});}
 static void(*oldToggle)(id,SEL);
-static void NinjaToggle(id obj,SEL sel){BOOL wasPlaying=[(id<TRDBrowseNinjaPlayer>)obj isPlaying];oldToggle(obj,sel);if(!wasPlaying&&!TRDAutoStarting&&!TRDAutoRestoring)[TRDBrowseReturn selected:obj];}
+static void NinjaToggle(id obj,SEL sel){oldToggle(obj,sel);}
 static void(*oldYT)(id,SEL,id,double);
 static void YouTube(id obj,SEL sel,id watch,double at){oldYT(obj,sel,watch,at);[TRDRoadAudio install];[TRDBrowseReturn selected:obj];}
 static void(*oldPod)(id,SEL,NSInteger);

@@ -381,7 +381,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  BOOL hasEnabled=[self.bluetooth respondsToSelector:@selector(enabled)];BOOL bt=hasEnabled?[self.bluetooth enabled]:NO;NSArray *devices=[self.bluetooth respondsToSelector:@selector(pairedDevices)]?[self.bluetooth pairedDevices]:nil;BOOL paired=NO,known=NO,connected=NO;
  if([devices isKindOfClass:[NSArray class]])for(id device in devices){NSString *name=[device respondsToSelector:@selector(name)]?[device name]:nil;if([name isKindOfClass:[NSString class]]&&[name caseInsensitiveCompare:@"CAR MULTIMEDIA"]==NSOrderedSame){paired=YES;if([device respondsToSelector:@selector(connected)]){known=YES;connected=[device connected];}break;}}
  self.statusCar=!hasEnabled?@"UNKNOWN":!bt?@"BT OFF":![devices isKindOfClass:[NSArray class]]?@"UNKNOWN":!paired?@"NOT PAIRED":!known?@"UNKNOWN":connected?@"CONNECTED":@"DISCONNECTED";
- id delegate=[UIApplication sharedApplication].delegate;if([delegate respondsToSelector:@selector(carStartAutoplay)])[delegate performSelector:@selector(carStartAutoplay)];
+ static BOOL lastCarConnected=NO;
+ if(connected&&!lastCarConnected){
+  lastCarConnected=YES;
+  id delegate=[UIApplication sharedApplication].delegate;if([delegate respondsToSelector:@selector(carStartAutoplay)])[delegate performSelector:@selector(carStartAutoplay)];
+ }else if(!connected){
+  lastCarConnected=NO;
+ }
  [self refreshAudioRoute];
 }
 -(void)applyNowPlaying:(NSDictionary *)info{
@@ -475,17 +481,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
  Dashboard *v=(Dashboard *)self.window.rootViewController;
  NSDictionary *event=[NSDictionary dictionaryWithContentsOfFile:TRDAutoFile(@"car-start-state.plist")],*consumed=[NSDictionary dictionaryWithContentsOfFile:TRDAutoFile(@"autoplay-consumed.plist")];
- if(!TRDFreshCarEvent(event,consumed,TRDBootIdentity(),[NSDate date])){
-  // Start offline playlist immediately if media is idle!
-  if(v.mediaRate <= 0 && ![AVAudioSession sharedInstance].otherAudioPlaying){
-   NSString *tok=[NSUUID UUID].UUIDString;
-   NSDictionary *req=@{@"pending":@YES,@"token":tok,@"boot":TRDBootIdentity(),@"created":[NSDate date],@"expires":[[NSDate date]dateByAddingTimeInterval:90]};
-   [req writeToFile:TRDAutoFile(@"autoplay.plist") atomically:YES];
-   [@{@"connected":@YES,@"boot":TRDBootIdentity(),@"token":tok,@"created":[NSDate date]}writeToFile:TRDAutoFile(@"car-start-state.plist") atomically:YES];
-   [v send:@"com.legacymusic.app"];
-  }
-  return;
- }
+ if(!TRDFreshCarEvent(event,consumed,TRDBootIdentity(),[NSDate date]))return;
  if(![@{@"token":event[@"token"],@"at":[NSDate date]}writeToFile:TRDAutoFile(@"autoplay-consumed.plist") atomically:YES])return;
  if(!TRDAutoMayPlay(TRDAutoEnabled(),[AVAudioSession sharedInstance].otherAudioPlaying,[AVAudioSession sharedInstance].secondaryAudioShouldBeSilencedHint,NO,NO))return;
  NSDictionary *request=@{@"pending":@YES,@"token":event[@"token"],@"boot":event[@"boot"],@"created":event[@"created"],@"expires":[event[@"created"]dateByAddingTimeInterval:90]};
