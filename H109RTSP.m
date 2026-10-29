@@ -1,4 +1,5 @@
 #import "H109RTSP.h"
+#import "H109RTSP+Stopping.h"
 #import <CoreVideo/CoreVideo.h>
 #import <VideoToolbox/VideoToolbox.h>
 #import <CoreImage/CoreImage.h>
@@ -20,14 +21,24 @@ static BOOL request(int fd,NSString *method,NSString *url,int cseq,NSDictionary 
 static NSData *H109ParameterSet(NSData *data){const uint8_t *p=data.bytes;NSUInteger n=data.length;if(n>=4&&p[0]==0&&p[1]==0&&p[2]==0&&p[3]==1)return [data subdataWithRange:NSMakeRange(4,n-4)];if(n>=3&&p[0]==0&&p[1]==0&&p[2]==1)return [data subdataWithRange:NSMakeRange(3,n-3)];return data;}
 @interface H109RTSP(){int _fd,_videoPayload;NSUInteger _frameCount;NSMutableData *_fragment,*_unit;uint16_t _nextSequence;uint32_t _fragmentTS,_unitTS;BOOL _assembling,_hasUnitTS;NSData *_sps,*_pps;CMVideoFormatDescriptionRef _format;NSMutableArray *_gop;NSUInteger _gopBytes;BOOL _unitIDR;CFAbsoluteTime _lastFrameAt;}
 @property(atomic) BOOL stopped;
+@property(nonatomic) BOOL runFinished;
+@property(nonatomic,copy) void (^stopCompletion)(void);
 @end
 @implementation H109RTSP
--(instancetype)init{if((self=[super init])){_fd=-1;_videoPayload=-1;self.stopped=YES;_fragment=[NSMutableData data];_unit=[NSMutableData data];_gop=[NSMutableArray array];}return self;}
+-(instancetype)init{if((self=[super init])){_fd=-1;_videoPayload=-1;self.stopped=YES;self.runFinished=YES;_fragment=[NSMutableData data];_unit=[NSMutableData data];_gop=[NSMutableArray array];}return self;}
 -(NSUInteger)frameCount{@synchronized(self){return _frameCount;}}
 -(void)notify:(NSString *)text{dispatch_async(dispatch_get_main_queue(),^{if(!self.stopped&&self.status)self.status(text);});}
 -(void)stop{@synchronized(self){self.stopped=YES;if(_fd>=0)shutdown(_fd,SHUT_RD);}}
+// Completion also works when run: has already exited but the viewer still owns us.
+-(void)stopWithCompletion:(void (^)(void))completion{
+ @synchronized(self){
+  [self stop];
+  if(self.runFinished){if(completion)dispatch_async(dispatch_get_main_queue(),completion);}
+  else self.stopCompletion=completion;
+ }
+}
 -(void)dealloc{[self clearGOP];if(_format)CFRelease(_format);}
--(void)start:(NSURL *)url{self.stopped=NO;dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0),^{@autoreleasepool{[self run:url];}});}
+-(void)start:(NSURL *)url{@synchronized(self){self.stopped=NO;self.runFinished=NO;}dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0),^{@autoreleasepool{[self run:url];}});}
 // Respect Content-Length: this camera may keep HTTP/1.0 sockets open.
 +(NSString *)readMetadata:(NSString *)host path:(NSString *)path{
  int fd=openTCP(host,80);if(fd<0)return nil;NSMutableData *bytes=[NSMutableData data];NSString *result=nil;
@@ -49,7 +60,21 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
 +(NSDictionary *)cameraProfile:(NSString *)host{if(!host.length)return nil;if(!s_profileCache)s_profileCache=[NSMutableDictionary dictionary];if(s_profileCache[host])return s_profileCache[host];NSDictionary *r=[self jsonMetadata:host path:@"/app/getproductinfo"];NSDictionary *info=r[@"info"];if(!r||![r[@"result"]isKindOfClass:[NSNumber class]]||[r[@"result"]intValue]!=0||![info isKindOfClass:[NSDictionary class]])return nil;NSString *soc=[info[@"soc"]isKindOfClass:[NSString class]]?[info[@"soc"]lowercaseString]:nil;if(soc.length&&[@[@"eeasytech",@"lombotech"]containsObject:soc]){s_profileCache[host]=info;return info;}return nil;}
 +(NSDictionary *)cameraDeviceInfo:(NSString *)host{NSDictionary *r=[self jsonMetadata:host path:@"/app/getdeviceattr"];id info=r[@"info"];return [r[@"result"]isKindOfClass:[NSNumber class]]&&[r[@"result"]intValue]==0&&[info isKindOfClass:[NSDictionary class]]?info:nil;}
 +(BOOL)fastSwitchCamera:(NSString *)host index:(NSInteger)index{if(!host.length)return NO;NSDictionary *r=[self jsonMetadata:host path:[NSString stringWithFormat:@"/app/setparamvalue?param=switchcam&value=%ld",(long)index]];return [r[@"result"]isKindOfClass:[NSNumber class]]&&[r[@"result"]intValue]==0;}
-+(BOOL)switchCamera:(NSString *)host index:(NSInteger)index{if(![self cameraProfile:host])return NO;NSDictionary *info=[self cameraDeviceInfo:host];if(![info[@"camnum"]isKindOfClass:[NSNumber class]]||![info[@"curcamid"]isKindOfClass:[NSNumber class]]||index<0||index>=[info[@"camnum"]integerValue])return NO;if([info[@"curcamid"]integerValue]!=index){NSDictionary *r=[self jsonMetadata:host path:[NSString stringWithFormat:@"/app/setparamvalue?param=switchcam&value=%ld",(long)index]];if(![r[@"result"]isKindOfClass:[NSNumber class]]||[r[@"result"]intValue]!=0)return NO;}NSDictionary *after=[self cameraDeviceInfo:host];return [after[@"curcamid"]isKindOfClass:[NSNumber class]]&&[after[@"curcamid"]integerValue]==index;}
+// The command acknowledgement does not mean the sensor is ready yet.
++(BOOL)switchCamera:(NSString *)host index:(NSInteger)index{
+ if(![self cameraProfile:host])return NO;
+ NSDictionary *info=[self cameraDeviceInfo:host];
+ if(![info[@"camnum"]isKindOfClass:[NSNumber class]]||![info[@"curcamid"]isKindOfClass:[NSNumber class]]||index<0||index>=[info[@"camnum"]integerValue])return NO;
+ if([info[@"curcamid"]integerValue]==index)return YES;
+ if(![self fastSwitchCamera:host index:index])return NO;
+ CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+4;
+ do{
+  [NSThread sleepForTimeInterval:0.25];
+  NSDictionary *after=[self cameraDeviceInfo:host];
+  if([after[@"curcamid"]isKindOfClass:[NSNumber class]]&&[after[@"curcamid"]integerValue]==index)return YES;
+ }while(CFAbsoluteTimeGetCurrent()<deadline);
+ return NO;
+}
 +(BOOL)openCameraSession:(NSString *)host{if(!host.length)return NO;NSDictionary *r=[self jsonMetadata:host path:@"/app/enterrecorder"];BOOL ok=[r[@"result"]isKindOfClass:[NSNumber class]]&&[r[@"result"]intValue]==0;return ok;}
 +(NSArray *)cameraStreamURLs:(NSString *)host{NSDictionary *r=[self jsonMetadata:host path:@"/app/getmediainfo"];id info=r[@"info"];if(![r[@"result"]isKindOfClass:[NSNumber class]]||[r[@"result"]intValue]!=0||![info isKindOfClass:[NSDictionary class]])return @[];id list=info[@"rtsps"];if(![list isKindOfClass:[NSArray class]])list=[info[@"rtsp"]isKindOfClass:[NSString class]]?@[info[@"rtsp"]]:@[];NSMutableArray *urls=[NSMutableArray array];for(id text in list){if(![text isKindOfClass:[NSString class]])continue;NSURL *u=[NSURL URLWithString:text];if(![u.scheme.lowercaseString isEqual:@"rtsp"]||![u.host isEqual:host]||u.user.length||u.password.length)continue;if(!u.path.length)u=[NSURL URLWithString:[text stringByAppendingString:@"/"]];[urls addObject:u];}return urls;}
 +(NSDictionary *)describe:(NSURL *)url{int fd=openTCP(url.host,url.port?url.port.intValue:554);if(fd<0)return nil;NSDictionary *r=nil;@try{if(request(fd,@"OPTIONS",url.absoluteString,1,@{}))response(fd,-1);if(request(fd,@"DESCRIBE",url.absoluteString,2,@{@"Accept":@"application/sdp"}))r=response(fd,-1);}@finally{close(fd);}return r;}
@@ -57,7 +82,16 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
  int fd=-1,udp=-1,rtcp=-1,sequence=1,channel=0;NSString *session=nil;BOOL playing=NO;NSString *uri=url.absoluteString;
  @try{
   if(url.user.length||![url.scheme.lowercaseString isEqual:@"rtsp"]){[self notify:@"URL RTSP ไม่ถูกต้อง หรือมีข้อมูลเข้าสู่ระบบที่ยังไม่รองรับ"];return;}
-  if((!url.path.length||[url.path isEqual:@"/"])&&[H109RTSP cameraProfile:url.host]){[self notify:@"Opening camera preview session..."];if(![H109RTSP openCameraSession:url.host]){[self notify:@"Camera preview session could not be opened."];return;}}
+  if((!url.path.length||[url.path isEqual:@"/"])&&[H109RTSP cameraProfile:url.host]){
+   NSDictionary *device=[H109RTSP cameraDeviceInfo:url.host];
+   NSNumber *selected=[device[@"curcamid"]isKindOfClass:[NSNumber class]]?device[@"curcamid"]:nil;
+   [self notify:@"Opening camera preview session..."];
+   if(self.stopped)return;
+   if(![H109RTSP openCameraSession:url.host]){[self notify:@"Camera preview session could not be opened."];return;}
+   // Preserve the confirmed channel across recorder preview initialization.
+   if(self.stopped)return;
+   if(selected&&![H109RTSP switchCamera:url.host index:selected.integerValue]){[self notify:@"Camera channel could not be restored after opening preview. Try switching again."];return;}
+  }
   [self notify:@"Connecting to RTSP..."];fd=openTCP(url.host,url.port?url.port.intValue:554);if(fd<0){[self notify:@"เชื่อมต่อ RTSP ไม่ได้ — ตรวจ Wi-Fi และ IP กล้อง"];return;}
   @synchronized(self){if(self.stopped)return;_fd=fd;}
   if(request(fd,@"OPTIONS",uri,sequence++,@{}))response(fd,-1);
@@ -89,7 +123,7 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
    if((!self.frameCount&&now-started>18)||now-lastPacket>15){[self notify:@"No fresh H.264 video received. Check the codec and stream channel."];break;}
   }}
  }@catch(NSException *e){[self notify:[NSString stringWithFormat:@"Invalid RTSP data: %@",e.name]];}
- @finally{if(playing&&fd>=0)request(fd,@"TEARDOWN",uri,sequence++,@{@"Session":session?:@""});@synchronized(self){_fd=-1;}if(fd>=0)close(fd);if(udp>=0)close(udp);if(rtcp>=0)close(rtcp);if(!self.stopped&&self.frameCount)[self notify:@"Live stream connection ended"];dispatch_async(dispatch_get_main_queue(),^{if(self.finished)self.finished();});}
+ @finally{if(playing&&fd>=0)request(fd,@"TEARDOWN",uri,sequence++,@{@"Session":session?:@""});@synchronized(self){_fd=-1;}if(fd>=0)close(fd);if(udp>=0)close(udp);if(rtcp>=0)close(rtcp);if(!self.stopped&&self.frameCount)[self notify:@"Live stream connection ended"];void (^completion)(void)=nil;@synchronized(self){self.runFinished=YES;completion=self.stopCompletion;self.stopCompletion=nil;}dispatch_async(dispatch_get_main_queue(),^{if(completion)completion();if(self.finished)self.finished();});}
 }
 -(void)clearGOP{@synchronized(self){for(NSValue *value in _gop)CFRelease([value pointerValue]);[_gop removeAllObjects];_gopBytes=0;_lastFrameAt=0;}}
 static void snapshotDecoded(void *context,void *source,OSStatus error,VTDecodeInfoFlags flags,CVImageBufferRef image,CMTime pts,CMTime duration){if(error||!image)return;CVPixelBufferRef *last=(CVPixelBufferRef *)context;if(*last)CVPixelBufferRelease(*last);*last=CVPixelBufferRetain(image);}

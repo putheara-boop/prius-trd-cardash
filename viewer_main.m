@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import "H109RTSP.h"
+#import "H109RTSP+Stopping.h"
 #import "H109Events.h"
 #import "H109CameraAlerts.h"
 #import "H109Files.h"
@@ -186,6 +187,7 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
 @implementation Viewer
 #import "H109HUD.h"
 -(void)toggleChannelFull{
+ if(!self.channels.enabled)return;
  NSInteger target=(self.channels.selectedSegmentIndex==0)?1:0;
  self.channels.selectedSegmentIndex=target;
  [self selectChannel];
@@ -256,7 +258,7 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
   NSInteger channel=[info[@"curcamid"]integerValue];if(channel<0||channel>1||channel>=[info[@"camnum"]integerValue])return;
   v.mainCameraChannel=channel;v.mainCameraReadAt=[NSDate date];if(v.channels.selectedSegmentIndex==channel)return;
   NSMutableArray *trace=[[NSArray arrayWithContentsOfFile:H109DiagnosticPath()]mutableCopy]?:[NSMutableArray array];H109Record(trace,@"Following main camera",channel==1?@"Rear":@"Front");
-  v.channels.selectedSegmentIndex=channel;if(v.parkingGuideView)v.parkingGuideView.hidden=!(v.showGuide&&channel==1);if(channel==1&&!v.mirrored)[v toggleMirror];else if(channel==0&&v.mirrored)[v toggleMirror];v.retryCount=0;[v updateFullHUD];[v connect];
+  v.channels.selectedSegmentIndex=channel;if(v.parkingGuideView)v.parkingGuideView.hidden=!(v.showGuide&&channel==1);[v applyChannelMirror];v.retryCount=0;[v updateFullHUD];[v connect];
  });});
 }
 -(void)captureDiagnostics{
@@ -314,7 +316,7 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
 }
 -(BOOL)textFieldShouldReturn:(UITextField *)field{[self connect];return YES;}
 -(void)stop{self.wantsLive=NO;self.retryCount=0;self.retryScheduled=NO;[self stopTransport];self.stateLabel.text=@"OFFLINE";self.emptyLabel.text=@"PREVIEW STOPPED\nTap CONNECT or FIND";self.emptyLabel.hidden=self.picture.image!=nil;}
--(void)stopTransport{[self.telemetry stop];[self refreshTelemetry];[self.channelFollowTimer invalidate];self.channelFollowTimer=nil;self.channelProbeBusy=NO;self.mainCameraChannel=-1;self.mainCameraReadAt=nil;[self.networkWait invalidate];self.networkWait=nil;[self.health invalidate];self.health=nil;self.lastFrame=nil;[self.alerts stop];self.alerts=nil;self.autoLabel.text=self.autoSwitch.on?@"EVENTS: waiting for camera validation":@"EVENTS: OFF";self.discoveryGeneration++;self.searching=NO;[self.rtsp stop];self.rtsp=nil;[self.liveLayer flushAndRemoveImage];[self.liveLayer removeFromSuperlayer];self.liveLayer=nil;self.framePending=NO;[self.session invalidateAndCancel];self.session=nil;[self.player pause];self.player=nil;self.videoOutput=nil;[self.video removeFromSuperlayer];self.video=nil;self.buffer=nil;self.status.text=@"Live preview stopped.";[UIApplication sharedApplication].idleTimerDisabled=NO;}
+-(void)stopTransport{self.channels.enabled=YES;self.fullSwitchBtn.enabled=YES;[self.telemetry stop];[self refreshTelemetry];[self.channelFollowTimer invalidate];self.channelFollowTimer=nil;self.channelProbeBusy=NO;self.mainCameraChannel=-1;self.mainCameraReadAt=nil;[self.networkWait invalidate];self.networkWait=nil;[self.health invalidate];self.health=nil;self.lastFrame=nil;[self.alerts stop];self.alerts=nil;self.autoLabel.text=self.autoSwitch.on?@"EVENTS: waiting for camera validation":@"EVENTS: OFF";self.discoveryGeneration++;self.searching=NO;[self.rtsp stop];self.rtsp=nil;[self.liveLayer flushAndRemoveImage];[self.liveLayer removeFromSuperlayer];self.liveLayer=nil;self.framePending=NO;[self.session invalidateAndCancel];self.session=nil;[self.player pause];self.player=nil;self.videoOutput=nil;[self.video removeFromSuperlayer];self.video=nil;self.buffer=nil;self.status.text=@"Live preview stopped.";[UIApplication sharedApplication].idleTimerDisabled=NO;}
 -(void)connect{[self stopTransport];[self updateWiFi];self.wantsLive=YES;self.retryScheduled=NO;self.lastVideoTime=-1;self.connectionBegan=[NSDate date];self.lastFrame=nil;self.healthySince=nil;self.healthFrames=0;self.picture.image=nil;self.emptyLabel.hidden=NO;self.emptyLabel.text=@"CONNECTING TO CAMERA";self.stateLabel.text=@"CONNECTING";self.health=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(healthTick) userInfo:nil repeats:YES];self.health.tolerance=.15;[self.address resignFirstResponder];NSURL *u=[NSURL URLWithString:self.address.text];
 if([u.scheme.lowercaseString isEqual:@"rtsp"]&&u.host.length&&!u.user.length&&!u.password.length){
  [[NSUserDefaults standardUserDefaults]setObject:u.absoluteString forKey:@"url"];self.liveLayer=[AVSampleBufferDisplayLayer layer];self.liveLayer.videoGravity=AVLayerVideoGravityResizeAspect;self.liveLayer.frame=self.picture.bounds;[self.picture.layer addSublayer:self.liveLayer];[self.picture bringSubviewToFront:self.emptyLabel];if(self.parkingGuideView)[self.picture bringSubviewToFront:self.parkingGuideView];self.rtsp=[H109RTSP new];__weak Viewer *weak=self;__weak H109RTSP *engine=self.rtsp;

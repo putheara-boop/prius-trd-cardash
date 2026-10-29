@@ -5,7 +5,7 @@
  UITapGestureRecognizer *triTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(quickSnapshot)];triTap.numberOfTouchesRequired=3;[self.picture addGestureRecognizer:triTap];
  UISwipeGestureRecognizer *swL=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(swipeChannel:)];swL.direction=UISwipeGestureRecognizerDirectionLeft;[self.picture addGestureRecognizer:swL];UISwipeGestureRecognizer *swR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(swipeChannel:)];swR.direction=UISwipeGestureRecognizerDirectionRight;[self.picture addGestureRecognizer:swR];
  UIScreenEdgePanGestureRecognizer *edgePan=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:self action:@selector(returnTRD)];edgePan.edges=UIRectEdgeLeft;[self.view addGestureRecognizer:edgePan];
- self.actions=[NSMutableArray array];NSArray *titles=@[@"CONNECT",@"STOP",@"FIND",@"SNAPSHOT"];for(int i=0;i<4;i++){UIButton *b=[self hudButton:titles[i] action:@selector(tap:)];b.tag=i+1;[self.actions addObject:b];}self.menus=[NSMutableArray array];NSArray *tabs=@[@"LIVE",@"RECORDINGS",@"SAVED",@"CONNECTION",@"SETTINGS"];for(NSUInteger i=0;i<tabs.count;i++){UIButton *tab=[self hudButton:tabs[i] action:@selector(menuTap:)];tab.tag=i;tab.titleLabel.font=[UIFont boldSystemFontOfSize:14];if(i==0)tab.backgroundColor=[UIColor colorWithRed:.55 green:.03 blue:.08 alpha:1];[self.menus addObject:tab];}self.mirrored=[[NSUserDefaults standardUserDefaults]boolForKey:@"previewMirror"];NSInteger initial=[[NSUserDefaults standardUserDefaults]integerForKey:@"defaultChannel"];if(initial==1&&[[NSUserDefaults standardUserDefaults]stringForKey:@"rearStream"].length){self.channels.selectedSegmentIndex=1;self.address.text=[[NSUserDefaults standardUserDefaults]stringForKey:@"rearStream"];}else self.address.text=[[NSUserDefaults standardUserDefaults]stringForKey:@"frontStream"]?:self.address.text;self.returnButton=[self hudButton:@"‹ TRD" action:@selector(returnTRD)];self.setupButton=[self hudButton:@"SETUP" action:@selector(streamSetup)];self.mirrorButton=[self hudButton:@"MIRROR" action:@selector(toggleMirror)];self.fullButton=[self hudButton:@"FULL" action:@selector(toggleFull)];self.guideButton=[self hudButton:self.showGuide?@"GUIDE ON":@"GUIDE" action:@selector(toggleGuide)];self.exitFull=[self hudButton:@"≡ MENU" action:@selector(toggleFull)];self.fullscreen=YES;[self.mirrorButton setTitle:self.mirrored?@"MIRROR ON":@"MIRROR" forState:0];
+ self.actions=[NSMutableArray array];NSArray *titles=@[@"CONNECT",@"STOP",@"FIND",@"SNAPSHOT"];for(int i=0;i<4;i++){UIButton *b=[self hudButton:titles[i] action:@selector(tap:)];b.tag=i+1;[self.actions addObject:b];}self.menus=[NSMutableArray array];NSArray *tabs=@[@"LIVE",@"RECORDINGS",@"SAVED",@"CONNECTION",@"SETTINGS"];for(NSUInteger i=0;i<tabs.count;i++){UIButton *tab=[self hudButton:tabs[i] action:@selector(menuTap:)];tab.tag=i;tab.titleLabel.font=[UIFont boldSystemFontOfSize:14];if(i==0)tab.backgroundColor=[UIColor colorWithRed:.55 green:.03 blue:.08 alpha:1];[self.menus addObject:tab];}self.mirrored=(self.channels.selectedSegmentIndex==1);NSInteger initial=[[NSUserDefaults standardUserDefaults]integerForKey:@"defaultChannel"];if(initial==1&&[[NSUserDefaults standardUserDefaults]stringForKey:@"rearStream"].length){self.channels.selectedSegmentIndex=1;self.mirrored=YES;self.address.text=[[NSUserDefaults standardUserDefaults]stringForKey:@"rearStream"];}else self.address.text=[[NSUserDefaults standardUserDefaults]stringForKey:@"frontStream"]?:self.address.text;self.returnButton=[self hudButton:@"‹ TRD" action:@selector(returnTRD)];self.setupButton=[self hudButton:@"SETUP" action:@selector(streamSetup)];self.mirrorButton=[self hudButton:@"MIRROR" action:@selector(toggleMirror)];self.fullButton=[self hudButton:@"FULL" action:@selector(toggleFull)];self.guideButton=[self hudButton:self.showGuide?@"GUIDE ON":@"GUIDE" action:@selector(toggleGuide)];self.exitFull=[self hudButton:@"≡ MENU" action:@selector(toggleFull)];self.fullscreen=YES;[self.mirrorButton setTitle:self.mirrored?@"MIRROR ON":@"MIRROR" forState:0];
  self.fullHudBar=[UIView new];self.fullHudBar.backgroundColor=[UIColor colorWithRed:0 green:0 blue:0 alpha:0.75];self.fullHudBar.layer.cornerRadius=8;self.fullHudBar.layer.borderWidth=1.2;self.fullHudBar.layer.borderColor=[UIColor colorWithRed:0.8 green:0.1 blue:0.15 alpha:0.7].CGColor;self.fullHudBar.clipsToBounds=YES;[self.view addSubview:self.fullHudBar];
  self.fullHudLabel=[UILabel new];self.fullHudLabel.font=[UIFont boldSystemFontOfSize:14];self.fullHudLabel.textColor=[UIColor whiteColor];self.fullHudLabel.textAlignment=NSTextAlignmentCenter;[self.fullHudBar addSubview:self.fullHudLabel];
  self.fullHomeBtn=[self hudButton:@"‹ TRD" action:@selector(returnTRD)];self.returnButton.accessibilityLabel=@"Return to TRD dashboard";self.returnButton.accessibilityIdentifier=@"trd.return.home";self.fullHomeBtn.accessibilityLabel=@"Return to TRD dashboard";self.fullHomeBtn.accessibilityIdentifier=@"trd.return.home";self.returnButton.layer.cornerRadius=8;self.fullHomeBtn.layer.cornerRadius=8;self.fullHomeBtn.backgroundColor=[UIColor colorWithWhite:0.08 alpha:0.9];
@@ -39,12 +39,13 @@
  [self.view bringSubviewToFront:self.flashView];}
 -(void)updateWiFi{NSDictionary *info=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));self.lastSSID=info[@"SSID"];self.networkLabel.text=[NSString stringWithFormat:@"%@  •  PREVIEW MUTED",self.lastSSID?:@"NO WI-FI"];}
 -(void)toggleGuide{self.showGuide=!self.showGuide;[[NSUserDefaults standardUserDefaults]setBool:self.showGuide forKey:@"parkingGuide"];[self.guideButton setTitle:self.showGuide?@"GUIDE ON":@"GUIDE" forState:0];self.parkingGuideView.hidden=!(self.showGuide&&self.channels.selectedSegmentIndex==1);[self.parkingGuideView setNeedsDisplay];}
--(void)swipeChannel:(UISwipeGestureRecognizer *)g{NSInteger target=(g.direction==UISwipeGestureRecognizerDirectionLeft)?1:0;if(self.channels.selectedSegmentIndex!=target){self.channels.selectedSegmentIndex=target;[self selectChannel];}}
+-(void)swipeChannel:(UISwipeGestureRecognizer *)g{if(!self.channels.enabled)return;NSInteger target=(g.direction==UISwipeGestureRecognizerDirectionLeft)?1:0;if(self.channels.selectedSegmentIndex!=target){self.channels.selectedSegmentIndex=target;[self selectChannel];}}
 -(void)toggleFull{self.fullscreen=!self.fullscreen;[self.view setNeedsLayout];}
--(void)toggleMirror{self.mirrored=!self.mirrored;[[NSUserDefaults standardUserDefaults]setBool:self.mirrored forKey:@"previewMirror"];[self.mirrorButton setTitle:self.mirrored?@"MIRROR ON":@"MIRROR" forState:0];[self.view setNeedsLayout];}
+-(void)applyChannelMirror{BOOL shouldMirror=(self.channels.selectedSegmentIndex==1);if(self.mirrored!=shouldMirror){self.mirrored=shouldMirror;[self.mirrorButton setTitle:self.mirrored?@"MIRROR ON":@"MIRROR" forState:0];[self.view setNeedsLayout];}}
+-(void)toggleMirror{self.mirrored=!self.mirrored;[self.mirrorButton setTitle:self.mirrored?@"MIRROR ON":@"MIRROR" forState:0];[self.view setNeedsLayout];}
 -(void)returnTRD{[self stop];notify_post("com.codex.trd.network.internet");[[UIApplication sharedApplication]openURL:[NSURL URLWithString:@"cardash://home"]];}
 -(BOOL)validStream:(NSString *)text{NSURL *u=[NSURL URLWithString:text];return !text.length||(u.host.length&&!u.user.length&&!u.password.length&&[@[@"rtsp",@"http",@"https"]containsObject:u.scheme.lowercaseString]);}
--(void)selectChannel{NSInteger selected=self.channels.selectedSegmentIndex;if(self.parkingGuideView)self.parkingGuideView.hidden=!(self.showGuide&&selected==1);if(selected==1&&!self.mirrored)[self toggleMirror];else if(selected==0&&self.mirrored)[self toggleMirror];NSURL *activeURL=[NSURL URLWithString:self.address.text];if(!activeURL.host.length||[activeURL.host isEqual:@"192.168.169.1"]||[[[NSUserDefaults standardUserDefaults]stringForKey:@"reportedCameraHost"]isEqual:activeURL.host]){[self selectReportedCamera];return;}NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];NSString *url=[prefs stringForKey:selected?@"rearStream":@"frontStream"];if(!url.length&&selected==0)url=[prefs stringForKey:@"url"];if(!url.length){self.status.text=@"Rear stream is not configured. Use SETUP with the camera-reported rear URL. No switch command was sent.";self.channels.selectedSegmentIndex=0;return;}self.address.text=url;self.retryCount=0;[self connect];}
+-(void)selectChannel{if(!self.channels.enabled)return;NSInteger selected=self.channels.selectedSegmentIndex;if(self.parkingGuideView)self.parkingGuideView.hidden=!(self.showGuide&&selected==1);[self applyChannelMirror];NSURL *activeURL=[NSURL URLWithString:self.address.text];if(!activeURL.host.length||[activeURL.host isEqual:@"192.168.169.1"]||[[[NSUserDefaults standardUserDefaults]stringForKey:@"reportedCameraHost"]isEqual:activeURL.host]){[self selectReportedCamera];return;}NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];NSString *url=[prefs stringForKey:selected?@"rearStream":@"frontStream"];if(!url.length&&selected==0)url=[prefs stringForKey:@"url"];if(!url.length){self.status.text=@"Rear stream is not configured. Use SETUP with the camera-reported rear URL. No switch command was sent.";self.channels.selectedSegmentIndex=0;return;}self.address.text=url;self.retryCount=0;[self connect];}
 -(void)streamSetup{[self showSettings];}
 -(void)editStreams{NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];UIAlertController *edit=[UIAlertController alertControllerWithTitle:@"STREAM PROFILES" message:@"Use full URLs reported by the camera. Leave rear blank until known. Optional HTTP base is for the read-only file browser." preferredStyle:UIAlertControllerStyleAlert];NSArray *keys=@[@"frontStream",@"rearStream",@"cameraHTTP"],*hints=@[@"Front stream: rtsp://camera/path",@"Rear stream: actual URL only",@"File HTTP base (optional)"];for(NSUInteger i=0;i<3;i++)[edit addTextFieldWithConfigurationHandler:^(UITextField *field){field.placeholder=hints[i];field.text=[prefs stringForKey:keys[i]]?:((i==0)?self.address.text:@"");field.keyboardType=UIKeyboardTypeURL;field.autocorrectionType=UITextAutocorrectionTypeNo;field.autocapitalizationType=UITextAutocapitalizationTypeNone;}];[edit addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];[edit addAction:[UIAlertAction actionWithTitle:@"SAVE" style:0 handler:^(UIAlertAction *a){NSString *front=edit.textFields[0].text?:@"",*rear=edit.textFields[1].text?:@"",*base=edit.textFields[2].text?:@"";NSURL *u=[NSURL URLWithString:base];if(![self validStream:front]||![self validStream:rear]||(base.length&&(!u.host.length||u.user.length||u.password.length||![@[@"http",@"https"]containsObject:u.scheme.lowercaseString]))){self.status.text=@"Invalid address. Use a full RTSP/HTTP URL without embedded credentials.";return;}[prefs setObject:front forKey:@"frontStream"];[prefs setObject:rear forKey:@"rearStream"];[prefs setObject:base forKey:@"cameraHTTP"];[prefs synchronize];self.address.text=self.channels.selectedSegmentIndex==1?rear:front;self.status.text=@"Stream profiles saved. Tap CONNECT when on camera Wi-Fi.";}]];UIViewController *host=self.presentedViewController?:self;[host presentViewController:edit animated:YES completion:nil];}
 -(void)presentPanel:(UIViewController *)panel{UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:panel];nav.toolbar.barStyle=UIBarStyleBlack;nav.toolbar.tintColor=[UIColor colorWithRed:1 green:.12 blue:.18 alpha:1];panel.toolbarItems=@[[[UIBarButtonItem alloc]initWithTitle:@"‹ TRD HOME" style:0 target:self action:@selector(returnTRD)]];nav.toolbarHidden=NO;[self presentViewController:nav animated:YES completion:nil];}
@@ -70,23 +71,46 @@
 -(void)shareDiagnostics{if(![[NSFileManager defaultManager]fileExistsAtPath:H109DiagnosticPath()]){NSMutableArray *trace=[NSMutableArray array];H109Record(trace,@"status",self.status.text);}UIActivityViewController *share=[[UIActivityViewController alloc]initWithActivityItems:@[[NSURL fileURLWithPath:H109DiagnosticPath()]] applicationActivities:nil];UIViewController *host=self.presentedViewController?:self;share.popoverPresentationController.sourceView=host.view;share.popoverPresentationController.sourceRect=CGRectMake(20,20,1,1);[host presentViewController:share animated:YES completion:nil];}
 
 -(void)selectReportedCamera{
- NSInteger selected=self.channels.selectedSegmentIndex;if(self.parkingGuideView)self.parkingGuideView.hidden=!(self.showGuide&&selected==1);if(selected==1&&!self.mirrored)[self toggleMirror];else if(selected==0&&self.mirrored)[self toggleMirror];[self updateFullHUD];
+ NSInteger selected=self.channels.selectedSegmentIndex;
  NSString *host=[NSURL URLWithString:self.address.text].host;if(!host.length)host=@"192.168.169.1";
+ H109RTSP *previous=self.rtsp;
+ // Detach old callbacks before stopping; wait for its TEARDOWN before switching.
+ previous.finished=nil;
  [self stopTransport];
- self.retryScheduled=NO;self.status.text=@"⚡ Fast switching...";self.stateLabel.text=@"SWITCHING";
- __weak Viewer *weak=self;
- dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0),^{
-  BOOL switched=[H109RTSP fastSwitchCamera:host index:selected];
-  if(!switched)switched=[H109RTSP switchCamera:host index:selected];
-  [NSThread sleepForTimeInterval:0.25];
-  dispatch_async(dispatch_get_main_queue(),^{
-   Viewer *v=weak;if(!v)return;
-   v.channels.selectedSegmentIndex=selected;
-   v.retryCount=0;
-   [v updateFullHUD];
-   [v connect];
+ self.channels.enabled=NO;self.fullSwitchBtn.enabled=NO;
+ self.retryScheduled=NO;self.status.text=@"Switching camera and waiting for confirmation...";self.stateLabel.text=@"SWITCHING";
+ NSUInteger generation=self.discoveryGeneration;__weak Viewer *weak=self;
+ static dispatch_queue_t switchQueue;static dispatch_once_t once;
+ dispatch_once(&once,^{switchQueue=dispatch_queue_create("com.codex.h109.camera-switch",DISPATCH_QUEUE_SERIAL);});
+ dispatch_block_t beginSwitch=^{
+  dispatch_async(switchQueue,^{
+   Viewer *viewer=weak;if(!viewer||viewer.discoveryGeneration!=generation)return;
+   BOOL switched=[H109RTSP switchCamera:host index:selected];
+   NSDictionary *actual=switched?nil:[H109RTSP cameraDeviceInfo:host];
+   dispatch_async(dispatch_get_main_queue(),^{
+    Viewer *v=weak;if(!v||v.discoveryGeneration!=generation)return;
+    v.channels.enabled=YES;v.fullSwitchBtn.enabled=YES;
+    NSMutableArray *trace=[[NSArray arrayWithContentsOfFile:H109DiagnosticPath()]mutableCopy]?:[NSMutableArray array];
+    H109Record(trace,@"Camera switch",[NSString stringWithFormat:@"Requested %@: %@",selected==1?@"Rear":@"Front",switched?@"confirmed":@"not confirmed"]);
+    if(!switched){
+     v.wantsLive=NO;
+     NSNumber *channel=[actual[@"curcamid"]isKindOfClass:[NSNumber class]]?actual[@"curcamid"]:nil;
+     if(channel&&(channel.integerValue==0||channel.integerValue==1))v.channels.selectedSegmentIndex=channel.integerValue;
+     v.status.text=@"Camera did not confirm the requested channel. Check the rear camera connection, then retry.";
+     v.stateLabel.text=@"SWITCH FAILED";v.emptyLabel.hidden=NO;v.emptyLabel.text=@"CAMERA SWITCH NOT CONFIRMED";
+    }else{
+     v.channels.selectedSegmentIndex=selected;
+     v.retryCount=0;
+     [v connect];
+    }
+    NSInteger channel=v.channels.selectedSegmentIndex;
+    if(v.parkingGuideView)v.parkingGuideView.hidden=!(v.showGuide&&channel==1);
+    [v applyChannelMirror];
+    [v updateFullHUD];
+   });
   });
- });
+ };
+ if(previous)[previous stopWithCompletion:beginSwitch];else beginSwitch();
 }
 
 -(void)returnMedia{[self stop];notify_post("com.codex.trd.media.return");self.status.text=@"Returning to previous media app. Queue and playback position are unchanged by the viewer.";}
