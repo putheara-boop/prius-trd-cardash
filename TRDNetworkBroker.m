@@ -67,27 +67,39 @@ static void AssociationReturned(WiFiRef device,WiFiRef network,CFDictionaryRef i
 -(void)request:(NSString *)mode{@autoreleasepool{
  if(![@[@"camera",@"internet"]containsObject:mode])return;
  NSDictionary *config=[NSDictionary dictionaryWithContentsOfFile:ConfigPath];NSString *target=config[[mode isEqual:@"camera"]?@"cameraSSID":@"internetSSID"];
+ if(!target.length && [mode isEqual:@"internet"])target=@"PEEPUT";
  NSString *current=CurrentSSID();
- if([mode isEqual:@"internet"]){
-  if(!self.previousSSID.length)self.previousSSID=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-session.plist"][@"previousSSID"];
-  if(self.previousSSID.length&&![self.previousSSID isEqual:config[@"cameraSSID"]])target=self.previousSSID;
- }
  if(self.timer&&[self.mode isEqual:mode]&&[self.target isEqual:target]){[self writePhase:@"joining" error:nil];return;}
  BOOL pending=self.timer&&!self.callbackDone;[self.timer invalidate];self.timer=nil;if(pending&&_device)CancelAssociation(_device);if(_network){CFRelease(_network);_network=NULL;}
  if([mode isEqual:@"camera"]&&current.length&&![current isEqual:config[@"cameraSSID"]]){self.previousSSID=current;[@{@"previousSSID":current}writeToFile:@"/var/mobile/codex-car/network-session.plist" atomically:YES];}self.restoring=NO;
  self.mode=mode;self.target=[target isKindOfClass:[NSString class]]?target:@"";self.cameraPrefix=[config[@"cameraIPv4Prefix"]isKindOfClass:[NSString class]]?config[@"cameraIPv4Prefix"]:@"192.168.169.";self.attempt=0;self.callbackDone=NO;self.callbackError=0;self.stableSince=nil;self.retryAt=nil;
- // Keep an already usable non-camera network outside the car.
- if([mode isEqual:@"internet"]&&current.length&&![current isEqual:config[@"cameraSSID"]]&&[self addressReady]){self.target=current;[self writePhase:@"ready" error:nil];return;}
+ if([mode isEqual:@"internet"]&&current.length&&![current isEqual:config[@"cameraSSID"]]){
+  BOOL match=[current caseInsensitiveCompare:self.target]==NSOrderedSame || [current localizedCaseInsensitiveContainsString:self.target] || [self.target localizedCaseInsensitiveContainsString:current];
+  if(match && [self addressReady]){self.target=current;[self writePhase:@"ready" error:nil];return;}
+ }
  if(!self.target.length){[self writePhase:@"error" error:@"Requested Wi-Fi network is not configured."];return;}
- if([CurrentSSID()isEqual:self.target]&&[self addressReady]){[self writePhase:@"ready" error:nil];return;}
+ BOOL onTarget=[CurrentSSID()caseInsensitiveCompare:self.target]==NSOrderedSame || [CurrentSSID()localizedCaseInsensitiveContainsString:self.target];
+ if(onTarget&&[self addressReady]){[self writePhase:@"ready" error:nil];return;}
  self.deadline=[NSDate dateWithTimeIntervalSinceNow:45];self.timer=[NSTimer scheduledTimerWithTimeInterval:.5 target:self selector:@selector(tick) userInfo:nil repeats:YES];self.timer.tolerance=.1;[self attemptJoin];
 }}
 -(void)attemptJoin{@autoreleasepool{
  self.attempt++;self.callbackDone=NO;self.callbackError=0;self.retryAt=nil;self.stableSince=nil;if(_network){CFRelease(_network);_network=NULL;}
- if([CurrentSSID()isEqual:self.target]){self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:12];[self writePhase:@"joining" error:nil];return;}
- CFArrayRef networks=CopyNetworks(_manager);for(CFIndex i=0;networks&&i<CFArrayGetCount(networks);i++){WiFiRef network=CFArrayGetValueAtIndex(networks,i);if([self.target isEqual:(__bridge NSString *)GetSSID(network)]){_network=CFRetain(network);break;}}if(networks)CFRelease(networks);
+ BOOL onTarget=[CurrentSSID()caseInsensitiveCompare:self.target]==NSOrderedSame || [CurrentSSID()localizedCaseInsensitiveContainsString:self.target];
+ if(onTarget){self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:12];[self writePhase:@"joining" error:nil];return;}
+ CFArrayRef networks=CopyNetworks(_manager);for(CFIndex i=0;networks&&i<CFArrayGetCount(networks);i++){
+  WiFiRef network=CFArrayGetValueAtIndex(networks,i);
+  NSString *name=(__bridge NSString *)GetSSID(network);
+  if(!name.length)continue;
+  BOOL match=NO;
+  if([self.mode isEqual:@"camera"]){
+   match=[self.target caseInsensitiveCompare:name]==NSOrderedSame || [name localizedCaseInsensitiveContainsString:@"H109"];
+  }else{
+   match=[self.target caseInsensitiveCompare:name]==NSOrderedSame || [name localizedCaseInsensitiveContainsString:self.target] || [self.target localizedCaseInsensitiveContainsString:name];
+  }
+  if(match){_network=CFRetain(network);self.target=name;break;}
+ }if(networks)CFRelease(networks);
  if(!_network){
-  if(self.attempt<15){
+  if(self.attempt<25){
    self.retryAt=[NSDate dateWithTimeIntervalSinceNow:2.0];
    [self writePhase:@"scanning" error:nil];
    return;
@@ -96,14 +108,19 @@ static void AssociationReturned(WiFiRef device,WiFiRef network,CFDictionaryRef i
  }
  self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:25];[self writePhase:@"joining" error:nil];int result=Associate(_device,_network,AssociationReturned,NULL);if(result){self.callbackDone=YES;self.callbackError=result;}
 }}
--(void)associationReturned:(int)error network:(NSString *)ssid{@autoreleasepool{if(!self.timer||![ssid isEqual:self.target])return;self.callbackDone=YES;self.callbackError=error;}}
+-(void)associationReturned:(int)error network:(NSString *)ssid{@autoreleasepool{
+ if(!self.timer)return;
+ if([ssid caseInsensitiveCompare:self.target]==NSOrderedSame || [ssid localizedCaseInsensitiveContainsString:self.target] || [self.target localizedCaseInsensitiveContainsString:ssid]){
+  self.callbackDone=YES;self.callbackError=error;
+ }
+}}
 -(void)tick{@autoreleasepool{
  if(!self.timer)return;
- BOOL onTarget=[CurrentSSID()isEqual:self.target];
+ BOOL onTarget=[CurrentSSID()caseInsensitiveCompare:self.target]==NSOrderedSame || [CurrentSSID()localizedCaseInsensitiveContainsString:self.target];
  if(onTarget&&[self addressReady]){if(!self.stableSince)self.stableSince=[NSDate date];if(-[self.stableSince timeIntervalSinceNow]>=0.3){[self.timer invalidate];self.timer=nil;[self writePhase:self.restoring?@"restored":@"ready" error:nil];return;}}else self.stableSince=nil;
  if([self.deadline timeIntervalSinceNow]<=0){if(!onTarget)CancelAssociation(_device);[self failed:@"Wi-Fi connection timed out. Check the camera or iPhone hotspot."];return;}
  if(self.retryAt){if([self.retryAt timeIntervalSinceNow]<=0)[self attemptJoin];return;}
- if((self.callbackDone&&self.callbackError&&!onTarget)||(!onTarget&&[self.attemptDeadline timeIntervalSinceNow]<=0)){if(!self.callbackDone&&!onTarget)CancelAssociation(_device);if(self.attempt>=12){[self failed:@"Could not join the saved network. Check its availability in Settings."];return;}self.retryAt=[NSDate dateWithTimeIntervalSinceNow:2];}
+ if((self.callbackDone&&self.callbackError&&!onTarget)||(!onTarget&&[self.attemptDeadline timeIntervalSinceNow]<=0)){if(!self.callbackDone&&!onTarget)CancelAssociation(_device);if(self.attempt>=18){[self failed:@"Could not join the saved network. Check its availability in Settings."];return;}self.retryAt=[NSDate dateWithTimeIntervalSinceNow:2];}
 }}
 -(void)failed:(NSString *)error{[self.timer invalidate];self.timer=nil;if(NO && [self.mode isEqual:@"camera"]&&!self.restoring){self.restoring=YES;self.previousSSID=self.previousSSID?:[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-session.plist"][@"previousSSID"];if(self.previousSSID.length){self.mode=@"restore";self.target=self.previousSSID;self.attempt=0;self.callbackError=0;self.retryAt=nil;self.stableSince=nil;if([CurrentSSID()isEqual:self.target]&&[self addressReady]){[self writePhase:@"restored" error:error];return;}self.deadline=[NSDate dateWithTimeIntervalSinceNow:40];self.timer=[NSTimer scheduledTimerWithTimeInterval:.5 target:self selector:@selector(tick) userInfo:nil repeats:YES];[self writePhase:@"restoring" error:error];[self attemptJoin];return;}}[self writePhase:@"error" error:error];}
 -(void)returnMedia{NSDictionary *saved=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/last-media.plist"];NSString *bundle=saved[@"bundle"];NSArray *allowed=@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash"];if(![allowed containsObject:bundle])bundle=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/sound-source.plist"][@"bundle"];if(![allowed containsObject:bundle])return;[self request:@"internet"];NSString *destination=[bundle copy];dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0),^{char *args[]={(char *)"/usr/bin/activator",(char *)"send",(char *)destination.UTF8String,NULL};pid_t child=0;int result=posix_spawn(&child,args[0],NULL,NULL,args,NULL);if(!result){pid_t(*wait)(pid_t,int *,int)=dlsym(RTLD_DEFAULT,"waitpid");if(wait)wait(child,NULL,0);}[@{@"bundle":destination,@"spawnResult":@(result),@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/media-return.plist" atomically:YES];});}

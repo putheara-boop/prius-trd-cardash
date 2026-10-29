@@ -309,56 +309,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)rotateTo:(NSNumber *)value{[[UIDevice currentDevice]setValue:value forKey:@"orientation"];[UIViewController attemptRotationToDeviceOrientation];}
 -(BOOL)shouldAutorotate{return YES;}
 -(UIInterfaceOrientationMask)supportedInterfaceOrientations{return UIInterfaceOrientationMaskAllButUpsideDown;}
--(BOOL)canBecomeFirstResponder{return YES;}
--(void)setupRemoteCommands{
- MPRemoteCommandCenter *center=[MPRemoteCommandCenter sharedCommandCenter];
- [center.nextTrackCommand removeTarget:nil];
- [center.previousTrackCommand removeTarget:nil];
- [center.togglePlayPauseCommand removeTarget:nil];
- [center.playCommand removeTarget:nil];
- [center.pauseCommand removeTarget:nil];
- __weak Dashboard *weak=self;
- [center.nextTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event){
-  [weak media:(UIButton *)[weak.controls viewWithTag:22]];
-  return MPRemoteCommandHandlerStatusSuccess;
- }];
- [center.previousTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event){
-  [weak media:(UIButton *)[weak.controls viewWithTag:20]];
-  return MPRemoteCommandHandlerStatusSuccess;
- }];
- [center.togglePlayPauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event){
-  [weak media:(UIButton *)[weak.controls viewWithTag:21]];
-  return MPRemoteCommandHandlerStatusSuccess;
- }];
- [center.playCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event){
-  [weak media:(UIButton *)[weak.controls viewWithTag:21]];
-  return MPRemoteCommandHandlerStatusSuccess;
- }];
- [center.pauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event){
-  [weak media:(UIButton *)[weak.controls viewWithTag:21]];
-  return MPRemoteCommandHandlerStatusSuccess;
- }];
- center.nextTrackCommand.enabled=YES;
- center.previousTrackCommand.enabled=YES;
- center.togglePlayPauseCommand.enabled=YES;
- center.playCommand.enabled=YES;
- center.pauseCommand.enabled=YES;
-}
--(void)remoteControlReceivedWithEvent:(UIEvent *)event{
- if(event.type==UIEventTypeRemoteControl){
-  if(event.subtype==UIEventSubtypeRemoteControlNextTrack){
-   [self media:(UIButton *)[self.controls viewWithTag:22]];
-  }else if(event.subtype==UIEventSubtypeRemoteControlPreviousTrack){
-   [self media:(UIButton *)[self.controls viewWithTag:20]];
-  }else if(event.subtype==UIEventSubtypeRemoteControlTogglePlayPause||
-           event.subtype==UIEventSubtypeRemoteControlPlay||
-           event.subtype==UIEventSubtypeRemoteControlPause){
-   [self media:(UIButton *)[self.controls viewWithTag:21]];
-  }
- }
-}
--(void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];[self applyTheme];[self applyDisplaySchedule];if(self.welcome){[self.view bringSubviewToFront:self.welcome];}else if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}[self.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;[self becomeFirstResponder];[[UIApplication sharedApplication]beginReceivingRemoteControlEvents];[self setupRemoteCommands];[self.timer invalidate];self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];self.timer.tolerance=.1;[self update];}
--(void)viewWillDisappear:(BOOL)animated{[super viewWillDisappear:animated];[[UIApplication sharedApplication]endReceivingRemoteControlEvents];[self resignFirstResponder];[self hideWelcome];[self.audioBars stop];[self.driveCar stop];[self.timer invalidate];self.timer=nil;[self saveTrip];[UIApplication sharedApplication].idleTimerDisabled=NO;}
+// The audio source owns Now Playing and Bluetooth remote commands.
+-(void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];notify_post("com.codex.trd.network.internet");[self applyTheme];[self applyDisplaySchedule];if(self.welcome){[self.view bringSubviewToFront:self.welcome];}else if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}[self.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;[self.timer invalidate];self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];self.timer.tolerance=.1;[self update];}
+-(void)viewWillDisappear:(BOOL)animated{[super viewWillDisappear:animated];[self hideWelcome];[self.audioBars stop];[self.driveCar stop];[self.timer invalidate];self.timer=nil;[self saveTrip];[UIApplication sharedApplication].idleTimerDisabled=NO;}
 -(void)viewDidLayoutSubviews{
  [super viewDidLayoutSubviews];if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}CGFloat w=self.view.bounds.size.width,fullH=self.view.bounds.size.height,h=fullH-(self.focused?0:78);self.heading.frame=CGRectMake(28,17,w*.285-38,26);self.heading.adjustsFontSizeToFitWidth=YES;self.heading.minimumScaleFactor=.7;self.owner.frame=CGRectMake(28,43,w*.285-38,16);self.network.font=[UIFont systemFontOfSize:12];self.network.frame=CGRectMake(w*.59,24,w*.41-28,30);self.network.hidden=YES;self.statusStrip.frame=CGRectMake(w*.59,12,w*.41-28,48);CGFloat chipWidth=(self.statusStrip.bounds.size.width-4*(self.statusChips.count-1))/self.statusChips.count;for(NSUInteger i=0;i<self.statusChips.count;i++){UIView *chip=self.statusChips[i];chip.frame=CGRectMake(i*(chipWidth+4),0,chipWidth,48);[chip viewWithTag:301].frame=CGRectMake(2,5,chipWidth-4,12);[chip viewWithTag:302].frame=CGRectMake(3,20,chipWidth-6,21);}self.modeButton.frame=CGRectMake(w*.265,23,102,32);self.driveButton.frame=CGRectMake(w*.375,23,108,32);self.nightButton.frame=CGRectMake(w*.49,23,104,32);
  BOOL landscape=w>h;int cols=landscape?3:2,rows=6/cols;CGFloat gap=14,cellW=(w-56-gap*(cols-1))/cols;CGFloat cellH=landscape?118:138;CGFloat top=h-116-rows*cellH-gap*(rows-1);CGFloat shift=(top-340)*.45;CGFloat dashW=w*.30;BOOL focus=self.focused;
@@ -451,17 +404,6 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.artwork.image=image;
  }
  self.artPlaceholder.hidden=self.focused||self.artwork.image!=nil;
- NSMutableDictionary *np=[NSMutableDictionary dictionary];
- if(title.length)np[MPMediaItemPropertyTitle]=title;
- if(artist.length)np[MPMediaItemPropertyArtist]=artist;
- NSString *album=[info[@"kMRMediaRemoteNowPlayingInfoAlbum"] isKindOfClass:[NSString class]]?info[@"kMRMediaRemoteNowPlayingInfoAlbum"]:nil;
- if(album.length)np[MPMediaItemPropertyAlbumTitle]=album;
- if(self.mediaDuration>0)np[MPMediaItemPropertyPlaybackDuration]=@(self.mediaDuration);
- if(self.hasElapsed)np[MPNowPlayingInfoPropertyElapsedPlaybackTime]=@(self.mediaElapsed);
- if(self.hasPlaybackRate)np[MPNowPlayingInfoPropertyPlaybackRate]=@(self.mediaRate);
- else if(title.length)np[MPNowPlayingInfoPropertyPlaybackRate]=@(1.0);
- if(self.artwork.image)np[MPMediaItemPropertyArtwork]=[[MPMediaItemArtwork alloc]initWithImage:self.artwork.image];
- [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo=np.count?np:nil;
 }
 -(void)releaseArtwork{self.artwork.image=nil;self.artworkData=nil;self.artPlaceholder.hidden=self.focused;}
 -(void)didReceiveMemoryWarning{[super didReceiveMemoryWarning];self.memoryWarnings++;[self releaseArtwork];[self hideWelcome];[self.settingsSheet dismiss];}
@@ -508,8 +450,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  dispatch_async(dispatch_get_main_queue(),^{Dashboard *v=weak;if(!v)return;if(v.commandsPending)v.commandsPending--;if(!ok){v.notice=@"Command unavailable. Tap to retry.";v.noticeUntil=[NSDate dateWithTimeIntervalSinceNow:4];v.song.text=v.notice;}else [v refreshNowPlaying];});}});
 }
 -(void)navigate:(UIButton *)button{switch(button.tag){case 60:[self homePage];break;case 61:[self openMusic];break;case 62:[self openMap];break;case 63:[self openDriveEQ];break;case 64:[self screenOff];break;case 65:[self openCamera];break;}}
--(void)homePage{self.tripMode=NO;self.mapMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
--(void)openMusic{self.tripMode=NO;self.mapMode=NO;self.musicMode=YES;self.driveMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];self.ticks=0;[self update];}
+-(void)homePage{notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)openMusic{notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=YES;self.driveMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];self.ticks=0;[self update];}
 -(void)openMap{self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];[self updateMapCar];}
 -(void)loadMapHTML{NSString *path=@"/Applications/CarDash.app/map.html";if([[NSFileManager defaultManager]fileExistsAtPath:path])[self.mapWebView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:path]]];}
 -(void)updateMapCar{if(!self.mapMode||!self.mapWebView)return;if(!self.fix)return;CLLocationDegrees lat=self.fix.coordinate.latitude;CLLocationDegrees lng=self.fix.coordinate.longitude;double course=(self.fix.course>=0)?self.fix.course:0;double kmh=(self.fix.speed>=0)?(self.fix.speed*3.6):-1;NSString *js=[NSString stringWithFormat:@"if(window.updateCar){window.updateCar(%f,%f,%f,%f);}",lat,lng,course,kmh];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
@@ -518,7 +460,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)fetchSearchWithQuery:(NSString *)query{if(!query.length)return;NSString *encoded=[query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];CLLocationDegrees lat=self.fix?self.fix.coordinate.latitude:13.7563;CLLocationDegrees lng=self.fix?self.fix.coordinate.longitude:100.5018;NSString *viewbox=[NSString stringWithFormat:@"%.3f,%.3f,%.3f,%.3f",lng-.4,lat+.4,lng+.4,lat-.4];NSString *urlStr=[NSString stringWithFormat:@"http://nominatim.openstreetmap.org/search?q=%@&format=json&countrycodes=th&limit=5&viewbox=%@",encoded,viewbox];NSURL *url=[NSURL URLWithString:urlStr];if(!url)return;NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url];[req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6; Prius)" forHTTPHeaderField:@"User-Agent"];__weak Dashboard *weak=self;[[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){if(data&&!err){NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];if(json){dispatch_async(dispatch_get_main_queue(),^{[weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window._onNominatimResult){window._onNominatimResult(%@);}",json]];});}}}]resume];}
 -(void)openActiveSourceApp{NSDictionary *src=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];NSString *bundle=src[@"bundle"]?:(self.youtubeSource?@"com.himais0giiiin.ytnine":@"com.legacymusic.app");[self send:bundle];}
 -(void)showMusicSources:(UIButton *)button{TRDSettingsMenu *menu=[self settingsMenu:@"MUSIC SOURCES" message:@"Choose where to listen"];NSArray *names=@[@"audioNINJA",@"YouTube",@"TRD Podcasts"],*ids=@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash"];for(NSUInteger i=0;i<3;i++){NSString *identifier=ids[i];[menu addAction:[TRDSettingAction actionWithTitle:names[i] style:0 handler:^(TRDSettingAction *a){[self browseSource:identifier];}]];}[self presentSettingsMenu:menu];}
--(void)card:(UIButton *)button{if(button.tag==2){[self openMusic];return;}if(button.tag==3){[self openMap];return;}if(button.tag==4){[self openCamera];return;}if(button.tag==5){[self carSettings];return;}if(button.tag==6){self.tripMode=NO;self.mapMode=NO;self.driveMode=NO;self.musicMode=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:0];self.focused=YES;self.returnTap.enabled=YES;[self.view setNeedsLayout];return;}NSArray *ids=@[@"com.himais0giiiin.ytnine",@"com.legacymusic.app",@"com.apple.Maps",@"com.codex.h109viewer",@"com.apple.Preferences"];if(button.tag>=1&&button.tag<=5)[self send:ids[button.tag-1]];}
+-(void)card:(UIButton *)button{if(button.tag==1){notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];return;}if(button.tag==2){notify_post("com.codex.trd.network.internet");[self openMusic];return;}if(button.tag==3){[self openMap];return;}if(button.tag==4){[self openCamera];return;}if(button.tag==5){[self carSettings];return;}if(button.tag==6){self.tripMode=NO;self.mapMode=NO;self.driveMode=NO;self.musicMode=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:0];self.focused=YES;self.returnTap.enabled=YES;[self.view setNeedsLayout];return;}NSArray *ids=@[@"com.himais0giiiin.ytnine",@"com.legacymusic.app",@"com.apple.Maps",@"com.codex.h109viewer",@"com.apple.Preferences"];if(button.tag>=1&&button.tag<=5)[self send:ids[button.tag-1]];}
 -(void)media:(UIButton *)button{NSArray *ids=@[@"libactivator.ipod.previous-track",@"libactivator.ipod.toggle-playback",@"libactivator.ipod.next-track",@"com.r333d.eqe.app"];if(button.tag>=20&&button.tag<=23){Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(button.tag==22){if(!command||!command(4,nil))[self send:ids[2]];}else if(button.tag==20){if(!command||!command(5,nil))[self send:ids[0]];}else if(button.tag==21){if(!command||!command(2,nil))[self send:ids[1]];}else{[self send:ids[button.tag-20]];}[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.35];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:1.2];}}
 -(void)leaveClock{self.focused=NO;self.mapMode=NO;self.returnTap.enabled=NO;[self.view setNeedsLayout];}
 -(void)testSettingsAction:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<self.settingsSheet.buttons.count)[(UIButton *)self.settingsSheet.buttons[i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
