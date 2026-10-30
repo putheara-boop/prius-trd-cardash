@@ -18,6 +18,7 @@ printf '%s start\n' "$(date)" >> /var/mobile/codex-car/events.log
 (sleep 2; /usr/local/bin/trd-network-broker internet) </dev/null >>/var/mobile/codex-car/network-trigger.log 2>&1 &
 
 [ -f /var/mobile/codex-car/power-connected ] || exit 0
+rmdir /var/mobile/codex-car/bt-connect.lock 2>/dev/null
 /bin/sh /var/mobile/codex-car/connect-car.sh </dev/null >>/var/mobile/codex-car/bluetooth-connect.log 2>&1 &
 
 [ -f /var/mobile/codex-car/power-connected ] || exit 0
