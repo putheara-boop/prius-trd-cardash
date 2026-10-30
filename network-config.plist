@@ -2,11 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>cameraIPv4Prefix</key>
+	<string>192.168.169.</string>
 	<key>cameraSSID</key>
 	<string>H109Y-37802895</string>
 	<key>internetSSID</key>
-	<string>PEEPUT</string>
-	<key>cameraIPv4Prefix</key>
-	<string>192.168.169.</string>
+	<string>PeePuT</string>
+	<key>internetSSIDs</key>
+	<array>
+		<string>PeePuT</string>
+		<string>PEEPUT</string>
+		<string>P-Phut</string>
+		<string>Silver-L10</string>
+	</array>
 </dict>
 </plist>

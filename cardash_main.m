@@ -326,13 +326,14 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
   // CarPlay Left Dock
   self.carplayDock=[[UIView alloc]init];self.carplayDock.backgroundColor=[UIColor colorWithRed:.06 green:.07 blue:.09 alpha:.96];self.carplayDock.layer.borderWidth=1;self.carplayDock.layer.borderColor=[UIColor colorWithWhite:.14 alpha:1].CGColor;self.carplayDock.userInteractionEnabled=YES;self.carplayDock.clipsToBounds=YES;self.carplayDock.hidden=YES;[self.view addSubview:self.carplayDock];
-  self.carplayHomeBtn=[UIButton buttonWithType:UIButtonTypeCustom];self.carplayHomeBtn.backgroundColor=[UIColor colorWithWhite:.16 alpha:1];self.carplayHomeBtn.layer.cornerRadius=14;self.carplayHomeBtn.layer.borderWidth=1;self.carplayHomeBtn.layer.borderColor=[UIColor colorWithWhite:.28 alpha:1].CGColor;self.carplayHomeBtn.showsTouchWhenHighlighted=YES;
-  DashIcon *gridI=[DashIcon new];gridI.kind=15;gridI.frame=CGRectMake(11,11,32,32);gridI.userInteractionEnabled=NO;[self.carplayHomeBtn addSubview:gridI];
+  self.carplayHomeBtn=[UIButton buttonWithType:UIButtonTypeCustom];self.carplayHomeBtn.backgroundColor=[UIColor colorWithRed:.12 green:.15 blue:.22 alpha:.85];self.carplayHomeBtn.layer.cornerRadius=16;self.carplayHomeBtn.layer.borderWidth=1.2;self.carplayHomeBtn.layer.borderColor=[UIColor colorWithWhite:1.0 alpha:.24].CGColor;self.carplayHomeBtn.showsTouchWhenHighlighted=YES;
+  UIImageView *gridI=[[UIImageView alloc]initWithImage:[UIImage imageNamed:@"cp_dock_home.png"]];gridI.frame=CGRectMake(11,11,32,32);gridI.contentMode=UIViewContentModeScaleAspectFit;gridI.userInteractionEnabled=NO;[self.carplayHomeBtn addSubview:gridI];
   [self.carplayHomeBtn addTarget:self action:@selector(toggleCarPlayGrid) forControlEvents:UIControlEventTouchUpInside];[self.carplayDock addSubview:self.carplayHomeBtn];
 
   self.carplayDockButtons=[NSMutableArray array];
   NSInteger dKinds[]={3,2,1,4};SEL dSels[]={@selector(carplayTapMap),@selector(carplayTapMusic),@selector(openYouTubeSource),@selector(openCamera)};
-  for(int i=0;i<4;i++){UIButton *db=[UIButton buttonWithType:UIButtonTypeCustom];db.layer.cornerRadius=14;db.backgroundColor=[UIColor colorWithWhite:.12 alpha:1];db.layer.borderWidth=1;db.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;db.showsTouchWhenHighlighted=YES;DashIcon *ic=[DashIcon new];ic.kind=dKinds[i];ic.frame=CGRectMake(11,11,32,32);ic.userInteractionEnabled=NO;[db addSubview:ic];[db addTarget:self action:dSels[i] forControlEvents:UIControlEventTouchUpInside];[self.carplayDock addSubview:db];[self.carplayDockButtons addObject:db];}
+  NSArray *dockIcons=@[@"cp_icon_maps.png",@"cp_icon_music.png",@"cp_icon_youtube.png",@"cp_icon_camera.png"];
+  for(int i=0;i<4;i++){UIButton *db=[UIButton buttonWithType:UIButtonTypeCustom];db.layer.cornerRadius=14;db.backgroundColor=[UIColor colorWithRed:.10 green:.12 blue:.18 alpha:.7];db.layer.borderWidth=1;db.layer.borderColor=[UIColor colorWithWhite:1.0 alpha:.18].CGColor;db.clipsToBounds=YES;db.showsTouchWhenHighlighted=YES;UIImageView *ic=[[UIImageView alloc]initWithImage:[UIImage imageNamed:dockIcons[i]]];ic.frame=CGRectMake(6,6,42,42);ic.contentMode=UIViewContentModeScaleAspectFit;ic.layer.cornerRadius=10;ic.clipsToBounds=YES;ic.userInteractionEnabled=NO;[db addSubview:ic];[db addTarget:self action:dSels[i] forControlEvents:UIControlEventTouchUpInside];[self.carplayDock addSubview:db];[self.carplayDockButtons addObject:db];}
 
   self.carplayClock=[[UILabel alloc]init];self.carplayClock.font=[UIFont boldSystemFontOfSize:14];self.carplayClock.textColor=[UIColor whiteColor];self.carplayClock.textAlignment=NSTextAlignmentCenter;[self.carplayDock addSubview:self.carplayClock];
   self.carplayBattery=[[UILabel alloc]init];self.carplayBattery.font=[UIFont boldSystemFontOfSize:11];self.carplayBattery.textColor=[UIColor colorWithRed:.2 green:.9 blue:.5 alpha:1];self.carplayBattery.textAlignment=NSTextAlignmentCenter;[self.carplayDock addSubview:self.carplayBattery];
@@ -364,13 +365,38 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.carplayEQBtn=[UIButton buttonWithType:UIButtonTypeCustom];[self.carplayEQBtn setTitle:@"🎚️ EQ SOUND" forState:UIControlStateNormal];self.carplayEQBtn.titleLabel.font=[UIFont boldSystemFontOfSize:12];[self.carplayEQBtn setTitleColor:[UIColor colorWithWhite:.85 alpha:1] forState:UIControlStateNormal];self.carplayEQBtn.backgroundColor=[UIColor colorWithWhite:.16 alpha:1];self.carplayEQBtn.layer.cornerRadius=8;self.carplayEQBtn.layer.borderWidth=1;self.carplayEQBtn.layer.borderColor=[UIColor colorWithWhite:.28 alpha:1].CGColor;self.carplayEQBtn.showsTouchWhenHighlighted=YES;[self.carplayEQBtn addTarget:self action:@selector(openDriveEQ) forControlEvents:UIControlEventTouchUpInside];[self.carplayTelemetryCard addSubview:self.carplayEQBtn];
 
   // CarPlay App Grid
-  self.carplayAppGrid=[[UIView alloc]init];self.carplayAppGrid.backgroundColor=[UIColor colorWithRed:.07 green:.08 blue:.10 alpha:.98];self.carplayAppGrid.userInteractionEnabled=YES;self.carplayAppGrid.hidden=YES;[self.view addSubview:self.carplayAppGrid];
+  self.carplayAppGrid=[[UIView alloc]init];self.carplayAppGrid.backgroundColor=[UIColor colorWithRed:.05 green:.06 blue:.09 alpha:.98];self.carplayAppGrid.userInteractionEnabled=YES;self.carplayAppGrid.hidden=YES;[self.view addSubview:self.carplayAppGrid];
   self.carplayGridButtons=[NSMutableArray array];
   NSArray *gridTitles=@[@"Music",@"Maps",@"YouTube",@"Camera",@"EQ Sound",@"Trip Log",@"Settings",@"TRD Dash"];
-  NSInteger gKinds[]={2,3,1,4,11,6,5,10};
   SEL gSels[]={@selector(carplayGridMusic),@selector(carplayGridMap),@selector(openYouTubeSource),@selector(openCamera),@selector(openDriveEQ),@selector(carplayGridTrip),@selector(carplayGridSettings),@selector(homePage)};
-  NSArray *gridColors=@[[UIColor colorWithRed:.92 green:.18 blue:.32 alpha:1],[UIColor colorWithRed:.12 green:.68 blue:.35 alpha:1],[UIColor colorWithRed:.88 green:.12 blue:.12 alpha:1],[UIColor colorWithRed:.15 green:.55 blue:.85 alpha:1],[UIColor colorWithRed:.58 green:.22 blue:.85 alpha:1],[UIColor colorWithRed:.10 green:.55 blue:.75 alpha:1],[UIColor colorWithRed:.38 green:.42 blue:.48 alpha:1],[UIColor colorWithRed:.85 green:.10 blue:.18 alpha:1]];
-  for(int i=0;i<8;i++){UIButton *gb=[UIButton buttonWithType:UIButtonTypeCustom];gb.layer.cornerRadius=22;gb.backgroundColor=[UIColor colorWithWhite:.13 alpha:1];gb.layer.borderWidth=1.5;gb.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;gb.showsTouchWhenHighlighted=YES;UIView *ib=[[UIView alloc]init];ib.tag=101;ib.backgroundColor=gridColors[i];ib.layer.cornerRadius=18;ib.clipsToBounds=YES;ib.userInteractionEnabled=NO;[gb addSubview:ib];DashIcon *gic=[DashIcon new];gic.kind=gKinds[i];gic.tag=103;gic.backgroundColor=[UIColor clearColor];gic.contentMode=UIViewContentModeRedraw;gic.userInteractionEnabled=NO;[ib addSubview:gic];UILabel *gt=[[UILabel alloc]init];gt.tag=102;gt.text=gridTitles[i];gt.font=[UIFont boldSystemFontOfSize:15];gt.textColor=[UIColor whiteColor];gt.textAlignment=NSTextAlignmentCenter;gt.userInteractionEnabled=NO;[gb addSubview:gt];[gb addTarget:self action:gSels[i] forControlEvents:UIControlEventTouchUpInside];[self.carplayAppGrid addSubview:gb];[self.carplayGridButtons addObject:gb];}
+  NSArray *gridIconNames=@[@"cp_icon_music.png",@"cp_icon_maps.png",@"cp_icon_youtube.png",@"cp_icon_camera.png",@"cp_icon_eq.png",@"cp_icon_trip.png",@"cp_icon_settings.png",@"cp_icon_trd.png"];
+  for(int i=0;i<8;i++){
+    UIButton *gb=[UIButton buttonWithType:UIButtonTypeCustom];
+    gb.layer.cornerRadius=24;
+    gb.backgroundColor=[UIColor colorWithRed:.11 green:.14 blue:.20 alpha:.75];
+    gb.layer.borderWidth=1.2;
+    gb.layer.borderColor=[UIColor colorWithWhite:1.0 alpha:.20].CGColor;
+    gb.showsTouchWhenHighlighted=YES;
+    UIView *spec=[[UIView alloc]initWithFrame:CGRectMake(16,1,148,1.5)];spec.backgroundColor=[UIColor colorWithWhite:1.0 alpha:.35];spec.userInteractionEnabled=NO;[gb addSubview:spec];
+    UIImageView *ib=[[UIImageView alloc]initWithImage:[UIImage imageNamed:gridIconNames[i]]];
+    ib.tag=101;
+    ib.contentMode=UIViewContentModeScaleAspectFit;
+    ib.layer.cornerRadius=20;
+    ib.clipsToBounds=YES;
+    ib.userInteractionEnabled=NO;
+    [gb addSubview:ib];
+    UILabel *gt=[[UILabel alloc]init];
+    gt.tag=102;
+    gt.text=gridTitles[i];
+    gt.font=[UIFont fontWithName:@"HelveticaNeue-Medium" size:16]?:[UIFont boldSystemFontOfSize:16];
+    gt.textColor=[UIColor whiteColor];
+    gt.textAlignment=NSTextAlignmentCenter;
+    gt.userInteractionEnabled=NO;
+    [gb addSubview:gt];
+    [gb addTarget:self action:gSels[i] forControlEvents:UIControlEventTouchUpInside];
+    [self.carplayAppGrid addSubview:gb];
+    [self.carplayGridButtons addObject:gb];
+  }
 
   self.swL=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(openCarPlay)];self.swL.direction=UISwipeGestureRecognizerDirectionLeft;self.swL.delegate=self;self.swL.cancelsTouchesInView=NO;self.swL.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.swL];
   self.swR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];self.swR.direction=UISwipeGestureRecognizerDirectionRight;self.swR.delegate=self;self.swR.cancelsTouchesInView=NO;self.swR.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.swR];
@@ -412,7 +438,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.carplayAppGrid.frame=CGRectMake(80,0,w-80,fullH);
     CGFloat colW=180,rowH=190,gapX=36,gapY=50;
     CGFloat startX=(w-80-(4*colW+3*gapX))/2,startY=(fullH-(2*rowH+gapY))/2;
-    for(int i=0;i<8;i++){UIView *gb=self.carplayGridButtons[i];int col=i%4,row=i/4;gb.frame=CGRectMake(startX+col*(colW+gapX),startY+row*(rowH+gapY),colW,rowH);UIView *ib=[gb viewWithTag:101];ib.frame=CGRectMake((colW-72)/2,24,72,72);UIView *gic=[ib viewWithTag:103];gic.frame=CGRectMake(16,16,40,40);[gic setNeedsDisplay];[gb viewWithTag:102].frame=CGRectMake(8,118,colW-16,28);}
+    for(int i=0;i<8;i++){UIView *gb=self.carplayGridButtons[i];int col=i%4,row=i/4;gb.frame=CGRectMake(startX+col*(colW+gapX),startY+row*(rowH+gapY),colW,rowH);UIView *ib=[gb viewWithTag:101];CGFloat iconSize=88;ib.frame=CGRectMake((colW-iconSize)/2,20,iconSize,iconSize);[gb viewWithTag:102].frame=CGRectMake(8,124,colW-16,28);}
    }else{
     CGFloat mapW=(w-96)*0.57;
     self.mapContainer.hidden=NO;self.mapContainer.frame=CGRectMake(90,12,mapW,fullH-24);self.mapWebView.frame=self.mapContainer.bounds;
