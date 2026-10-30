@@ -405,13 +405,30 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   UISwipeGestureRecognizer *mapSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];mapSwR.direction=UISwipeGestureRecognizerDirectionRight;mapSwR.delegate=self;mapSwR.cancelsTouchesInView=NO;mapSwR.delaysTouchesBegan=NO;[self.mapContainer addGestureRecognizer:mapSwR];
   self.edgeR=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:self action:@selector(handleEdgePan:)];self.edgeR.edges=UIRectEdgeLeft;self.edgeR.delegate=self;self.edgeR.cancelsTouchesInView=NO;self.edgeR.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.edgeR];
  self.returnTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(leaveClock)];self.returnTap.enabled=NO;self.returnTap.delegate=self;[self.view addGestureRecognizer:self.returnTap];[UIDevice currentDevice].batteryMonitoringEnabled=YES;dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);Class manager=NSClassFromString(@"BluetoothManager");if([manager respondsToSelector:@selector(sharedInstance)])self.bluetooth=[manager performSelector:@selector(sharedInstance)];dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",RTLD_LAZY);[self update];if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}
+  [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
+  MPRemoteCommandCenter *rCenter = [MPRemoteCommandCenter sharedCommandCenter];
+  [rCenter.nextTrackCommand removeTarget:nil];
+  [rCenter.previousTrackCommand removeTarget:nil];
+  [rCenter.togglePlayPauseCommand removeTarget:nil];
+  [rCenter.playCommand removeTarget:nil];
+  [rCenter.pauseCommand removeTarget:nil];
+  [rCenter.nextTrackCommand addTarget:self action:@selector(carRemoteNext:)];
+  [rCenter.previousTrackCommand addTarget:self action:@selector(carRemotePrev:)];
+  [rCenter.togglePlayPauseCommand addTarget:self action:@selector(carRemoteToggle:)];
+  [rCenter.playCommand addTarget:self action:@selector(carRemotePlay:)];
+  [rCenter.pauseCommand addTarget:self action:@selector(carRemotePause:)];
+  rCenter.nextTrackCommand.enabled = YES;
+  rCenter.previousTrackCommand.enabled = YES;
+  rCenter.togglePlayPauseCommand.enabled = YES;
+  rCenter.playCommand.enabled = YES;
+  rCenter.pauseCommand.enabled = YES;
 }
 -(BOOL)prefersStatusBarHidden{return YES;}
 -(void)rotateTo:(NSNumber *)value{[[UIDevice currentDevice]setValue:value forKey:@"orientation"];[UIViewController attemptRotationToDeviceOrientation];}
 -(BOOL)shouldAutorotate{return YES;}
 -(UIInterfaceOrientationMask)supportedInterfaceOrientations{return UIInterfaceOrientationMaskAllButUpsideDown;}
 // The audio source owns Now Playing and Bluetooth remote commands.
--(void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];notify_post("com.codex.trd.network.internet");[self applyTheme];[self applyDisplaySchedule];if(self.welcome){[self.view bringSubviewToFront:self.welcome];}else if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}[self.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;[self.timer invalidate];self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];self.timer.tolerance=.1;[self update];}
+-(void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];notify_post("com.codex.trd.network.internet");[self applyTheme];[self applyDisplaySchedule];[self becomeFirstResponder];if(self.welcome){[self.view bringSubviewToFront:self.welcome];}else if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}[self.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;[self.timer invalidate];self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];self.timer.tolerance=.1;[self update];}
 -(void)viewWillDisappear:(BOOL)animated{[super viewWillDisappear:animated];[self hideWelcome];[self.audioBars stop];[self.driveCar stop];[self.timer invalidate];self.timer=nil;[self saveTrip];[UIApplication sharedApplication].idleTimerDisabled=NO;}
 -(void)viewDidLayoutSubviews{
   [super viewDidLayoutSubviews];
@@ -574,6 +591,14 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  NSString *title=[info[@"kMRMediaRemoteNowPlayingInfoTitle"]isKindOfClass:[NSString class]]?info[@"kMRMediaRemoteNowPlayingInfoTitle"]:nil;
  NSString *artist=[info[@"kMRMediaRemoteNowPlayingInfoArtist"]isKindOfClass:[NSString class]]?info[@"kMRMediaRemoteNowPlayingInfoArtist"]:nil;
  self.song.text=title.length?title:@"Choose your music";self.artist.text=title.length?(artist.length?artist:@"NOW PLAYING"):@"YouTube / audioNINJA";
+  NSMutableDictionary *carInfo=[NSMutableDictionary dictionary];
+  carInfo[MPMediaItemPropertyTitle]=title.length?title:@"Toyota Prius TRD";
+  carInfo[MPMediaItemPropertyArtist]=artist.length?artist:@"CarDash Audio";
+  carInfo[MPMediaItemPropertyAlbumTitle]=@"Prius Hybrid";
+  carInfo[MPNowPlayingInfoPropertyPlaybackRate]=@(self.mediaRate>0?1.0:0.0);
+  if(self.mediaDuration>0)carInfo[MPMediaItemPropertyPlaybackDuration]=@(self.mediaDuration);
+  if(self.hasElapsed)carInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime]=@(self.mediaElapsed);
+  [[MPNowPlayingInfoCenter defaultCenter]setNowPlayingInfo:carInfo];
  NSDictionary *src=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];NSString *b=src[@"bundle"];NSString *badgeText=@"MUSIC";if(self.youtubeSource||[b isEqualToString:@"com.himais0giiiin.ytnine"])badgeText=@"YOUTUBE";else if([b isEqualToString:@"com.codex.poddash"])badgeText=@"PODCAST";else if([b isEqualToString:@"com.legacymusic.app"])badgeText=@"NINJA";self.sourceBadge.text=badgeText;NSDictionary *cfg=[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath];NSString *pName=src[@"preset"]?:(cfg[@"profiles"][b?:(self.youtubeSource?@"com.himais0giiiin.ytnine":@"com.legacymusic.app")]?:@"Flat");[self.driveEQ setTitle:[NSString stringWithFormat:@"EQ • %@",[pName uppercaseString]] forState:UIControlStateNormal];
  id rawData=info[@"kMRMediaRemoteNowPlayingInfoArtworkData"];NSData *data=[rawData isKindOfClass:[NSData class]]&&[rawData length]<=8*1024*1024?rawData:nil;
  if(![self.artworkData isEqualToData:data]&&(data||self.artworkData)){
@@ -658,6 +683,48 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)dismissSourceMenu{[self.settingsSheet dismiss];[self dismissViewControllerAnimated:NO completion:nil];}
 -(void)testMedia:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<3)[(UIButton *)[self.controls viewWithTag:20+i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
 -(void)capture{UIView *surface=self.view;UIGraphicsBeginImageContextWithOptions(surface.bounds.size,YES,1);[surface drawViewHierarchyInRect:surface.bounds afterScreenUpdates:YES];NSData *png=UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext());UIGraphicsEndImageContext();[png writeToFile:@"/var/mobile/h109-build/cardash.png" atomically:YES];NSDictionary *report=@{@"driveTripText":self.driveTripButton.currentTitle?:@"",@"driveTripVisible":@(!self.driveTripButton.hidden),@"driveTripFrame":NSStringFromCGRect(self.driveTripButton.frame),@"driveCameraVisible":@(!self.driveCameraButton.hidden),@"driveCameraFrame":NSStringFromCGRect(self.driveCameraButton.frame),@"driveCameraActions":[self.driveCameraButton actionsForTarget:self forControlEvent:UIControlEventTouchUpInside]?:@[],@"audioOutput":self.audioOutput?:@"UNKNOWN",@"audioDevice":self.audioDevice?:@"",@"outputVolume":@(self.outputVolume),@"songVisible":@(!self.song.hidden),@"mapMode":@(self.mapMode),@"tripMode":@(self.tripMode),@"tripRunning":@(self.trip.running),@"tripSummary":[self.trip summary],@"tripState":self.tripView.state.text?:@"",@"miniVisible":@(!self.miniPlayer.hidden),@"miniTitle":self.miniPlayer.title.text?:@"",@"miniArtist":self.miniPlayer.artist.text?:@"",@"miniIcon":@(self.miniPlayer.icon.kind),@"musicHoldCount":@(((UIView *)self.navButtons[1]).gestureRecognizers.count),@"calmDrive":@(self.calmDrive),@"carLink":self.statusCar?:@"UNKNOWN",@"wifiSSID":self.statusWiFi?:@"NO NETWORK",@"powerState":self.statusPower?:@"UNKNOWN",@"gpsLive":@(self.gpsLive),@"navLabels":[self.navButtons valueForKey:@"accessibilityLabel"],@"youtubeSource":@(self.youtubeSource),@"commandsPending":@(self.commandsPending),@"metadataPending":@(self.metadataPending),@"artworkDecodes":@(self.artworkDecodes),@"artworkPixels":@(self.artwork.image?MAX(CGImageGetWidth(self.artwork.image.CGImage),CGImageGetHeight(self.artwork.image.CGImage)):0),@"memoryWarnings":@(self.memoryWarnings),@"gpsAccuracy":@(self.gps.desiredAccuracy),@"timerActive":@(self.timer!=nil),@"meterActive":@(self.audioBars.refreshTimer!=nil),@"settingsTitle":self.settingsSheet.title?:@"",@"settingsActions":[self.settingsSheet.actions valueForKey:@"title"]?:@[],@"playbackKnown":@(self.hasPlaybackRate),@"transportIcon":@(((DashIcon *)[[self.controls viewWithTag:21]viewWithTag:105]).kind),@"settingsVisible":@(self.settingsSheet!=nil),@"theme":@(TRDTheme),@"displayMode":@(self.displayMode),@"welcomeVisible":@(self.welcome!=nil),@"mediaRate":@(self.mediaRate),@"bounds":NSStringFromCGRect(self.view.bounds),@"navFrame":NSStringFromCGRect(self.navigation.frame),@"musicMode":@(self.musicMode),@"navigationVisible":@(!self.navigation.hidden),@"trackTime":self.trackTime.text?:@"",@"trackProgress":@(self.trackProgress.progress),@"wheelAnimating":@(self.driveCar.wheelTimer!=nil),@"wheelAngle":@(self.driveCar.angle),@"autoDriveSuppressed":@(self.autoDriveSuppressed),@"driveMode":@(self.driveMode),@"audioState":self.audioBars.state?:@"",@"audioRMS":@(self.audioBars.rms),@"carStatus":self.carStatus.text?:@"",@"hasArtwork":@(self.artwork.image!=nil),@"artist":self.artist.text?:@"",@"nightMode":@(self.nightMode),@"brightness":@([UIScreen mainScreen].brightness),@"speed":self.speed.text?:@"",@"gps":self.gpsStatus.text?:@"",@"clock":self.clock.text?:@"",@"date":self.date.text?:@"",@"network":self.network.text?:@"",@"song":self.song.text?:@"",@"focused":@(self.focused),@"clockHudVisible":@(!self.clockHud.hidden),@"clockHudSpeed":((UILabel *)[self.clockHud viewWithTag:402]).text?:@"",@"clockHudGps":((UILabel *)[self.clockHud viewWithTag:405]).text?:@"",@"clockHudTrip":((UILabel *)[self.clockHud viewWithTag:407]).text?:@"",@"sourceBadge":self.sourceBadge.text?:@"",@"driveEQTitle":self.driveEQ.currentTitle?:@"",@"lastAction":self.lastAction?:@""};[report writeToFile:@"/var/mobile/h109-build/cardash-state.plist" atomically:YES];}
+-(BOOL)canBecomeFirstResponder{return YES;}
+-(MPRemoteCommandHandlerStatus)carRemoteNext:(id)event{
+ Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+ if(!command||!command(4,nil))[self send:@"libactivator.ipod.next-track"];
+ [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];
+ [self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];
+ return MPRemoteCommandHandlerStatusSuccess;
+}
+-(MPRemoteCommandHandlerStatus)carRemotePrev:(id)event{
+ Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+ if(!command||!command(5,nil))[self send:@"libactivator.ipod.previous-track"];
+ [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];
+ [self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];
+ return MPRemoteCommandHandlerStatusSuccess;
+}
+-(MPRemoteCommandHandlerStatus)carRemoteToggle:(id)event{
+ Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+ if(!command||!command(2,nil))[self send:@"libactivator.ipod.toggle-playback"];
+ [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];
+ [self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];
+ return MPRemoteCommandHandlerStatusSuccess;
+}
+-(MPRemoteCommandHandlerStatus)carRemotePlay:(id)event{
+ Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+ if(!command||!command(0,nil))[self send:@"libactivator.ipod.resume-playback"];
+ return MPRemoteCommandHandlerStatusSuccess;
+}
+-(MPRemoteCommandHandlerStatus)carRemotePause:(id)event{
+ Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+ if(!command||!command(1,nil))[self send:@"libactivator.ipod.pause-playback"];
+ return MPRemoteCommandHandlerStatusSuccess;
+}
+-(void)remoteControlReceivedWithEvent:(UIEvent *)event{
+ if(event.type==UIEventTypeRemoteControl){
+  if(event.subtype==UIEventSubtypeRemoteControlNextTrack)[self carRemoteNext:nil];
+  else if(event.subtype==UIEventSubtypeRemoteControlPreviousTrack)[self carRemotePrev:nil];
+  else if(event.subtype==UIEventSubtypeRemoteControlTogglePlayPause)[self carRemoteToggle:nil];
+  else if(event.subtype==UIEventSubtypeRemoteControlPlay)[self carRemotePlay:nil];
+  else if(event.subtype==UIEventSubtypeRemoteControlPause)[self carRemotePause:nil];
+ }
+}
+
 @end
 @interface CarApp:UIResponder<UIApplicationDelegate>
 @property(nonatomic,strong) UIWindow *window;
@@ -679,5 +746,6 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(BOOL)application:(UIApplication *)app openURL:(NSURL *)url sourceApplication:(NSString *)source annotation:(id)annotation{return [self application:app openURL:url options:@{}];}
 -(void)applicationDidEnterBackground:(UIApplication *)app{Dashboard *v=(Dashboard *)self.window.rootViewController;[NSObject cancelPreviousPerformRequestsWithTarget:v selector:@selector(refreshNowPlaying) object:nil];[v.settingsSheet dismiss];[v releaseArtwork];v.metadataGeneration++;v.metadataPending=NO;[v.audioBars stop];[v.driveCar stop];[v.timer invalidate];v.timer=nil;[v saveTrip];[UIApplication sharedApplication].idleTimerDisabled=NO;[v captureLifecycle];}
 -(void)applicationDidBecomeActive:(UIApplication *)app{notify_post("com.codex.trd.network.internet");Dashboard *v=(Dashboard *)self.window.rootViewController;[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;if(!v.timer)v.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:v selector:@selector(update) userInfo:nil repeats:YES];v.timer.tolerance=.1;[v startGPS];[v update];[v captureLifecycle];}
+
 @end
 int main(int argc,char **argv){@autoreleasepool{return UIApplicationMain(argc,argv,nil,NSStringFromClass([CarApp class]));}}

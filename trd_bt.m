@@ -60,14 +60,19 @@ int main(int argc,char **argv){@autoreleasepool{
     // Make sure the media (A2DP+AVRCP) profile is up, not only hands-free.
     unsigned cs=[d respondsToSelector:@selector(connectedServices)]?[d connectedServices]:0;
     logline([NSString stringWithFormat:@"connected services=0x%x route=%@",cs,routeDesc()]);
-    if([routeDesc() rangeOfString:@"BluetoothA2DP"].location!=NSNotFound){logline(@"A2DP route OK");return 0;}
-    if(attempt<8&&[d respondsToSelector:@selector(connectWithServices:)]){logline(@"requesting A2DP+AVRCP");[d connectWithServices:0x10|0x08|0x20];}
+    if((cs & 0x200) && [routeDesc() rangeOfString:@"BluetoothA2DP"].location!=NSNotFound){logline(@"A2DP+AVRCP route OK");return 0;}
+    if(attempt<8&&[d respondsToSelector:@selector(connectWithServices:)]){logline(@"requesting A2DP+AVRCP (0x210)");[d connectWithServices:0x10|0x200];}
     attempt++;spin(3);
     if(attempt>=10)return 0;
     continue;
    }
    attempt++;logline([NSString stringWithFormat:@"connect attempt %d",attempt]);
-   [d connect];spin(5);
+   if([d respondsToSelector:@selector(connectWithServices:)]){
+    [d connectWithServices:0x10|0x200];
+   } else {
+    [d connect];
+   }
+   spin(5);
   }
   logline(@"timeout");return 1;
  }
