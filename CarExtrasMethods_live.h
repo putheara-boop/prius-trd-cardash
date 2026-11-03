@@ -20,7 +20,7 @@
 
 -(void)restoreDisplayBrightness{if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;CGFloat target=self.nightMode?.25:.85;if(fabs([UIScreen mainScreen].brightness-target)>.005)[UIScreen mainScreen].brightness=target;}
 
--(void)openCamera{[self send:@"com.codex.h109viewer"];}
+-(void)openCamera{if(![self launchBundleApp:@"com.codex.h109viewer"]){[self launchBundleApp:@"com.apple.camera"];}}
 -(void)toggleCalmDrive{self.calmDrive=!self.calmDrive;[[NSUserDefaults standardUserDefaults]setBool:self.calmDrive forKey:@"TRDCalmDrive"];[[NSUserDefaults standardUserDefaults]synchronize];[self applyMotionPolicy];[self refreshSpeed];[self.view setNeedsLayout];}
 -(void)applyMotionPolicy{BOOL calm=self.driveMode&&self.calmDrive;self.audioBars.hidden=self.focused||self.tripMode||self.mapMode;self.audioBars.multicolor=YES;if(self.focused||self.tripMode||self.mapMode||[UIApplication sharedApplication].applicationState==UIApplicationStateBackground){if(self.audioBars.refreshTimer)[self.audioBars stop];}else [self.audioBars start];if(calm)[self.driveCar stop];}
 -(void)refreshAudioRoute{

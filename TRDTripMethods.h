@@ -45,7 +45,7 @@
 -(void)miniPrev{[self media:(UIButton *)[self.controls viewWithTag:20]];}
 -(void)miniNext{[self media:(UIButton *)[self.controls viewWithTag:22]];}
 -(void)miniOpen{[self.settingsSheet dismiss];[self openMusic];}
--(void)musicHold:(UILongPressGestureRecognizer *)gesture{if(gesture.state==UIGestureRecognizerStateBegan)[self showMusicSources:self.navButtons[1]];}
+-(void)musicHold:(UILongPressGestureRecognizer *)gesture{if(gesture.state==UIGestureRecognizerStateBegan)[self showMusicSources:self.navButtons[2]];}
 -(void)homeHold:(UILongPressGestureRecognizer *)gesture{if(gesture.state!=UIGestureRecognizerStateBegan)return;[self quickPages];}
 -(void)quickPages{TRDSettingsMenu *menu=[self settingsMenu:@"QUICK VIEWS" message:@"Hold MUSIC for audio sources"];[menu addAction:[TRDSettingAction actionWithTitle:@"📞 Phone & Emergency (โทรศัพท์)" style:0 handler:^(TRDSettingAction *a){[self openPhoneMenu];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"Trip / GPS" style:0 handler:^(TRDSettingAction *a){[self openTrip];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"Google Maps" style:0 handler:^(TRDSettingAction *a){[self openMap];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"Full Clock" style:0 handler:^(TRDSettingAction *a){UIButton *button=[UIButton new];button.tag=6;[self card:button];}]];[self presentSettingsMenu:menu];}
 -(BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch{if(gesture==self.returnTap&&[touch.view isDescendantOfView:self.miniPlayer])return NO;return YES;}
