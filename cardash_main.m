@@ -592,6 +592,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  static UIDeviceBatteryState previousPower=UIDeviceBatteryStateUnknown;
  if((previousPower==UIDeviceBatteryStateCharging||previousPower==UIDeviceBatteryStateFull)&&currentPower==UIDeviceBatteryStateUnplugged){
   [self showTripSummary];
+ }else if(previousPower==UIDeviceBatteryStateUnplugged&&(currentPower==UIDeviceBatteryStateCharging||currentPower==UIDeviceBatteryStateFull)){
+  [self restoreDisplayBrightness];
+  [self showWelcome];
  }
  previousPower=currentPower;
  if(self.carplayMode){
@@ -991,6 +994,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
    c.alpha=0;
   } completion:^(BOOL finished){
    [c removeFromSuperview];
+   if([UIDevice currentDevice].batteryState==UIDeviceBatteryStateUnplugged){
+    if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
+    Boolean (*pCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+    if(!pCmd||!pCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
+    [self screenOff];
+   }
   }];
  }
 }
@@ -1180,6 +1189,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   if([url.host isEqualToString:@"offline"])[v openOfflineMusicMenu];
   if([url.host isEqualToString:@"search"])[v openSearchMusic];
   if([url.host isEqualToString:@"sources"])[v showMusicSources:nil];
+  if([url.host isEqualToString:@"drive"])[v toggleDrive];
+  if([url.host isEqualToString:@"sound"])[v openDriveEQ];
+  if([url.host isEqualToString:@"night"])[v toggleNight];
+  if([url.host isEqualToString:@"mode"])[v cycleDriveMode];
  if([url.host isEqualToString:@"radio"]){
   NSString *p=url.path;
   if([p isEqualToString:@"/0"])[v playRadio:@"https://coolism-web.cdn.byteark.com/;stream/1" name:@"COOL Fahrenheit 93"];
