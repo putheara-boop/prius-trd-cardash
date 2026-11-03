@@ -106,7 +106,6 @@ static NSString *const Log=@"/var/mobile/codex-car/browse-return-state.plist";
    [btn addTarget:btn action:@selector(goHome) forControlEvents:UIControlEventTouchUpInside];
    UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:btn action:@selector(dragged:)];
    [btn addGestureRecognizer:pan];
-   [NSTimer scheduledTimerWithTimeInterval:2 target:[TRDFloatingHome class] selector:@selector(installIfNeeded) userInfo:nil repeats:YES];
   }
   if(btn.superview!=window)[window addSubview:btn];
   CGRect frame=btn.frame;frame.origin.x=MAX(12,MIN(frame.origin.x,window.bounds.size.width-frame.size.width-12));frame.origin.y=MAX(20,MIN(frame.origin.y,window.bounds.size.height-frame.size.height-61));btn.frame=frame;
@@ -155,6 +154,7 @@ static id networkRouteObserver;
 @implementation TRDBrowseReturn
 +(void)selected:(id)source{dispatch_async(dispatch_get_main_queue(),^{
  NSDictionary *arm=[NSDictionary dictionaryWithContentsOfFile:Arm];NSString *bundle=NSBundle.mainBundle.bundleIdentifier;
+ if([bundle isEqual:@"com.himais0giiiin.ytnine"])return; // Never auto-return from YouTube
  if(![arm[@"pending"]boolValue]||![arm[@"bundle"]isEqual:bundle]||![arm[@"expires"]isKindOfClass:[NSDate class]]||[arm[@"expires"]timeIntervalSinceNow]<=0||[UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
  if(!bridge){bridge=[TRDBrowseReturn new];[[NSNotificationCenter defaultCenter]addObserver:bridge selector:@selector(stop) name:UIApplicationDidEnterBackgroundNotification object:nil];}[bridge stop];bridge.source=source;bridge.token=arm[@"token"];bridge.oldTitle=arm[@"baselineTitle"]?:@"";bridge.lastTime=-1;bridge.deadline=[NSDate dateWithTimeIntervalSinceNow:25];
  if([bundle isEqual:@"com.legacymusic.app"]){NSArray *queue=[(id<TRDBrowseNinjaPlayer>)source queue];NSInteger index=[(id<TRDBrowseNinjaPlayer>)source currentIndex];id track=index>=0&&index<(NSInteger)queue.count?queue[index]:nil;bridge.expectedTrackID=[track respondsToSelector:@selector(videoId)]?[track videoId]:nil;}
@@ -185,7 +185,7 @@ static id networkRouteObserver;
 #import "RoadAudio.h"
 #import "TRDNinjaAutoplay.h"
 static void(*oldMusic)(id,SEL,id,NSUInteger);
-static void Music(id obj,SEL sel,id queue,NSUInteger index){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-selection");if(!TRDAutoStarting)queue=TRDExpandQueue(obj,queue,&index);oldMusic(obj,sel,queue,index);if(!TRDAutoStarting){TRDSaveQueue();}[TRDRoadAudio install];}
+static void Music(id obj,SEL sel,id queue,NSUInteger index){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-selection");if(!TRDAutoStarting)queue=TRDExpandQueue(obj,queue,&index);oldMusic(obj,sel,queue,index);if(!TRDAutoStarting){TRDSaveQueue();[TRDBrowseReturn selected:obj];}[TRDRoadAudio install];}
 static void(*oldPause)(id,SEL);
 static void AutoPause(id obj,SEL sel){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-pause");oldPause(obj,sel);TRDSaveQueue();}
 static void(*oldSeek)(id,SEL,double);
@@ -193,7 +193,7 @@ static void AutoSeek(id obj,SEL sel,double seconds){if(!TRDAutoStarting)TRDManua
 static void(*oldToggle)(id,SEL);
 static void NinjaToggle(id obj,SEL sel){oldToggle(obj,sel);}
 static void(*oldYT)(id,SEL,id,double);
-static void YouTube(id obj,SEL sel,id watch,double at){oldYT(obj,sel,watch,at);[TRDRoadAudio install];[TRDBrowseReturn selected:obj];}
+static void YouTube(id obj,SEL sel,id watch,double at){oldYT(obj,sel,watch,at);[TRDRoadAudio install];[@{@"bundle":@"com.himais0giiiin.ytnine",@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];}
 static void(*oldPod)(id,SEL,NSInteger);
 static void Podcast(id obj,SEL sel,NSInteger index){oldPod(obj,sel,index);[TRDBrowseReturn selected:obj];}
 static BOOL TypeIs(const char *allowed,char value){for(const char *p=allowed;*p;p++)if(*p==value)return YES;return NO;}

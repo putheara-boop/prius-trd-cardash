@@ -9,6 +9,7 @@ __pycache__/
 *.log
 *.tmp
 *.new
+*.dylib
 
 # OS / Editor
 .DS_Store
@@ -17,4 +18,8 @@ Thumbs.db
 .idea/
  
 *.zip
+
+# Subprojects
+shopee-scroll-app/
+
 
