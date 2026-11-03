@@ -281,6 +281,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)hideTripSummary;
 -(void)openRadioStationsMenu;
 -(void)playRadio:(NSString *)url name:(NSString *)name;
+-(void)openPhoneMenu;
+-(void)promptCustomCall;
+-(void)callNumber:(NSString *)num;
+-(void)showPhoneContinuityGuide;
 @end
 @implementation Dashboard
 #import "CarExtrasMethods.h"
@@ -845,6 +849,60 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }]];
  [self presentSettingsMenu:m];
 }
+-(void)callNumber:(NSString *)num{
+ NSString *clean=[[num componentsSeparatedByCharactersInSet:[[NSCharacterSet characterSetWithCharactersInString:@"0123456789*#+"] invertedSet]] componentsJoinedByString:@""];
+ if(!clean.length)return;
+ NSURL *url=[NSURL URLWithString:[NSString stringWithFormat:@"tel://%@",clean]];
+ [[UIApplication sharedApplication] openURL:url];
+}
+-(void)promptCustomCall{
+ UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"DIAL NUMBER" message:@"ใส่เบอร์โทรศัพท์ที่ต้องการโทรออก" preferredStyle:UIAlertControllerStyleAlert];
+ [alert addTextFieldWithConfigurationHandler:^(UITextField *textField){
+  textField.placeholder=@"เช่น 0812345678 หรือ 191";
+  textField.keyboardType=UIKeyboardTypePhonePad;
+ }];
+ [alert addAction:[UIAlertAction actionWithTitle:@"โทรออก (Call)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){
+  NSString *num=alert.textFields.firstObject.text;
+  if(num.length)[self callNumber:num];
+ }]];
+ [alert addAction:[UIAlertAction actionWithTitle:@"ยกเลิก (Cancel)" style:UIAlertActionStyleCancel handler:nil]];
+ [self presentViewController:alert animated:YES completion:nil];
+}
+-(void)showPhoneContinuityGuide{
+ TRDSettingsMenu *m=[self settingsMenu:@"HOW TO RECEIVE CALLS" message:@"วิธีเปิดรับสายโทรศัพท์จาก iPhone เข้า iPad:\n\n1. บน iPhone: เข้า Settings > Phone > 'Calls on Other Devices' แล้วเปิด 'Allow Calls on PeePut's iPad'\n\n2. บน iPad: เข้า Settings > FaceTime แล้วเปิด 'Calls from iPhone'\n\nเมื่อมีคนโทรเข้ามือถือ หน้าจอ iPad บนรถจะดังขึ้นพร้อมปุ่มรับสายทันที คุยผ่านไมค์ iPad และเสียงออกลำโพงรถยนต์ได้เลย!"];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⚙️ Open iPad Settings (เปิดตั้งค่า)" style:0 handler:^(TRDSettingAction *a){
+  [self send:@"com.apple.Preferences"];
+ }]];
+ [self presentSettingsMenu:m];
+}
+-(void)openPhoneMenu{
+ TRDSettingsMenu *m=[self settingsMenu:@"📞 PHONE & EMERGENCY" message:@"Make phone calls, emergency speed dial and FaceTime Audio"];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔢 Dial Number (พิมพ์เบอร์โทรออก)" style:0 handler:^(TRDSettingAction *a){
+  [self promptCustomCall];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🚨 191 - เหตุด่วนเหตุร้าย (Police Emergency)" style:0 handler:^(TRDSettingAction *a){
+  [self callNumber:@"191"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🚑 1669 - หน่วยกู้ชีพ / รถพยาบาล (Ambulance)" style:0 handler:^(TRDSettingAction *a){
+  [self callNumber:@"1669"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🚓 1193 - ตำรวจทางหลวง (Highway Police)" style:0 handler:^(TRDSettingAction *a){
+  [self callNumber:@"1193"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🚗 1543 - กู้ภัยทางด่วน กทพ. (Expressway Help)" style:0 handler:^(TRDSettingAction *a){
+  [self callNumber:@"1543"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"📻 1137 - จส.100 ข่าวจราจร (JS100)" style:0 handler:^(TRDSettingAction *a){
+  [self callNumber:@"1137"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"📞 Open FaceTime Audio / Contacts" style:0 handler:^(TRDSettingAction *a){
+  [self send:@"com.apple.facetime"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"ℹ️ วิธีตั้งค่ารับสายจาก iPhone เข้า iPad" style:0 handler:^(TRDSettingAction *a){
+  [self showPhoneContinuityGuide];
+ }]];
+ [self presentSettingsMenu:m];
+}
 -(void)showTripSummary{
  if(!self.trip)return;
  [self.settingsSheet dismiss];
@@ -1051,6 +1109,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  if([url.host isEqualToString:@"grid"])[v toggleCarPlayGrid];
  if([url.host isEqualToString:@"trip"])[v openTrip];
  if([url.host isEqualToString:@"music"])[v openMusic];
+ if([url.host isEqualToString:@"phone"])[v openPhoneMenu];
  if([url.host isEqualToString:@"radio"]){
   NSString *p=url.path;
   if([p isEqualToString:@"/0"])[v playRadio:@"https://coolism-web.cdn.byteark.com/;stream/1" name:@"COOL Fahrenheit 93"];
