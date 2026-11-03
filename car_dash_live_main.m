@@ -573,17 +573,41 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
 }
 -(void)update{
- NSDate *now=[NSDate date];self.clock.text=[self.clockFormat stringFromDate:now];
+ NSDate *now=[NSDate date];
+ NSString *newClock=[self.clockFormat stringFromDate:now];
+ if(![self.clock.text isEqualToString:newClock]){
+  self.clock.text=newClock;
+  self.date.text=[self.dateFormat stringFromDate:now];
+ }
  UIDeviceBatteryState currentPower=[UIDevice currentDevice].batteryState;
  static UIDeviceBatteryState previousPower=UIDeviceBatteryStateUnknown;
  if((previousPower==UIDeviceBatteryStateCharging||previousPower==UIDeviceBatteryStateFull)&&currentPower==UIDeviceBatteryStateUnplugged){
   [self showTripSummary];
  }
  previousPower=currentPower;
- if(self.carplayMode){self.carplayClock.text=self.clock.text;self.carplaySpeedVal.text=(self.gpsLive&&self.speed.text.length&&![self.speed.text isEqualToString:@"--"])?self.speed.text:@"--";self.carplaySpeedUnit.text=self.gpsLive?@"km/h  •  GPS LIVE":@"km/h  •  WAITING FOR GPS";BOOL courseKnown=self.gpsLive&&self.fix.course>=0&&self.fix.course<360&&self.fix.speed>=1.4&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;self.carplayCompass.text=courseKnown?[NSString stringWithFormat:@"COURSE  %.0f°",self.fix.course]:@"COURSE  --";self.carplayTrip.text=[NSString stringWithFormat:@"TRIP  %.1f km",self.trip.meters/1000.0];if(!self.carplayGridMode)[self updateMapCar];}self.date.text=[self.dateFormat stringFromDate:now];self.ticks++;if(self.ticks%60==1)[self applyDisplaySchedule];if(self.ticks%30==0)[self saveTrip];[self refreshSpeed];[self refreshTrackProgress];if(self.mapMode)[self updateMapCar];
- if(self.ticks%5==1){NSDictionary *net=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));float level=[UIDevice currentDevice].batteryLevel;UIDeviceBatteryState power=currentPower;NSString *battery=level<0?@"—":[NSString stringWithFormat:@"%.0f%%",level*100];BOOL bt=[self.bluetooth respondsToSelector:@selector(enabled)]?[self.bluetooth enabled]:NO;self.network.text=[NSString stringWithFormat:@"%@ • BT %@ • %@%@",net[@"SSID"]?:@"No Wi-Fi",bt?@"ON":@"OFF",battery,(power==UIDeviceBatteryStateCharging||power==UIDeviceBatteryStateFull)?@" +":@""];
+ if(self.carplayMode){
+  if(![self.carplayClock.text isEqualToString:self.clock.text])self.carplayClock.text=self.clock.text;
+  NSString *speedVal=(self.gpsLive&&self.speed.text.length&&![self.speed.text isEqualToString:@"--"])?self.speed.text:@"--";
+  if(![self.carplaySpeedVal.text isEqualToString:speedVal])self.carplaySpeedVal.text=speedVal;
+  NSString *speedUnit=self.gpsLive?@"km/h  •  GPS LIVE":@"km/h  •  WAITING FOR GPS";
+  if(![self.carplaySpeedUnit.text isEqualToString:speedUnit])self.carplaySpeedUnit.text=speedUnit;
+  BOOL courseKnown=self.gpsLive&&self.fix.course>=0&&self.fix.course<360&&self.fix.speed>=1.4&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;
+  NSString *compass=courseKnown?[NSString stringWithFormat:@"COURSE  %.0f°",self.fix.course]:@"COURSE  --";
+  if(![self.carplayCompass.text isEqualToString:compass])self.carplayCompass.text=compass;
+  NSString *cTrip=[NSString stringWithFormat:@"TRIP  %.1f km",self.trip.meters/1000.0];
+  if(![self.carplayTrip.text isEqualToString:cTrip])self.carplayTrip.text=cTrip;
+  if(!self.carplayGridMode)[self updateMapCar];
+ }
+ self.ticks++;if(self.ticks%60==1)[self applyDisplaySchedule];if(self.ticks%30==0)[self saveTrip];[self refreshSpeed];[self refreshTrackProgress];if(self.mapMode)[self updateMapCar];
+ if(self.ticks%5==1){NSDictionary *net=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));float level=[UIDevice currentDevice].batteryLevel;UIDeviceBatteryState power=currentPower;NSString *battery=level<0?@"—":[NSString stringWithFormat:@"%.0f%%",level*100];BOOL bt=[self.bluetooth respondsToSelector:@selector(enabled)]?[self.bluetooth enabled]:NO;
+  NSString *newNet=[NSString stringWithFormat:@"%@ • BT %@ • %@%@",net[@"SSID"]?:@"No Wi-Fi",bt?@"ON":@"OFF",battery,(power==UIDeviceBatteryStateCharging||power==UIDeviceBatteryStateFull)?@" +":@""];
+  if(![self.network.text isEqualToString:newNet])self.network.text=newNet;
   self.statusWiFi=net[@"SSID"]?:@"NO NETWORK";
- if(self.carplayMode){self.carplayBattery.text=[NSString stringWithFormat:@"⚡ %@",battery];self.carplayWifi.text=self.statusWiFi;}self.statusPower=level<0?@"UNKNOWN":[NSString stringWithFormat:@"%@ %.0f%%",(power==UIDeviceBatteryStateCharging)?@"CHG":(power==UIDeviceBatteryStateFull)?@"FULL":@"BAT",level*100];[self refreshCarStatus];
+ if(self.carplayMode){
+  NSString *cBat=[NSString stringWithFormat:@"⚡ %@",battery];if(![self.carplayBattery.text isEqualToString:cBat])self.carplayBattery.text=cBat;
+  if(![self.carplayWifi.text isEqualToString:self.statusWiFi])self.carplayWifi.text=self.statusWiFi;
+ }
+ self.statusPower=level<0?@"UNKNOWN":[NSString stringWithFormat:@"%@ %.0f%%",(power==UIDeviceBatteryStateCharging)?@"CHG":(power==UIDeviceBatteryStateFull)?@"FULL":@"BAT",level*100];[self refreshCarStatus];
   [self refreshNowPlaying];
   [self refreshAudioRoute];
   [self refreshStatusStrip];
@@ -619,7 +643,27 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
  reader(dispatch_get_main_queue(),^(CFDictionaryRef raw){Dashboard *v=weak;if(!v||generation!=v.metadataGeneration)return;v.metadataPending=NO;if(v.noticeUntil&&[v.noticeUntil timeIntervalSinceNow]>0){v.song.text=v.notice;return;}id info=(__bridge id)raw;[v applyNowPlaying:[info isKindOfClass:[NSDictionary class]]?info:nil];});
 }
--(void)refreshTransportState{UIButton *button=(UIButton *)[self.controls viewWithTag:21];DashIcon *icon=(DashIcon *)[button viewWithTag:105];if(self.radioPlayer){icon.kind=(self.radioPlayer.rate>0)?14:13;button.accessibilityLabel=(self.radioPlayer.rate>0)?@"Pause":@"Play";[icon setNeedsDisplay];[self refreshMini];return;}icon.kind=self.hasPlaybackRate?(self.mediaRate>0?14:13):8;button.accessibilityLabel=self.hasPlaybackRate?(self.mediaRate>0?@"Pause":@"Play"):@"Play or pause";[icon setNeedsDisplay];[self refreshMini];}
+-(void)refreshTransportState{
+ UIButton *button=(UIButton *)[self.controls viewWithTag:21];
+ DashIcon *icon=(DashIcon *)[button viewWithTag:105];
+ NSInteger targetKind=8;
+ NSString *targetLabel=@"Play or pause";
+ if(self.radioPlayer){
+  targetKind=(self.radioPlayer.rate>0)?14:13;
+  targetLabel=(self.radioPlayer.rate>0)?@"Pause":@"Play";
+ }else if(self.hasPlaybackRate){
+  targetKind=(self.mediaRate>0?14:13);
+  targetLabel=(self.mediaRate>0?@"Pause":@"Play");
+ }
+ if(icon.kind!=targetKind){
+  icon.kind=targetKind;
+  [icon setNeedsDisplay];
+ }
+ if(![button.accessibilityLabel isEqualToString:targetLabel]){
+  button.accessibilityLabel=targetLabel;
+ }
+ [self refreshMini];
+}
 -(void)refreshCarStatus{
  BOOL hasEnabled=[self.bluetooth respondsToSelector:@selector(enabled)];BOOL bt=hasEnabled?[self.bluetooth enabled]:NO;NSArray *devices=[self.bluetooth respondsToSelector:@selector(pairedDevices)]?[self.bluetooth pairedDevices]:nil;BOOL paired=NO,known=NO,connected=NO;
  if([devices isKindOfClass:[NSArray class]])for(id device in devices){NSString *name=[device respondsToSelector:@selector(name)]?[device name]:nil;if([name isKindOfClass:[NSString class]]&&[name caseInsensitiveCompare:@"CAR MULTIMEDIA"]==NSOrderedSame){paired=YES;if([device respondsToSelector:@selector(connected)]){known=YES;connected=[device connected];}break;}}
@@ -639,7 +683,17 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.hasPlaybackRate=[rate isKindOfClass:[NSNumber class]]&&isfinite([rate doubleValue])&&[rate doubleValue]>=0;self.hasElapsed=[elapsed isKindOfClass:[NSNumber class]]&&isfinite([elapsed doubleValue]);self.mediaElapsed=self.hasElapsed?MAX(0,[elapsed doubleValue]):0;self.mediaDuration=[duration isKindOfClass:[NSNumber class]]&&isfinite([duration doubleValue])?MAX(0,[duration doubleValue]):0;self.mediaRate=[rate isKindOfClass:[NSNumber class]]&&isfinite([rate doubleValue])?[rate doubleValue]:0;self.mediaTimestamp=[stamp isKindOfClass:[NSDate class]]?stamp:[NSDate date];[self refreshTrackProgress];[self refreshTransportState];
  NSString *title=[info[@"kMRMediaRemoteNowPlayingInfoTitle"]isKindOfClass:[NSString class]]?info[@"kMRMediaRemoteNowPlayingInfoTitle"]:nil;
  NSString *artist=[info[@"kMRMediaRemoteNowPlayingInfoArtist"]isKindOfClass:[NSString class]]?info[@"kMRMediaRemoteNowPlayingInfoArtist"]:nil;
- self.song.text=title.length?title:@"Choose your music";self.artist.text=title.length?(artist.length?artist:@"NOW PLAYING"):@"YouTube / audioNINJA";
+ NSString *newSong=title.length?title:@"Choose your music";
+ NSString *newArtist=title.length?(artist.length?artist:@"NOW PLAYING"):@"YouTube / audioNINJA";
+ if(![self.song.text isEqualToString:newSong])self.song.text=newSong;
+ if(![self.artist.text isEqualToString:newArtist])self.artist.text=newArtist;
+ static NSString *lastPushedTitle=nil;
+ static NSString *lastPushedArtist=nil;
+ static double lastPushedRate=-1;
+ if(![lastPushedTitle isEqualToString:title]||![lastPushedArtist isEqualToString:artist]||lastPushedRate!=self.mediaRate){
+  lastPushedTitle=[title copy];
+  lastPushedArtist=[artist copy];
+  lastPushedRate=self.mediaRate;
   NSMutableDictionary *carInfo=[NSMutableDictionary dictionary];
   carInfo[MPMediaItemPropertyTitle]=title.length?title:@"Toyota Prius TRD";
   carInfo[MPMediaItemPropertyArtist]=artist.length?artist:@"CarDash Audio";
@@ -648,7 +702,21 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   if(self.mediaDuration>0)carInfo[MPMediaItemPropertyPlaybackDuration]=@(self.mediaDuration);
   if(self.hasElapsed)carInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime]=@(self.mediaElapsed);
   [[MPNowPlayingInfoCenter defaultCenter]setNowPlayingInfo:carInfo];
- NSDictionary *src=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];NSString *b=src[@"bundle"];NSString *badgeText=@"MUSIC";if(self.youtubeSource||[b isEqualToString:@"com.himais0giiiin.ytnine"])badgeText=@"YOUTUBE";else if([b isEqualToString:@"com.codex.poddash"])badgeText=@"PODCAST";else if([b isEqualToString:@"com.legacymusic.app"])badgeText=@"NINJA";self.sourceBadge.text=badgeText;NSDictionary *cfg=[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath];NSString *pName=src[@"preset"]?:(cfg[@"profiles"][b?:(self.youtubeSource?@"com.himais0giiiin.ytnine":@"com.legacymusic.app")]?:@"Flat");[self.driveEQ setTitle:[NSString stringWithFormat:@"EQ • %@",[pName uppercaseString]] forState:UIControlStateNormal];
+ }
+ static NSDictionary *cachedSrc=nil;
+ static NSDictionary *cachedCfg=nil;
+ static NSTimeInterval lastConfigRead=0;
+ NSTimeInterval nowSec=[[NSDate date]timeIntervalSinceReferenceDate];
+ if(!cachedSrc||(nowSec-lastConfigRead>15)){
+  cachedSrc=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];
+  cachedCfg=[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath];
+  lastConfigRead=nowSec;
+ }
+ NSDictionary *src=cachedSrc;NSString *b=src[@"bundle"];NSString *badgeText=@"MUSIC";if(self.youtubeSource||[b isEqualToString:@"com.himais0giiiin.ytnine"])badgeText=@"YOUTUBE";else if([b isEqualToString:@"com.codex.poddash"])badgeText=@"PODCAST";else if([b isEqualToString:@"com.legacymusic.app"])badgeText=@"NINJA";
+ if(![self.sourceBadge.text isEqualToString:badgeText])self.sourceBadge.text=badgeText;
+ NSDictionary *cfg=cachedCfg;NSString *pName=src[@"preset"]?:(cfg[@"profiles"][b?:(self.youtubeSource?@"com.himais0giiiin.ytnine":@"com.legacymusic.app")]?:@"Flat");
+ NSString *eqTitle=[NSString stringWithFormat:@"EQ • %@",[pName uppercaseString]];
+ if(![self.driveEQ.currentTitle isEqualToString:eqTitle])[self.driveEQ setTitle:eqTitle forState:UIControlStateNormal];
  id rawData=info[@"kMRMediaRemoteNowPlayingInfoArtworkData"];NSData *data=[rawData isKindOfClass:[NSData class]]&&[rawData length]<=8*1024*1024?rawData:nil;
  BOOL dataDiff=(self.artworkData==nil&&data!=nil)||(self.artworkData!=nil&&data==nil)||(self.artworkData.length!=data.length)||(![self.artworkData isEqualToData:data]);
  if(dataDiff&&(data||self.artworkData)){
@@ -662,7 +730,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)releaseArtwork{self.artwork.image=nil;self.artworkData=nil;self.artPlaceholder.hidden=self.focused;}
 -(void)didReceiveMemoryWarning{[super didReceiveMemoryWarning];self.memoryWarnings++;[self releaseArtwork];[self hideWelcome];[self.settingsSheet dismiss];if(!self.mapMode&&!self.carplayMode&&self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}}
 -(NSString *)trackTimeString:(double)value{if(!isfinite(value)||value<0)return @"--:--";long long n=(long long)value;return n>=3600?[NSString stringWithFormat:@"%lld:%02lld:%02lld",n/3600,n/60%60,n%60]:[NSString stringWithFormat:@"%lld:%02lld",n/60,n%60];}
--(void)refreshTrackProgress{if(self.radioPlayer){self.trackTime.text=@"LIVE STREAM · ON AIR";self.trackProgress.progress=1.0;return;}double elapsed=self.mediaElapsed;if(self.hasElapsed&&self.mediaTimestamp&&self.mediaRate>0)elapsed+=MAX(0,-[self.mediaTimestamp timeIntervalSinceNow])*self.mediaRate;if(self.mediaDuration>0)elapsed=MIN(elapsed,self.mediaDuration);self.trackTime.text=[NSString stringWithFormat:@"%@ / %@",self.hasElapsed?[self trackTimeString:elapsed]:@"--:--",self.mediaDuration>0?[self trackTimeString:self.mediaDuration]:@"--:--"];self.trackProgress.progress=self.hasElapsed&&self.mediaDuration>0?MAX(0,MIN(1,elapsed/self.mediaDuration)):0;}
+-(void)refreshTrackProgress{if(self.radioPlayer){if(![self.trackTime.text isEqualToString:@"LIVE STREAM · ON AIR"]){self.trackTime.text=@"LIVE STREAM · ON AIR";self.trackProgress.progress=1.0;}return;}double elapsed=self.mediaElapsed;if(self.hasElapsed&&self.mediaTimestamp&&self.mediaRate>0)elapsed+=MAX(0,-[self.mediaTimestamp timeIntervalSinceNow])*self.mediaRate;if(self.mediaDuration>0)elapsed=MIN(elapsed,self.mediaDuration);NSString *newTime=[NSString stringWithFormat:@"%@ / %@",self.hasElapsed?[self trackTimeString:elapsed]:@"--:--",self.mediaDuration>0?[self trackTimeString:self.mediaDuration]:@"--:--"];if(![self.trackTime.text isEqualToString:newTime]){self.trackTime.text=newTime;self.trackProgress.progress=self.hasElapsed&&self.mediaDuration>0?MAX(0,MIN(1,elapsed/self.mediaDuration)):0;}}
 -(void)openDriveEQ{[self send:@"com.r333d.eqe.app"];}
 -(void)toggleSpeedLimit{
  if(self.speedLimit==90)self.speedLimit=120;
@@ -683,7 +751,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)captureGPSState{}
 -(void)restartGPS{[self.gps stopUpdatingLocation];self.fix=nil;self.gpsError=nil;[self startGPS];[self captureGPSState];}
 -(void)locationManager:(CLLocationManager *)manager didChangeAuthorizationStatus:(CLAuthorizationStatus)status{if(status==kCLAuthorizationStatusAuthorizedAlways||status==kCLAuthorizationStatusAuthorizedWhenInUse)[self startGPS];[self captureGPSState];}
--(void)startGPS{self.gps.pausesLocationUpdatesAutomatically=NO;self.gps.desiredAccuracy=kCLLocationAccuracyBestForNavigation;self.gps.activityType=CLActivityTypeAutomotiveNavigation;if([self.gps respondsToSelector:@selector(setAllowsBackgroundLocationUpdates:)])self.gps.allowsBackgroundLocationUpdates=YES;CLAuthorizationStatus status=[CLLocationManager authorizationStatus];if(status==kCLAuthorizationStatusNotDetermined)[self.gps requestWhenInUseAuthorization];if(status!=kCLAuthorizationStatusDenied&&status!=kCLAuthorizationStatusRestricted)[self.gps startUpdatingLocation];}
+-(void)startGPS{self.gps.pausesLocationUpdatesAutomatically=NO;self.gps.desiredAccuracy=kCLLocationAccuracyBestForNavigation;self.gps.distanceFilter=1.0;self.gps.activityType=CLActivityTypeAutomotiveNavigation;if([self.gps respondsToSelector:@selector(setAllowsBackgroundLocationUpdates:)])self.gps.allowsBackgroundLocationUpdates=YES;CLAuthorizationStatus status=[CLLocationManager authorizationStatus];if(status==kCLAuthorizationStatusNotDetermined)[self.gps requestWhenInUseAuthorization];if(status!=kCLAuthorizationStatusDenied&&status!=kCLAuthorizationStatusRestricted)[self.gps startUpdatingLocation];}
 -(void)refreshClockHud{if(!self.clockHud)return;UIColor *c=TRDAccent();self.clockHud.layer.borderColor=[c colorWithAlphaComponent:.38].CGColor;[self.clockHud viewWithTag:401].backgroundColor=c;UILabel *hudSpeed=(UILabel *)[self.clockHud viewWithTag:402],*hudUnit=(UILabel *)[self.clockHud viewWithTag:403],*hudGps=(UILabel *)[self.clockHud viewWithTag:405],*hudAcc=(UILabel *)[self.clockHud viewWithTag:406],*hudTrip=(UILabel *)[self.clockHud viewWithTag:407];hudSpeed.text=self.speed.text?:@"--";hudSpeed.textColor=self.clock.textColor?:[UIColor whiteColor];hudUnit.textColor=c;hudGps.text=self.gpsStatus.text?:@"WAITING FOR GPS";hudGps.textColor=self.gpsLive?[UIColor colorWithRed:.30 green:self.nightMode?.58:.80 blue:.48 alpha:1]:[UIColor colorWithWhite:self.nightMode?.58:.76 alpha:1];hudAcc.text=(self.fix&&self.fix.horizontalAccuracy>=0)?[NSString stringWithFormat:@"ACCURACY ±%.0f m  •  %@",self.fix.horizontalAccuracy,self.gpsLive?@"SPEED LOCKED":@"NO SPEED VECTOR"]:@"SIGNAL  •  SEARCHING SATELLITES";hudTrip.text=self.trip.seconds>0?[NSString stringWithFormat:@"TRIP  %.2f km  •  MAX %.0f km/h",self.trip.meters/1000.0,self.trip.maximum]:(self.trip.running?@"TRIP  ARMED  •  WAITING FOR GPS":@"TRIP  AUTO  •  WAITING FOR MOVEMENT");hudTrip.textColor=c;}
 -(void)refreshSpeed{
  CLAuthorizationStatus auth=[CLLocationManager authorizationStatus];NSDictionary *gps=TRDDriveGPSStatus(self.fix,[NSDate date],auth,self.hadGPSSpeed);BOOL valid=[gps[@"valid"]boolValue];if(valid)self.hadGPSSpeed=YES;
@@ -691,8 +759,11 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  if(reliable&&kmh<=1){if(!self.stationarySince)self.stationarySince=[NSDate date];if(-[self.stationarySince timeIntervalSinceNow]>=10)self.autoDriveSuppressed=NO;}else self.stationarySince=nil;
  if([UIApplication sharedApplication].applicationState==UIApplicationStateActive&&!self.driveMode&&!self.musicMode&&!self.tripMode&&!self.mapMode&&!self.focused&&!self.autoDriveSuppressed&&reliable&&kmh>=10){if(!self.movingSince)self.movingSince=[NSDate date];if(-[self.movingSince timeIntervalSinceNow]>=5){self.movingSince=nil;[self toggleDrive];}}else self.movingSince=nil;
  self.gpsLive=valid;[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&valid?self.fix.speed*3.6:0];
- self.speed.text=valid?[NSString stringWithFormat:@"%.0f",self.fix.speed*3.6]:@"—";
- [CATransaction begin];[CATransaction setDisableActions:YES];self.progress.strokeEnd=valid?MIN(1,self.fix.speed*3.6/180):0;[CATransaction commit];
+ NSString *newSpeed=valid?[NSString stringWithFormat:@"%.0f",self.fix.speed*3.6]:@"—";
+ if(![self.speed.text isEqualToString:newSpeed]){
+  self.speed.text=newSpeed;
+  [CATransaction begin];[CATransaction setDisableActions:YES];self.progress.strokeEnd=valid?MIN(1,self.fix.speed*3.6/180):0;[CATransaction commit];
+ }
  
  BOOL overSpeed=(self.speedLimit>0&&valid&&kmh>(self.speedLimit+0.5));
  if(overSpeed){
@@ -706,7 +777,11 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.speed.textColor=self.clock.textColor?:[UIColor whiteColor];
   self.speedLimitBtn.backgroundColor=(self.speedLimit>0)?[UIColor colorWithRed:.85 green:.05 blue:.10 alpha:.18]:[UIColor colorWithWhite:.2 alpha:.2];
  }
- self.gpsStatus.text=gps[@"label"];self.gpsStatus.adjustsFontSizeToFitWidth=YES;self.gpsStatus.minimumScaleFactor=.75;self.gpsStatus.textColor=valid?[UIColor colorWithRed:.30 green:self.nightMode?.58:.8 blue:.48 alpha:1]:[UIColor colorWithRed:self.nightMode?.72:.95 green:self.nightMode?.5:.66 blue:.24 alpha:1];[self refreshClockHud];
+ NSString *newStatus=gps[@"label"];
+ if(![self.gpsStatus.text isEqualToString:newStatus]){
+  self.gpsStatus.text=newStatus;self.gpsStatus.adjustsFontSizeToFitWidth=YES;self.gpsStatus.minimumScaleFactor=.75;self.gpsStatus.textColor=valid?[UIColor colorWithRed:.30 green:self.nightMode?.58:.8 blue:.48 alpha:1]:[UIColor colorWithRed:self.nightMode?.72:.95 green:self.nightMode?.5:.66 blue:.24 alpha:1];
+ }
+ [self refreshClockHud];
 }
 -(void)playRadio:(NSString *)url name:(NSString *)name{
  if(self.radioPlayer){

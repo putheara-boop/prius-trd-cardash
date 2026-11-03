@@ -33,10 +33,35 @@
  else if([type isEqual:AVAudioSessionPortAirPlay]){route=@"AIRPLAY";shortName=route;}
  else if(type.length){route=@"EXTERNAL AUDIO";shortName=@"EXTERNAL";}
  self.audioOutput=route;self.audioOutputShort=shortName;self.audioDevice=name?:@"";self.outputVolume=isfinite(session.outputVolume)?MAX(0,MIN(1,session.outputVolume)):-1;
- NSString *level=self.outputVolume<0?@"VOLUME UNKNOWN":self.outputVolume<.005?@"MUTED":[NSString stringWithFormat:@"VOL %.0f%%",self.outputVolume*100];self.carStatus.text=[NSString stringWithFormat:@"%@  ·  %@",route,level];self.carStatus.textColor=[UIColor colorWithWhite:self.nightMode?.62:.76 alpha:1];self.carStatus.accessibilityLabel=self.carStatus.text;
+ NSString *level=self.outputVolume<0?@"VOLUME UNKNOWN":self.outputVolume<.005?@"MUTED":[NSString stringWithFormat:@"VOL %.0f%%",self.outputVolume*100];
+ NSString *newCarStatus=[NSString stringWithFormat:@"%@  ·  %@",route,level];
+ if(![self.carStatus.text isEqualToString:newCarStatus]){self.carStatus.text=newCarStatus;self.carStatus.accessibilityLabel=newCarStatus;}
+ self.carStatus.textColor=[UIColor colorWithWhite:self.nightMode?.62:.76 alpha:1];
 }
 -(void)audioOutputSettings{[self refreshAudioRoute];TRDSettingsMenu *m=[self settingsMenu:@"AUDIO OUTPUT" message:[NSString stringWithFormat:@"%@%@\nUse iPad volume buttons or your car stereo.",self.carStatus.text,([self.audioOutput isEqual:@"CAR BLUETOOTH"]||[self.audioOutput isEqual:@"BLUETOOTH AUDIO"]||[self.audioOutput isEqual:@"AIRPLAY"])&&self.audioDevice.length?[@" · "stringByAppendingString:self.audioDevice]:@""]];[m addAction:[TRDSettingAction actionWithTitle:@"Open iPad Settings" style:0 handler:^(TRDSettingAction *a){[self send:@"com.apple.Preferences"];}]];[self presentSettingsMenu:m];}
--(void)refreshStatusStrip{CLAuthorizationStatus auth=[CLLocationManager authorizationStatus];NSString *gps=(auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted)?@"DISABLED":self.gpsLive?@"LIVE":self.hadGPSSpeed?@"LOST":@"NO FIX";NSArray *values=@[self.statusCar?:@"UNKNOWN",self.statusWiFi?:@"NO NETWORK",self.audioOutputShort?:@"NO OUTPUT",gps,self.statusPower?:@"UNKNOWN"];for(NSUInteger i=0;i<self.statusChips.count;i++){UILabel *label=(UILabel *)[self.statusChips[i]viewWithTag:302];UILabel *title=(UILabel *)[self.statusChips[i]viewWithTag:301];if(i==2)title.text=self.outputVolume<0?@"AUDIO":self.outputVolume<.005?@"AUDIO MUTED":[NSString stringWithFormat:@"AUDIO %.0f%%",self.outputVolume*100];NSString *value=values[i];if(i==0){if([value isEqual:@"DISCONNECTED"])value=@"NO LINK";else if([value isEqual:@"CONNECTED"])value=@"LINKED";else if([value isEqual:@"NOT PAIRED"])value=@"UNPAIRED";}label.text=value;BOOL good=(i==0&&[values[i]isEqual:@"CONNECTED"])||(i==3&&self.gpsLive);label.textColor=good?[UIColor colorWithRed:.30 green:self.nightMode?.58:.8 blue:.48 alpha:1]:[UIColor colorWithWhite:self.nightMode?.58:.8 alpha:1];((UIView *)self.statusChips[i]).accessibilityLabel=[NSString stringWithFormat:@"%@: %@",@[@"Car Bluetooth",@"Wi-Fi",@"Audio output",@"GPS",@"Power"][i],values[i]];}}
+-(void)refreshStatusStrip{
+ CLAuthorizationStatus auth=[CLLocationManager authorizationStatus];
+ NSString *gps=(auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted)?@"DISABLED":self.gpsLive?@"LIVE":self.hadGPSSpeed?@"LOST":@"NO FIX";
+ NSArray *values=@[self.statusCar?:@"UNKNOWN",self.statusWiFi?:@"NO NETWORK",self.audioOutputShort?:@"NO OUTPUT",gps,self.statusPower?:@"UNKNOWN"];
+ for(NSUInteger i=0;i<self.statusChips.count;i++){
+  UILabel *label=(UILabel *)[self.statusChips[i]viewWithTag:302];
+  UILabel *title=(UILabel *)[self.statusChips[i]viewWithTag:301];
+  if(i==2){
+   NSString *newAudioTitle=self.outputVolume<0?@"AUDIO":self.outputVolume<.005?@"AUDIO MUTED":[NSString stringWithFormat:@"AUDIO %.0f%%",self.outputVolume*100];
+   if(![title.text isEqualToString:newAudioTitle])title.text=newAudioTitle;
+  }
+  NSString *value=values[i];
+  if(i==0){
+   if([value isEqual:@"DISCONNECTED"])value=@"NO LINK";
+   else if([value isEqual:@"CONNECTED"])value=@"LINKED";
+   else if([value isEqual:@"NOT PAIRED"])value=@"UNPAIRED";
+  }
+  if(![label.text isEqualToString:value])label.text=value;
+  BOOL good=(i==0&&[values[i]isEqual:@"CONNECTED"])||(i==3&&self.gpsLive);
+  label.textColor=good?[UIColor colorWithRed:.30 green:self.nightMode?.58:.8 blue:.48 alpha:1]:[UIColor colorWithWhite:self.nightMode?.58:.8 alpha:1];
+  ((UIView *)self.statusChips[i]).accessibilityLabel=[NSString stringWithFormat:@"%@: %@",@[@"Car Bluetooth",@"Wi-Fi",@"Audio output",@"GPS",@"Power"][i],values[i]];
+ }
+}
 
 
 -(void)captureLifecycle{[@{@"timerActive":@(self.timer!=nil),@"meterActive":@(self.audioBars.refreshTimer!=nil),@"wheelAnimating":@(self.driveCar.wheelTimer!=nil),@"driveMode":@(self.driveMode),@"musicMode":@(self.musicMode),@"state":@([UIApplication sharedApplication].applicationState),@"at":[NSDate date]}writeToFile:@"/var/mobile/h109-build/trd-background.plist" atomically:YES];}

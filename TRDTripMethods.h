@@ -2,8 +2,45 @@
 -(void)toggleTrip{[self refreshTrip];}
 -(void)saveTrip{if(self.trip){NSUserDefaults *p=[NSUserDefaults standardUserDefaults];[p setObject:[self.trip summary] forKey:@"TRDTripSummary"];self.lastTripSavedAt=[NSDate date];}}
 -(void)resetTripMenu{TRDSettingsMenu *menu=[self settingsMenu:@"RESET TRIP?" message:@"Clear accumulated distance, moving time and maximum speed? Automatic tracking will continue."];[menu addAction:[TRDSettingAction actionWithTitle:@"Reset this trip" style:0 handler:^(TRDSettingAction *a){self.trip=[TRDTrip new];[self saveTrip];[self refreshTrip];}]];[self presentSettingsMenu:menu];}
--(void)refreshTrip{if(!self.tripView)return;TRDTrip *t=self.trip;BOOL data=t.seconds>0;NSArray *values=@[data?[NSString stringWithFormat:@"%.2f",t.meters/1000]:@"--",data?[NSString stringWithFormat:@"%02ld:%02ld:%02ld",(long)t.seconds/3600,((long)t.seconds/60)%60,(long)t.seconds%60]:@"--:--:--",data?[NSString stringWithFormat:@"%.1f",t.meters/t.seconds*3.6]:@"--",data?[NSString stringWithFormat:@"%.0f",t.maximum]:@"--"];for(NSUInteger i=0;i<4;i++)((UILabel *)self.tripView.values[i]).text=values[i];BOOL fresh=TRDTripFixIsReliable(self.fix,[NSDate date]);if(!fresh&&t.running)[t breakSegment];[self.driveTripButton setTitle:TRDDriveTripText(t.meters,t.seconds,t.running,fresh) forState:0];self.driveTripButton.accessibilityValue=self.driveTripButton.currentTitle;self.tripView.state.text=fresh?(t.running?@"AUTO / RECORDING MOVEMENT":@"AUTO / PAUSED WHILE STOPPED"):@"AUTO / WAITING FOR RELIABLE GPS";self.tripView.run.hidden=YES;self.tripView.title.textColor=TRDAccent();self.tripView.state.textColor=TRDAccent();}
--(void)refreshMini{if(!self.miniPlayer)return;self.miniPlayer.title.text=self.song.text.length?self.song.text:@"Choose your music";self.miniPlayer.artist.text=self.artist.text?:@"";self.miniPlayer.icon.kind=self.hasPlaybackRate?(self.mediaRate>0?14:13):8;self.miniPlayer.play.accessibilityLabel=self.hasPlaybackRate?(self.mediaRate>0?@"Pause":@"Play"):@"Play or pause";[self.miniPlayer.icon setNeedsDisplay];[self.miniPlayer.open setTitleColor:TRDAccent() forState:0];}
+-(void)refreshTrip{
+ if(!self.tripView)return;
+ TRDTrip *t=self.trip;
+ BOOL fresh=TRDTripFixIsReliable(self.fix,[NSDate date]);
+ if(!fresh&&t.running)[t breakSegment];
+ if(self.driveTripButton&&!self.driveTripButton.hidden){
+  NSString *newTitle=TRDDriveTripText(t.meters,t.seconds,t.running,fresh);
+  if(![self.driveTripButton.currentTitle isEqualToString:newTitle]){
+   [self.driveTripButton setTitle:newTitle forState:0];
+   self.driveTripButton.accessibilityValue=newTitle;
+  }
+ }
+ if(!self.tripMode)return;
+ BOOL data=t.seconds>0;
+ NSArray *values=@[data?[NSString stringWithFormat:@"%.2f",t.meters/1000]:@"--",data?[NSString stringWithFormat:@"%02ld:%02ld:%02ld",(long)t.seconds/3600,((long)t.seconds/60)%60,(long)t.seconds%60]:@"--:--:--",data?[NSString stringWithFormat:@"%.1f",t.meters/t.seconds*3.6]:@"--",data?[NSString stringWithFormat:@"%.0f",t.maximum]:@"--"];
+ for(NSUInteger i=0;i<4;i++){
+  UILabel *lbl=(UILabel *)self.tripView.values[i];
+  if(![lbl.text isEqualToString:values[i]])lbl.text=values[i];
+ }
+ NSString *newState=fresh?(t.running?@"AUTO / RECORDING MOVEMENT":@"AUTO / PAUSED WHILE STOPPED"):@"AUTO / WAITING FOR RELIABLE GPS";
+ if(![self.tripView.state.text isEqualToString:newState])self.tripView.state.text=newState;
+ self.tripView.run.hidden=YES;
+ self.tripView.title.textColor=TRDAccent();
+ self.tripView.state.textColor=TRDAccent();
+}
+-(void)refreshMini{
+ if(!self.miniPlayer||self.miniPlayer.hidden)return;
+ NSString *newTitle=self.song.text.length?self.song.text:@"Choose your music";
+ if(![self.miniPlayer.title.text isEqualToString:newTitle])self.miniPlayer.title.text=newTitle;
+ NSString *newArtist=self.artist.text?:@"";
+ if(![self.miniPlayer.artist.text isEqualToString:newArtist])self.miniPlayer.artist.text=newArtist;
+ NSInteger newKind=self.radioPlayer?((self.radioPlayer.rate>0)?14:13):(self.hasPlaybackRate?(self.mediaRate>0?14:13):8);
+ if(self.miniPlayer.icon.kind!=newKind){
+  self.miniPlayer.icon.kind=newKind;
+  [self.miniPlayer.icon setNeedsDisplay];
+ }
+ NSString *newLabel=self.radioPlayer?((self.radioPlayer.rate>0)?@"Pause":@"Play"):(self.hasPlaybackRate?(self.mediaRate>0?@"Pause":@"Play"):@"Play or pause");
+ if(![self.miniPlayer.play.accessibilityLabel isEqualToString:newLabel])self.miniPlayer.play.accessibilityLabel=newLabel;
+}
 -(void)miniPlay{[self media:(UIButton *)[self.controls viewWithTag:21]];}
 -(void)miniPrev{[self media:(UIButton *)[self.controls viewWithTag:20]];}
 -(void)miniNext{[self media:(UIButton *)[self.controls viewWithTag:22]];}
