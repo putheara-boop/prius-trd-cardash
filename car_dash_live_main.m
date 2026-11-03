@@ -439,7 +439,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(BOOL)prefersStatusBarHidden{return YES;}
 -(void)rotateTo:(NSNumber *)value{[[UIDevice currentDevice]setValue:value forKey:@"orientation"];[UIViewController attemptRotationToDeviceOrientation];}
 -(BOOL)shouldAutorotate{return YES;}
--(UIInterfaceOrientationMask)supportedInterfaceOrientations{return UIInterfaceOrientationMaskAllButUpsideDown;}
+-(UIInterfaceOrientationMask)supportedInterfaceOrientations{return UIInterfaceOrientationMaskLandscape;}
 // The audio source owns Now Playing and Bluetooth remote commands.
 -(void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];notify_post("com.codex.trd.network.internet");[self applyTheme];[self applyDisplaySchedule];[self becomeFirstResponder];if(self.welcome){[self.view bringSubviewToFront:self.welcome];}else if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}[self.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;[self.timer invalidate];self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];self.timer.tolerance=.1;[self update];}
 -(void)viewWillDisappear:(BOOL)animated{[super viewWillDisappear:animated];[self hideWelcome];[self.audioBars stop];[self.driveCar stop];[self.timer invalidate];self.timer=nil;[self saveTrip];[UIApplication sharedApplication].idleTimerDisabled=NO;}
