@@ -558,7 +558,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.unit.hidden=NO;self.unit.font=[UIFont boldSystemFontOfSize:15];self.unit.textAlignment=NSTextAlignmentRight;self.unit.text=@"km/h  •  GPS";self.unit.frame=CGRectMake(30,topY+228,136,24);
   self.speedLimitBtn.hidden=NO;self.speedLimitBtn.frame=CGRectMake(174,topY+223,34,34);self.speedLimitBtn.layer.cornerRadius=17;
   self.driveTripButton.hidden=NO;self.driveTripButton.frame=CGRectMake(30,topY+podH-48,podW-12,42);self.driveTripButton.titleLabel.font=[UIFont boldSystemFontOfSize:11.5];self.driveTripButton.titleLabel.minimumScaleFactor=0.6;self.driveTripButton.layer.cornerRadius=8;self.driveTripButton.backgroundColor=[UIColor colorWithWhite:.10 alpha:1];self.driveTripButton.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;
-  self.driveCar.hidden=NO;self.driveCar.frame=CGRectMake(256,topY+8,w-512,224);
+  self.driveCar.hidden=NO;self.driveCar.frame=CGRectMake(248,topY+32,w-496,240);
   self.audioBars.hidden=YES;
   CGFloat rightX=w-24-podW;self.driveRightCard.hidden=NO;self.driveRightCard.frame=CGRectMake(rightX,topY,podW,podH);
   self.clock.hidden=NO;self.clock.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:84]?:[UIFont boldSystemFontOfSize:84];self.clock.textAlignment=NSTextAlignmentCenter;self.clock.frame=CGRectMake(rightX,topY+8,podW,96);
