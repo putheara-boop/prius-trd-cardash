@@ -213,6 +213,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property BOOL hasElapsed;
 @property NSDate *mediaTimestamp;
 @property BOOL driveMode;
+@property UIView *driveLeftCard,*driveRightCard;
 @property BOOL autoDriveSuppressed;
 @property BOOL carplayMode,carplayGridMode;
 @property UIView *carplayDock,*carplayMediaCard,*carplayTelemetryCard,*carplayAppGrid,*carplayTurnBanner;
@@ -302,6 +303,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.driveButton=[UIButton buttonWithType:UIButtonTypeSystem];self.driveButton.backgroundColor=[UIColor colorWithWhite:.10 alpha:1];self.driveButton.layer.cornerRadius=6;self.driveButton.layer.borderWidth=1;self.driveButton.layer.borderColor=[UIColor colorWithWhite:.30 alpha:1].CGColor;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.driveButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];self.driveButton.titleLabel.font=[UIFont boldSystemFontOfSize:12];[self.driveButton addTarget:self action:@selector(toggleDrive) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveButton];
  self.driveEQ=[UIButton buttonWithType:UIButtonTypeSystem];[self.driveEQ setTitle:@"EQ  /  SOUND" forState:UIControlStateNormal];[self.driveEQ setTitleColor:blue forState:UIControlStateNormal];self.driveEQ.titleLabel.font=[UIFont boldSystemFontOfSize:16];self.driveEQ.backgroundColor=[UIColor colorWithRed:.12 green:.04 blue:.06 alpha:1];self.driveEQ.layer.cornerRadius=6;self.driveEQ.layer.borderWidth=1;self.driveEQ.layer.borderColor=[UIColor colorWithRed:.35 green:.10 blue:.13 alpha:1].CGColor;self.driveEQ.accessibilityLabel=@"Open Equalizer";[self.driveEQ addTarget:self action:@selector(openDriveEQ) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveEQ];
  self.driveCar=[[DrivePrius alloc]init];self.driveCar.hidden=YES;[self.view addSubview:self.driveCar];
+ self.driveLeftCard=[[UIView alloc]init];self.driveLeftCard.backgroundColor=[UIColor colorWithRed:.06 green:.07 blue:.09 alpha:.92];self.driveLeftCard.layer.cornerRadius=14;self.driveLeftCard.layer.borderWidth=1.2;self.driveLeftCard.layer.borderColor=[blue colorWithAlphaComponent:.35].CGColor;self.driveLeftCard.hidden=YES;self.driveLeftCard.userInteractionEnabled=NO;[self.view addSubview:self.driveLeftCard];
+ self.driveRightCard=[[UIView alloc]init];self.driveRightCard.backgroundColor=[UIColor colorWithRed:.06 green:.07 blue:.09 alpha:.92];self.driveRightCard.layer.cornerRadius=14;self.driveRightCard.layer.borderWidth=1.2;self.driveRightCard.layer.borderColor=[blue colorWithAlphaComponent:.35].CGColor;self.driveRightCard.hidden=YES;self.driveRightCard.userInteractionEnabled=NO;[self.view addSubview:self.driveRightCard];
  self.carGlow=[UIView new];self.carGlow.userInteractionEnabled=NO;self.carGlow.hidden=YES;CAGradientLayer *glow=[CAGradientLayer layer];glow.name=@"carGlow";glow.startPoint=CGPointMake(0,.5);glow.endPoint=CGPointMake(1,.5);[self.carGlow.layer addSublayer:glow];[self.view addSubview:self.carGlow];
  self.carImage=[[UIImageView alloc]initWithImage:[UIImage imageNamed:@"TRDRealPrius.png"]];self.carImage.contentMode=UIViewContentModeScaleAspectFit;[self.view addSubview:self.carImage];
  self.arc=[CAShapeLayer layer];self.arc.fillColor=[UIColor clearColor].CGColor;self.arc.strokeColor=[UIColor colorWithWhite:.15 alpha:1].CGColor;self.arc.lineWidth=5;self.arc.lineCap=kCALineCapRound;[self.view.layer addSublayer:self.arc];
@@ -541,15 +544,41 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
  for(int i=0;i<6;i++){UIButton *b=self.cards[i];b.hidden=self.focused||self.driveMode;b.frame=CGRectMake((w-(cols*cellW+(cols-1)*gap))/2+(i%cols)*(cellW+gap),top+(landscape?16:8)+(i/cols)*(cellH+gap),cellW,cellH);UILabel *title=(UILabel *)[b viewWithTag:100];title.textAlignment=NSTextAlignmentCenter;title.font=[UIFont boldSystemFontOfSize:20];title.frame=CGRectMake(12,cellH/2+4,cellW-24,30);title.adjustsFontSizeToFitWidth=YES;[b viewWithTag:104].frame=CGRectMake(cellW/2-17,cellH/2-36,34,34);[b viewWithTag:102].frame=CGRectMake(0,14,3,cellH-28);}
  self.controls.hidden=self.focused;self.hint.hidden=!self.focused;self.controls.frame=CGRectMake(28,h-94,w-56,68);CGFloat width=(w-86)/4;for(int i=0;i<4;i++){UIView *button=[self.controls viewWithTag:20+i];button.frame=CGRectMake(i*(width+10),0,width,68);button.layer.cornerRadius=7;button.backgroundColor=[TRDAccent() colorWithAlphaComponent:.10];button.layer.borderColor=[TRDAccent() colorWithAlphaComponent:.35].CGColor;[button viewWithTag:105].frame=CGRectMake(width/2-20,14,40,40);}
- self.driveCar.hidden=!self.driveMode;self.driveEQ.hidden=!self.driveMode;self.driveEQ.frame=CGRectMake(w*.70+24,352,w*.28-48,46);
- self.date.hidden=self.driveMode;[self.controls viewWithTag:23].hidden=self.driveMode;
+ self.driveLeftCard.hidden=!self.driveMode;self.driveRightCard.hidden=!self.driveMode;self.driveTripButton.hidden=!self.driveMode;self.driveCameraButton.hidden=!self.driveMode;
  if(self.driveMode){
- self.carStatus.hidden=YES;
- self.driveCar.frame=CGRectMake(w*.18,110,w*.64,230);self.speed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:160];self.speed.adjustsFontSizeToFitWidth=YES;self.speed.frame=CGRectMake(20,122,w*.19,170);self.unit.frame=CGRectMake(20,292,w*.19,28);self.unit.font=[UIFont boldSystemFontOfSize:22];self.gpsStatus.frame=CGRectMake(20,320,w*.24,24);
- self.clock.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:88];self.clock.frame=CGRectMake(w*.81,164,w*.18,115);self.carStatus.frame=CGRectMake(w*.75,303,w*.24,32);self.audioBars.hidden=NO;self.audioBars.frame=CGRectMake(w*.32,h-330,w*.36,48);
- CGFloat y=h-278;self.nowPanel.hidden=NO;self.nowPanel.frame=CGRectMake(28,y,w-56,100);self.artwork.hidden=NO;self.artwork.frame=CGRectMake(40,y+12,76,76);self.artPlaceholder.frame=self.artwork.frame;self.artPlaceholder.hidden=self.artwork.image!=nil;self.artist.hidden=NO;self.song.textAlignment=NSTextAlignmentLeft;self.song.font=[UIFont boldSystemFontOfSize:30];self.song.frame=CGRectMake(134,y+12,w-270,36);self.artist.font=[UIFont systemFontOfSize:21];self.artist.frame=CGRectMake(134,y+52,w-320,26);self.sourceBadge.frame=CGRectMake(w-56-92,14,78,24);self.sourceBadge.font=[UIFont boldSystemFontOfSize:12];self.trackTime.hidden=NO;self.trackProgress.hidden=NO;self.trackTime.font=[UIFont boldSystemFontOfSize:13];self.trackTime.frame=CGRectMake(w-56-150,y+54,136,22);self.trackProgress.frame=CGRectMake(134,y+84,w-210,3);
- self.controls.hidden=NO;self.controls.frame=CGRectMake(28,h-150,w-56,118);CGFloat cw=(w-80)/3;for(int i=0;i<3;i++){UIView *b=[self.controls viewWithTag:20+i];b.frame=CGRectMake(i*(cw+12),0,cw,118);[b viewWithTag:105].frame=CGRectMake(cw/2-30,29,60,60);}
- if(!landscape){self.speed.frame=CGRectMake(28,105,w*.46-28,175);self.unit.frame=CGRectMake(28,285,w*.46-28,32);self.gpsStatus.frame=CGRectMake(28,321,w*.46-28,30);self.clock.frame=CGRectMake(w*.52,132,w*.44,115);self.carStatus.frame=CGRectMake(w*.52,265,w*.44,32);self.driveEQ.frame=CGRectMake(w*.55,310,w*.38,46);self.driveCar.frame=CGRectMake(w*.18,355,w*.64,h-690);self.audioBars.frame=CGRectMake(w*.24,h-330,w*.52,48);}
+  self.arc.hidden=YES;self.progress.hidden=YES;self.carImage.hidden=YES;self.panel.clockOnly=YES;
+  self.energyFlowLabel.hidden=YES;self.compassLabel.hidden=YES;self.tripButton.hidden=YES;
+  for(int i=0;i<6;i++)((UIButton *)self.cards[i]).hidden=YES;
+  CGFloat podW=226,podH=306,topY=72;
+  self.driveLeftCard.hidden=NO;self.driveLeftCard.frame=CGRectMake(24,topY,podW,podH);
+  self.speed.hidden=NO;self.speed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:110]?:[UIFont boldSystemFontOfSize:110];self.speed.textAlignment=NSTextAlignmentCenter;self.speed.frame=CGRectMake(24,topY+8,podW,110);
+  self.unit.hidden=NO;self.unit.font=[UIFont boldSystemFontOfSize:16];self.unit.textAlignment=NSTextAlignmentRight;self.unit.text=@"km/h  •  GPS";self.unit.frame=CGRectMake(32,topY+124,136,26);
+  self.speedLimitBtn.hidden=NO;self.speedLimitBtn.frame=CGRectMake(176,topY+119,36,36);self.speedLimitBtn.layer.cornerRadius=18;
+  self.gpsStatus.hidden=NO;self.gpsStatus.font=[UIFont boldSystemFontOfSize:12];self.gpsStatus.textAlignment=NSTextAlignmentCenter;self.gpsStatus.frame=CGRectMake(28,topY+162,podW-8,22);
+  self.driveTripButton.hidden=NO;self.driveTripButton.frame=CGRectMake(30,topY+200,podW-12,44);self.driveTripButton.titleLabel.font=[UIFont boldSystemFontOfSize:11.5];self.driveTripButton.titleLabel.minimumScaleFactor=0.6;self.driveTripButton.layer.cornerRadius=10;self.driveTripButton.backgroundColor=[UIColor colorWithWhite:.10 alpha:1];self.driveTripButton.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;
+  self.driveCar.hidden=NO;self.driveCar.frame=CGRectMake(256,topY+8,w-512,224);
+  self.audioBars.hidden=NO;self.audioBars.multicolor=YES;self.audioBars.frame=CGRectMake(286,topY+240,w-572,28);
+  CGFloat rightX=w-24-podW;self.driveRightCard.hidden=NO;self.driveRightCard.frame=CGRectMake(rightX,topY,podW,podH);
+  self.clock.hidden=NO;self.clock.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:84]?:[UIFont boldSystemFontOfSize:84];self.clock.textAlignment=NSTextAlignmentCenter;self.clock.frame=CGRectMake(rightX,topY+8,podW,96);
+  self.date.hidden=NO;self.date.font=[UIFont boldSystemFontOfSize:14];self.date.textColor=[UIColor colorWithWhite:.80 alpha:1];self.date.textAlignment=NSTextAlignmentCenter;self.date.frame=CGRectMake(rightX+6,topY+108,podW-12,22);
+  self.carStatus.hidden=NO;self.carStatus.font=[UIFont boldSystemFontOfSize:11];self.carStatus.textColor=[UIColor colorWithWhite:.62 alpha:1];self.carStatus.textAlignment=NSTextAlignmentCenter;self.carStatus.frame=CGRectMake(rightX+6,topY+134,podW-12,20);
+  self.driveCameraButton.hidden=NO;self.driveCameraButton.frame=CGRectMake(rightX+14,topY+162,podW-28,38);[self.driveCameraButton setTitle:@"📷  REAR / CAMERA" forState:UIControlStateNormal];self.driveCameraButton.titleLabel.font=[UIFont boldSystemFontOfSize:13];self.driveCameraButton.layer.cornerRadius=8;
+  self.radioButton.hidden=NO;self.radioButton.frame=CGRectMake(rightX+14,topY+206,podW-28,38);[self.radioButton setTitle:@"📻  THAI RADIO" forState:UIControlStateNormal];self.radioButton.titleLabel.font=[UIFont boldSystemFontOfSize:13];self.radioButton.layer.cornerRadius=8;self.radioButton.backgroundColor=[UIColor colorWithWhite:.10 alpha:1];self.radioButton.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;
+  CGFloat consoleY=topY+podH+14;CGFloat consoleH=h-consoleY-14;
+  self.nowPanel.hidden=NO;self.nowPanel.frame=CGRectMake(24,consoleY,w-48,consoleH);self.nowPanel.layer.cornerRadius=16;self.nowPanel.layer.borderWidth=1.2;self.nowPanel.layer.borderColor=[UIColor colorWithWhite:.18 alpha:1].CGColor;self.nowPanel.backgroundColor=[UIColor colorWithWhite:.055 alpha:.95];
+  self.artwork.hidden=NO;self.artwork.frame=CGRectMake(44,consoleY+18,114,114);self.artwork.layer.cornerRadius=12;self.artwork.layer.borderWidth=1;self.artwork.layer.borderColor=[UIColor colorWithWhite:.25 alpha:1].CGColor;self.artPlaceholder.frame=self.artwork.frame;self.artPlaceholder.hidden=(self.artwork.image!=nil);self.artPlaceholder.font=[UIFont systemFontOfSize:46];
+  CGFloat textX=176,textW=w-48-textX-420;
+  self.song.hidden=NO;self.song.textAlignment=NSTextAlignmentLeft;self.song.font=[UIFont boldSystemFontOfSize:24];self.song.adjustsFontSizeToFitWidth=YES;self.song.minimumScaleFactor=0.75;self.song.frame=CGRectMake(textX,consoleY+18,textW,32);
+  self.artist.hidden=NO;self.artist.textAlignment=NSTextAlignmentLeft;self.artist.font=[UIFont systemFontOfSize:17];self.artist.adjustsFontSizeToFitWidth=YES;self.artist.minimumScaleFactor=0.8;self.artist.frame=CGRectMake(textX,consoleY+54,textW,24);
+  self.sourceBadge.hidden=NO;self.sourceBadge.frame=CGRectMake(textX,consoleY+88,84,24);self.sourceBadge.font=[UIFont boldSystemFontOfSize:11];
+  CGFloat progW=textX+textW-44;self.trackProgress.hidden=NO;self.trackProgress.frame=CGRectMake(44,consoleY+150,progW,5);
+  self.trackTime.hidden=NO;self.trackTime.frame=CGRectMake(44,consoleY+160,progW,22);self.trackTime.font=[UIFont systemFontOfSize:13];self.trackTime.textAlignment=NSTextAlignmentRight;self.trackTime.textColor=[UIColor colorWithWhite:.65 alpha:1];
+  CGFloat rActionsX=w-24-400,rBtnW=(400-20)/3;
+  self.offlineMusicBtn.hidden=NO;self.offlineMusicBtn.frame=CGRectMake(rActionsX,consoleY+18,rBtnW,42);[self.offlineMusicBtn setTitle:@"💾 OFFLINE" forState:UIControlStateNormal];self.offlineMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:13];self.offlineMusicBtn.backgroundColor=[UIColor colorWithWhite:.09 alpha:1];self.offlineMusicBtn.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;self.offlineMusicBtn.layer.cornerRadius=8;
+  self.searchMusicBtn.hidden=NO;self.searchMusicBtn.frame=CGRectMake(rActionsX+rBtnW+10,consoleY+18,rBtnW,42);[self.searchMusicBtn setTitle:@"🔍 SEARCH" forState:UIControlStateNormal];self.searchMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:13];self.searchMusicBtn.backgroundColor=[UIColor colorWithWhite:.09 alpha:1];self.searchMusicBtn.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;self.searchMusicBtn.layer.cornerRadius=8;
+  self.driveEQ.hidden=NO;self.driveEQ.frame=CGRectMake(rActionsX+2*(rBtnW+10),consoleY+18,rBtnW,42);[self.driveEQ setTitle:@"🎛️ EQ SOUND" forState:UIControlStateNormal];self.driveEQ.titleLabel.font=[UIFont boldSystemFontOfSize:13];self.driveEQ.backgroundColor=[UIColor colorWithWhite:.09 alpha:1];self.driveEQ.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;self.driveEQ.layer.cornerRadius=8;
+  self.controls.hidden=NO;self.controls.backgroundColor=[UIColor clearColor];self.controls.frame=CGRectMake(rActionsX,consoleY+70,400,consoleH-82);[self.controls viewWithTag:23].hidden=YES;
+  CGFloat cw=(400-20)/3,ch=consoleH-86;for(int i=0;i<3;i++){UIView *b=[self.controls viewWithTag:20+i];b.frame=CGRectMake(i*(cw+10),4,cw,ch);b.layer.cornerRadius=14;if(i==1){b.backgroundColor=[TRDAccent() colorWithAlphaComponent:.18];b.layer.borderColor=[TRDAccent() colorWithAlphaComponent:.60].CGColor;[b viewWithTag:105].frame=CGRectMake((cw-56)/2,(ch-56)/2,56,56);}else{b.backgroundColor=[UIColor colorWithWhite:.085 alpha:1];b.layer.borderColor=[UIColor colorWithWhite:.20 alpha:1].CGColor;[b viewWithTag:105].frame=CGRectMake((cw-48)/2,(ch-48)/2,48,48);}}
  }else{[self.driveCar stop];self.unit.font=[UIFont systemFontOfSize:16];self.artist.font=[UIFont systemFontOfSize:12];}
 
  self.musicHeading.hidden=!self.musicMode;self.browseMusic.hidden=!self.musicMode;
@@ -561,8 +590,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.artPlaceholder.frame=self.artwork.frame;self.controls.hidden=NO;self.controls.frame=CGRectMake(28,h-104,w-56,82);[self.controls viewWithTag:23].hidden=YES;CGFloat cw=(w-80)/3;for(int i=0;i<3;i++){UIView *b=[self.controls viewWithTag:20+i];b.frame=CGRectMake(i*(cw+12),0,cw,82);[b viewWithTag:105].frame=CGRectMake(cw/2-24,17,48,48);}
  }
  self.navigation.hidden=self.focused;self.navigation.frame=CGRectMake(0,fullH-78,w,78);CGFloat nw=(w-24)/6;for(int i=0;i<6;i++){UIButton *b=self.navButtons[i];BOOL active=(i==0&&!self.musicMode&&!self.mapMode&&!self.tripMode&&!self.carplayMode)||(i==1&&self.carplayMode)||(i==2&&self.musicMode)||(i==3&&self.mapMode);b.frame=CGRectMake(12+i*nw,9,nw-5,60);b.backgroundColor=active?[TRDAccent() colorWithAlphaComponent:.14]:[UIColor clearColor];[b viewWithTag:201].frame=CGRectMake(b.bounds.size.width/2-47,16,26,26);UILabel *t=(UILabel *)[b viewWithTag:202];t.font=[UIFont boldSystemFontOfSize:13];t.frame=CGRectMake(b.bounds.size.width/2-12,16,70,28);t.textColor=active?[UIColor whiteColor]:[UIColor lightGrayColor];[b viewWithTag:203].backgroundColor=TRDAccent();[b viewWithTag:203].hidden=!active;[b viewWithTag:203].frame=CGRectMake(20,56,b.bounds.size.width-40,2);}
- self.tripButton.hidden=focus||self.musicMode||self.tripMode||self.mapMode;self.radioButton.hidden=self.tripButton.hidden;if(!self.musicMode){self.offlineMusicBtn.hidden=self.tripButton.hidden;self.searchMusicBtn.hidden=self.tripButton.hidden;}self.tripButton.frame=CGRectMake(w*.70,top-90,w*.28-12,25);
- if(self.driveMode){CGRect eq=self.driveEQ.frame;self.driveEQ.frame=CGRectMake(eq.origin.x,eq.origin.y,(eq.size.width-8)/2,eq.size.height);self.tripButton.frame=CGRectMake(CGRectGetMaxX(self.driveEQ.frame)+8,eq.origin.y,(eq.size.width-8)/2,eq.size.height);}
+ self.tripButton.hidden=focus||self.musicMode||self.tripMode||self.mapMode||self.driveMode;
+ if(!self.driveMode){self.radioButton.hidden=self.tripButton.hidden;if(!self.musicMode){self.offlineMusicBtn.hidden=self.tripButton.hidden;self.searchMusicBtn.hidden=self.tripButton.hidden;}self.tripButton.frame=CGRectMake(w*.70,top-90,w*.28-12,25);}
  if(landscape&&!focus&&!self.driveMode&&!self.musicMode&&!self.tripMode&&!self.mapMode&&!self.carplayMode){
   self.arc.hidden=YES;self.progress.hidden=YES;self.panel.clockOnly=YES;[self.panel setNeedsDisplay];
   self.carImage.frame=CGRectMake(w*.205,82,w*.59,280);self.carGlow.hidden=NO;self.carGlow.frame=CGRectMake(w*.25,322,w*.50,18);CAGradientLayer *glow=(CAGradientLayer *)self.carGlow.layer.sublayers.firstObject;glow.frame=self.carGlow.bounds;glow.colors=@[(id)[UIColor clearColor].CGColor,(id)[[TRDAccent() colorWithAlphaComponent:.10] CGColor],(id)[[UIColor colorWithWhite:.65 alpha:.13] CGColor],(id)[[TRDAccent() colorWithAlphaComponent:.10] CGColor],(id)[UIColor clearColor].CGColor];
@@ -575,11 +604,39 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   CGFloat cg=12,cw=(w-56-5*cg)/6,cy=h-162,start=(w-(6*cw+5*cg))/2;NSInteger favorites[]={0,1,2,3,4,5};for(int i=0;i<6;i++)((UIButton *)self.cards[i]).hidden=YES;for(int j=0;j<6;j++){UIButton *b=self.cards[favorites[j]];b.hidden=NO;b.frame=CGRectMake(start+j*(cw+cg),cy,cw,104);b.layer.borderColor=[UIColor colorWithWhite:.24 alpha:1].CGColor;UILabel *t=(UILabel *)[b viewWithTag:100];t.font=[UIFont boldSystemFontOfSize:15];t.textColor=[UIColor colorWithWhite:.92 alpha:1];t.textAlignment=NSTextAlignmentLeft;t.adjustsFontSizeToFitWidth=YES;t.minimumScaleFactor=0.75;t.frame=CGRectMake(54,35,cw-58,34);[b viewWithTag:104].frame=CGRectMake(12,33,38,38);[b viewWithTag:102].frame=CGRectMake(0,22,2,60);[b viewWithTag:102].alpha=.6;}self.song.textColor=[UIColor colorWithWhite:self.nightMode?.78:.95 alpha:1];
  }
  self.driveTripButton.hidden=!self.driveMode;self.driveCameraButton.hidden=!self.driveMode;
- if(self.driveMode){self.driveEQ.hidden=YES;self.tripButton.hidden=YES;self.driveTripButton.frame=landscape?CGRectMake(20,352,w*.26,46):CGRectMake(w*.55,310,w*.38,52);self.driveCameraButton.frame=landscape?CGRectMake(w*.70+16,346,w*.28-32,58):CGRectMake(w*.55,310,w*.38,60);self.audioBars.frame=landscape?CGRectMake(w*.32,h-296,w*.36,18):CGRectMake(w*.82,h-330,w*.16,18);}
  self.tripView.hidden=!self.tripMode;if(self.tripMode){self.tripView.frame=CGRectMake(28,86,w-56,h-230);self.arc.hidden=YES;self.progress.hidden=YES;for(UIView *v in @[self.carImage,self.driveCar,self.driveEQ,self.speed,self.unit,self.gpsStatus,self.clock,self.date,self.nowPanel,self.artwork,self.artPlaceholder,self.song,self.artist,self.carStatus,self.audioBars,self.trackTime,self.trackProgress,self.controls,self.musicHeading,self.browseMusic,self.offlineMusicBtn,self.searchMusicBtn])v.hidden=YES;for(UIView *v in self.cards)v.hidden=YES;}
  self.mapContainer.hidden=!self.mapMode;if(self.mapMode){self.mapContainer.frame=CGRectMake(20,70,w-40,h-70-80);if(self.mapWebView)self.mapWebView.frame=self.mapContainer.bounds;self.arc.hidden=YES;self.progress.hidden=YES;for(UIView *v in @[self.carImage,self.driveCar,self.driveEQ,self.speed,self.unit,self.gpsStatus,self.clock,self.date,self.nowPanel,self.artwork,self.artPlaceholder,self.song,self.artist,self.carStatus,self.audioBars,self.trackTime,self.trackProgress,self.controls,self.musicHeading,self.browseMusic,self.offlineMusicBtn,self.searchMusicBtn])v.hidden=YES;for(UIView *v in self.cards)v.hidden=YES;}
  if(!self.settingsSheet){self.miniPlayer.hidden=!(self.tripMode||self.focused||self.mapMode);self.miniPlayer.frame=self.mapMode?CGRectMake(20,h-74,w-40,70):CGRectMake(28,h-126,w-56,72);}
- [self refreshTrip];[self refreshMini];[self applyMotionPolicy];if(self.tripMode||self.mapMode)self.audioBars.hidden=YES;if(self.mapMode){[self.view bringSubviewToFront:self.mapContainer];[self.view bringSubviewToFront:self.miniPlayer];}[self.view bringSubviewToFront:self.heading];[self.view bringSubviewToFront:self.owner];[self.view bringSubviewToFront:self.modeButton];[self.view bringSubviewToFront:self.driveButton];[self.view bringSubviewToFront:self.nightButton];[self.view bringSubviewToFront:self.statusStrip];if(!self.mapMode)[self.view bringSubviewToFront:self.audioBars];[self.view bringSubviewToFront:self.navigation];if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}
+ [self refreshTrip];[self refreshMini];[self applyMotionPolicy];if(self.tripMode||self.mapMode)self.audioBars.hidden=YES;if(self.mapMode){[self.view bringSubviewToFront:self.mapContainer];[self.view bringSubviewToFront:self.miniPlayer];}
+ if(self.driveMode){
+  [self.view bringSubviewToFront:self.driveLeftCard];
+  [self.view bringSubviewToFront:self.speed];
+  [self.view bringSubviewToFront:self.unit];
+  [self.view bringSubviewToFront:self.speedLimitBtn];
+  [self.view bringSubviewToFront:self.gpsStatus];
+  [self.view bringSubviewToFront:self.driveTripButton];
+  [self.view bringSubviewToFront:self.driveCar];
+  [self.view bringSubviewToFront:self.audioBars];
+  [self.view bringSubviewToFront:self.driveRightCard];
+  [self.view bringSubviewToFront:self.clock];
+  [self.view bringSubviewToFront:self.date];
+  [self.view bringSubviewToFront:self.carStatus];
+  [self.view bringSubviewToFront:self.driveCameraButton];
+  [self.view bringSubviewToFront:self.radioButton];
+  [self.view bringSubviewToFront:self.nowPanel];
+  [self.view bringSubviewToFront:self.artwork];
+  [self.view bringSubviewToFront:self.artPlaceholder];
+  [self.view bringSubviewToFront:self.song];
+  [self.view bringSubviewToFront:self.artist];
+  [self.view bringSubviewToFront:self.sourceBadge];
+  [self.view bringSubviewToFront:self.trackProgress];
+  [self.view bringSubviewToFront:self.trackTime];
+  [self.view bringSubviewToFront:self.offlineMusicBtn];
+  [self.view bringSubviewToFront:self.searchMusicBtn];
+  [self.view bringSubviewToFront:self.driveEQ];
+  [self.view bringSubviewToFront:self.controls];
+ }
+ [self.view bringSubviewToFront:self.heading];[self.view bringSubviewToFront:self.owner];[self.view bringSubviewToFront:self.modeButton];[self.view bringSubviewToFront:self.driveButton];[self.view bringSubviewToFront:self.nightButton];[self.view bringSubviewToFront:self.statusStrip];if(!self.mapMode&&!self.driveMode)[self.view bringSubviewToFront:self.audioBars];[self.view bringSubviewToFront:self.navigation];if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}
 
 }
 -(void)update{
