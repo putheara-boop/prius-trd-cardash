@@ -281,6 +281,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property AVPlayer *radioPlayer;
 @property NSString *currentRadioStation;
 -(void)showTripSummary;
+-(void)batteryStateChanged:(NSNotification *)note;
 -(void)hideTripSummary;
 -(void)openRadioStationsMenu;
 -(void)playRadio:(NSString *)url name:(NSString *)name;
@@ -422,7 +423,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   UISwipeGestureRecognizer *gridSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];gridSwR.direction=UISwipeGestureRecognizerDirectionRight;gridSwR.delegate=self;gridSwR.cancelsTouchesInView=NO;gridSwR.delaysTouchesBegan=NO;[self.carplayAppGrid addGestureRecognizer:gridSwR];
   UISwipeGestureRecognizer *mapSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];mapSwR.direction=UISwipeGestureRecognizerDirectionRight;mapSwR.delegate=self;mapSwR.cancelsTouchesInView=NO;mapSwR.delaysTouchesBegan=NO;[self.mapContainer addGestureRecognizer:mapSwR];
   self.edgeR=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:self action:@selector(handleEdgePan:)];self.edgeR.edges=UIRectEdgeLeft;self.edgeR.delegate=self;self.edgeR.cancelsTouchesInView=NO;self.edgeR.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.edgeR];
- self.returnTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(leaveClock)];self.returnTap.enabled=NO;self.returnTap.delegate=self;[self.view addGestureRecognizer:self.returnTap];[UIDevice currentDevice].batteryMonitoringEnabled=YES;dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);Class manager=NSClassFromString(@"BluetoothManager");if([manager respondsToSelector:@selector(sharedInstance)])self.bluetooth=[manager performSelector:@selector(sharedInstance)];dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",RTLD_LAZY);[self update];if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}
+ self.returnTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(leaveClock)];self.returnTap.enabled=NO;self.returnTap.delegate=self;[self.view addGestureRecognizer:self.returnTap];[UIDevice currentDevice].batteryMonitoringEnabled=YES;[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(batteryStateChanged:) name:UIDeviceBatteryStateDidChangeNotification object:nil];dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);Class manager=NSClassFromString(@"BluetoothManager");if([manager respondsToSelector:@selector(sharedInstance)])self.bluetooth=[manager performSelector:@selector(sharedInstance)];dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",RTLD_LAZY);[self update];if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}
   [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
   MPRemoteCommandCenter *rCenter = [MPRemoteCommandCenter sharedCommandCenter];
   [rCenter.nextTrackCommand removeTarget:nil];
@@ -983,7 +984,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  [self.view bringSubviewToFront:card];
  
  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
- [self performSelector:@selector(hideTripSummary) withObject:nil afterDelay:6.0];
+ [self performSelector:@selector(hideTripSummary) withObject:nil afterDelay:3.0];
 }
 -(void)hideTripSummary{
  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];

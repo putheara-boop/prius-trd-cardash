@@ -11,14 +11,38 @@
 -(void)setThemeNumber:(NSNumber *)number{TRDTheme=MAX(0,MIN(2,number.integerValue));[[NSUserDefaults standardUserDefaults]setInteger:TRDTheme forKey:@"TRDTheme"];[[NSUserDefaults standardUserDefaults]synchronize];[self applyTheme];}
 -(void)redrawIcons:(UIView *)view{if([view isKindOfClass:[DashIcon class]])[view setNeedsDisplay];for(UIView *v in view.subviews)[self redrawIcons:v];}
 -(void)applyTheme{TRDLowLight=self.nightMode;UIColor *c=TRDAccent();NSString *mode=TRDDriveModeName(TRDTheme);self.heading.text=[NSString stringWithFormat:@"PRIUS  TRD  /  %@",mode];[self.modeButton setTitle:[NSString stringWithFormat:@"[ %@ ]",mode] forState:UIControlStateNormal];[self.modeButton setTitleColor:c forState:UIControlStateNormal];self.modeButton.layer.borderColor=c.CGColor;self.modeButton.backgroundColor=[c colorWithAlphaComponent:.12];self.driveCameraButton.backgroundColor=[c colorWithAlphaComponent:.20];self.driveCameraButton.layer.borderColor=[c colorWithAlphaComponent:.8].CGColor;self.clock.textColor=[UIColor colorWithWhite:self.nightMode?.78:1 alpha:1];self.speed.textColor=self.clock.textColor;self.song.textColor=self.nightMode?[UIColor colorWithRed:.78 green:.64 blue:.38 alpha:1]:[UIColor colorWithRed:1 green:.78 blue:.42 alpha:1];self.heading.textColor=c;self.musicHeading.textColor=c;self.unit.textColor=c;self.artPlaceholder.textColor=c;self.trackProgress.progressTintColor=c;self.progress.strokeColor=c.CGColor;[self.nightButton setTitleColor:c forState:0];self.nightButton.layer.borderColor=c.CGColor;self.nightButton.backgroundColor=[c colorWithAlphaComponent:.10];[self.driveEQ setTitleColor:c forState:0];self.driveEQ.layer.borderColor=[c colorWithAlphaComponent:.4].CGColor;self.driveEQ.backgroundColor=[c colorWithAlphaComponent:.10];self.sourceBadge.backgroundColor=[c colorWithAlphaComponent:.28];self.sourceBadge.layer.borderColor=[c colorWithAlphaComponent:.65].CGColor;for(UIButton *b in self.cards){[b viewWithTag:102].backgroundColor=c;b.layer.borderColor=[c colorWithAlphaComponent:.3].CGColor;((UILabel *)[b viewWithTag:100]).textColor=b.tag==1?c:[UIColor whiteColor];}for(UIButton *b in self.controls.subviews){b.backgroundColor=[c colorWithAlphaComponent:.10];b.layer.borderColor=[c colorWithAlphaComponent:.35].CGColor;[b setTitleColor:c forState:0];}[self.radioButton setTitleColor:c forState:0];self.radioButton.layer.borderColor=[c colorWithAlphaComponent:.4].CGColor;[self.panel setNeedsDisplay];[self.audioBars setNeedsDisplay];[self redrawIcons:self.view];[self refreshClockHud];[self.view setNeedsLayout];}
--(void)screenOff{[self send:@"libactivator.lockscreen.show"];}
+-(void)screenOff{
+ [UIApplication sharedApplication].idleTimerDisabled=NO;
+ [UIScreen mainScreen].brightness=0.0;
+ void *bks=dlopen("/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices",RTLD_LAZY);
+ if(bks){
+  void (*blank)(BOOL)=(void (*)(BOOL))dlsym(bks,"BKSDisplayServicesSetScreenBlanked");
+  if(blank)blank(YES);
+ }
+ void *gs=dlopen("/System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices",RTLD_LAZY);
+ if(gs){
+  void (*lock)(void)=(void (*)(void))dlsym(gs,"GSEventLockDevice");
+  if(lock)lock();
+ }
+ [self send:@"libactivator.system.sleep-button"];
+}
 -(void)showWelcome{[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];[self.welcome removeFromSuperview];self.welcome=[CarWelcome new];self.welcome.frame=self.view.bounds;self.welcome.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[self.welcome addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(hideWelcome)]];[self.view addSubview:self.welcome];[self performSelector:@selector(hideWelcome) withObject:nil afterDelay:2.0];}
 -(void)hideWelcome{[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];CarWelcome *view=self.welcome;self.welcome=nil;[UIView animateWithDuration:.25 animations:^{view.alpha=0;} completion:^(BOOL done){[view removeFromSuperview];}];}
 -(void)previewWelcomeCapture{[self showWelcome];[self.welcome layoutIfNeeded];[self capture];}
 -(void)soundProfileSettings{NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];BOOL enabled=[cfg[@"enabled"]boolValue];TRDSettingsMenu *m=[self settingsMenu:@"SOUND PROFILES" message:@"Presets follow the app playing audio. Choosing a preset in EQE also remembers it for that app."];[m addAction:[TRDSettingAction actionWithTitle:enabled?@"Automatic sound: ON (tap to turn off)":@"Automatic sound: OFF (tap to turn on)" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *next=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];next[@"enabled"]=@(!enabled);[next writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();}]];NSArray *names=@[@"Music / audioNINJA",@"YouTube"],*ids=@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine"];for(NSInteger i=0;i<names.count;i++){NSString *bundle=ids[i],*label=names[i];NSString *title=[NSString stringWithFormat:@"%@: %@",label,cfg[@"profiles"][bundle]?:@"Flat"];[m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){[self chooseProfile:bundle title:label];}]];}[self presentSettingsMenu:m];}
 -(void)chooseProfile:(NSString *)bundle title:(NSString *)title{TRDSettingsMenu *m=[self settingsMenu:title message:@"Used automatically when this app becomes the audio source."];for(NSString *name in TRDProfileNames())[m addAction:[TRDSettingAction actionWithTitle:name style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];NSMutableDictionary *profiles=[cfg[@"profiles"]mutableCopy];profiles[bundle]=name;cfg[@"profiles"]=profiles;[cfg writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();}]];[self presentSettingsMenu:m];}
 
--(void)restoreDisplayBrightness{if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;CGFloat target=self.nightMode?.25:.85;if(fabs([UIScreen mainScreen].brightness-target)>.005)[UIScreen mainScreen].brightness=target;}
+-(void)restoreDisplayBrightness{
+ if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
+ void *bks=dlopen("/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices",RTLD_LAZY);
+ if(bks){
+  void (*blank)(BOOL)=(void (*)(BOOL))dlsym(bks,"BKSDisplayServicesSetScreenBlanked");
+  if(blank)blank(NO);
+ }
+ [UIApplication sharedApplication].idleTimerDisabled=YES;
+ CGFloat target=self.nightMode?.25:.85;
+ [UIScreen mainScreen].brightness=target;
+}
 
 -(void)openCamera{if(![self launchBundleApp:@"com.codex.h109viewer"]){[self launchBundleApp:@"com.apple.camera"];}}
 -(void)toggleCalmDrive{self.calmDrive=!self.calmDrive;[[NSUserDefaults standardUserDefaults]setBool:self.calmDrive forKey:@"TRDCalmDrive"];[[NSUserDefaults standardUserDefaults]synchronize];[self applyMotionPolicy];[self refreshSpeed];[self.view setNeedsLayout];}
