@@ -206,6 +206,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)showMusicSources:(UIButton *)anchor;
 
 @property UIButton *driveEQ;
+-(void)openDriveEQ;
+-(void)applyEQPreset:(NSString *)presetName;
 @property DrivePrius *driveCar;
 @property UILabel *trackTime;
 @property UIProgressView *trackProgress;
@@ -805,7 +807,46 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)didReceiveMemoryWarning{[super didReceiveMemoryWarning];self.memoryWarnings++;[self releaseArtwork];[self hideWelcome];[self.settingsSheet dismiss];if(!self.mapMode&&!self.carplayMode&&self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}}
 -(NSString *)trackTimeString:(double)value{if(!isfinite(value)||value<0)return @"--:--";long long n=(long long)value;return n>=3600?[NSString stringWithFormat:@"%lld:%02lld:%02lld",n/3600,n/60%60,n%60]:[NSString stringWithFormat:@"%lld:%02lld",n/60,n%60];}
 -(void)refreshTrackProgress{if(self.radioPlayer){if(![self.trackTime.text isEqualToString:@"LIVE STREAM · ON AIR"]){self.trackTime.text=@"LIVE STREAM · ON AIR";self.trackProgress.progress=1.0;}return;}double elapsed=self.mediaElapsed;if(self.hasElapsed&&self.mediaTimestamp&&self.mediaRate>0)elapsed+=MAX(0,-[self.mediaTimestamp timeIntervalSinceNow])*self.mediaRate;if(self.mediaDuration>0)elapsed=MIN(elapsed,self.mediaDuration);NSString *newTime=[NSString stringWithFormat:@"%@ / %@",self.hasElapsed?[self trackTimeString:elapsed]:@"--:--",self.mediaDuration>0?[self trackTimeString:self.mediaDuration]:@"--:--"];if(![self.trackTime.text isEqualToString:newTime]){self.trackTime.text=newTime;self.trackProgress.progress=self.hasElapsed&&self.mediaDuration>0?MAX(0,MIN(1,elapsed/self.mediaDuration)):0;}}
--(void)openDriveEQ{[self send:@"com.r333d.eqe.app"];}
+-(void)applyEQPreset:(NSString *)presetName{
+ if(!presetName.length)return;
+ NSString *clean=[presetName hasPrefix:@"TRD "]?[presetName substringFromIndex:4]:presetName;
+ pid_t pid;
+ const char *argv[]={"/usr/local/bin/trd-eqe",[clean UTF8String],NULL};
+ posix_spawn(&pid,argv[0],NULL,NULL,(char *const *)argv,NULL);
+ if(pid>0){int status=0;waitpid(pid,&status,0);}
+ NSString *title=[NSString stringWithFormat:@"EQ • %@",[clean uppercaseString]];
+ [self.driveEQ setTitle:title forState:UIControlStateNormal];
+ [self.carplayEQBtn setTitle:title forState:UIControlStateNormal];
+ NSString *srcPath=@"/var/mobile/codex-car/sound-source.plist";
+ NSMutableDictionary *src=[NSMutableDictionary dictionaryWithContentsOfFile:srcPath]?:[NSMutableDictionary dictionary];
+ src[@"preset"]=clean;
+ [src writeToFile:srcPath atomically:YES];
+}
+-(void)openDriveEQ{
+ NSDictionary *src=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/sound-source.plist"];
+ NSString *cur=src[@"preset"]?:@"Rock";
+ TRDSettingsMenu *m=[self settingsMenu:@"🎚️ EQUALIZER & SOUND (EQE)" message:[NSString stringWithFormat:@"Active Preset: TRD %@  •  Tap to apply",cur]];
+ NSArray *presets=@[
+  @{@"name":@"Rock",@"label":@"🎸 Rock (เบสหนัก แน่น สะใจ - สไตล์ TRD)"},
+  @{@"name":@"Dance",@"label":@"💃 Dance / Bass Boost (EDM / Club กระหึ่ม)"},
+  @{@"name":@"Pop",@"label":@"🎤 Pop / Vocal (เสียงร้องเด่น ใส ชัดเจน)"},
+  @{@"name":@"Jazz",@"label":@"🎷 Jazz (เสียงนุ่มนวล มิติเปิดกว้าง)"},
+  @{@"name":@"Classical",@"label":@"🎻 Classical (สมดุล คมชัด เวทีกว้าง)"},
+  @{@"name":@"Flat",@"label":@"🎵 Flat (เสียงเดิม ไม่ปรุงแต่ง)"}
+ ];
+ for(NSDictionary *p in presets){
+  NSString *name=p[@"name"],*label=p[@"label"];
+  BOOL isCur=[cur caseInsensitiveCompare:name]==NSOrderedSame;
+  NSString *rowTitle=isCur?[NSString stringWithFormat:@"✓ %@",label]:label;
+  [m addAction:[TRDSettingAction actionWithTitle:rowTitle style:0 handler:^(TRDSettingAction *a){
+   [self applyEQPreset:name];
+  }]];
+ }
+ [m addAction:[TRDSettingAction actionWithTitle:@"⚙️ Automatic Sound Profiles..." style:0 handler:^(TRDSettingAction *a){
+  [self soundProfileSettings];
+ }]];
+ [self presentSettingsMenu:m];
+}
 -(void)toggleSpeedLimit{
  if(self.speedLimit==90)self.speedLimit=120;
  else if(self.speedLimit==120)self.speedLimit=0;
