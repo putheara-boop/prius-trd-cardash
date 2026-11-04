@@ -2,7 +2,7 @@
 #import <CoreLocation/CoreLocation.h>
 #include <math.h>
 // Only aggregate distance/time/speed are persisted, never route coordinates.
-static BOOL TRDTripFixIsReliable(CLLocation *fix,NSDate *now){
+static BOOL TRDTripModelFixIsReliable(CLLocation *fix,NSDate *now){
  return fix&&fabs([fix.timestamp timeIntervalSinceDate:now])<=5&&
   isfinite(fix.horizontalAccuracy)&&fix.horizontalAccuracy>=0&&fix.horizontalAccuracy<=25&&
   isfinite(fix.speed)&&fix.speed>=0&&fix.speed<=250.0/3.6&&
@@ -27,7 +27,7 @@ static BOOL TRDTripFixIsReliable(CLLocation *fix,NSDate *now){
 -(void)pause{self.manuallyPaused=YES;[self breakSegment];}
 -(void)accept:(CLLocation *)fix now:(NSDate *)now{
  if(self.manuallyPaused){[self breakSegment];return;}
- if(!TRDTripFixIsReliable(fix,now)){[self breakSegment];return;}
+ if(!TRDTripModelFixIsReliable(fix,now)){[self breakSegment];return;}
  if(self.lastFixTimestamp&&[fix.timestamp timeIntervalSinceDate:self.lastFixTimestamp]<=0)return;
  self.lastFixTimestamp=fix.timestamp;
  // Start at 3 km/h; pause below 1.8 km/h. Separate thresholds avoid GPS chatter.
