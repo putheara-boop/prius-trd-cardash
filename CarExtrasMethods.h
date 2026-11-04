@@ -42,7 +42,7 @@
 
 -(void)openCamera{if(![self launchBundleApp:@"com.codex.h109viewer"]){[self launchBundleApp:@"com.apple.camera"];}}
 -(void)toggleCalmDrive{self.calmDrive=!self.calmDrive;[[NSUserDefaults standardUserDefaults]setBool:self.calmDrive forKey:@"TRDCalmDrive"];[[NSUserDefaults standardUserDefaults]synchronize];[self applyMotionPolicy];[self refreshSpeed];[self.view setNeedsLayout];}
--(void)applyMotionPolicy{BOOL calm=self.driveMode&&self.calmDrive;self.audioBars.hidden=self.focused||self.tripMode||self.mapMode;self.audioBars.multicolor=YES;if(self.focused||self.tripMode||self.mapMode||[UIApplication sharedApplication].applicationState==UIApplicationStateBackground){if(self.audioBars.refreshTimer)[self.audioBars stop];}else [self.audioBars start];if(calm)[self.driveCar stop];}
+-(void)applyMotionPolicy{BOOL calm=self.driveMode&&self.calmDrive;self.audioBars.hidden=!self.musicMode;self.audioBars.multicolor=self.musicMode;if(!self.musicMode||[UIApplication sharedApplication].applicationState==UIApplicationStateBackground){if(self.audioBars.refreshTimer)[self.audioBars stop];}else [self.audioBars start];if(calm)[self.driveCar stop];}
 -(void)refreshAudioRoute{
  AVAudioSession *session=[AVAudioSession sharedInstance];AVAudioSessionPortDescription *port=session.currentRoute.outputs.firstObject;NSString *type=port.portType,*name=port.portName;NSString *route=@"NO AUDIO OUTPUT",*shortName=@"NO OUTPUT";
  if([type isEqual:AVAudioSessionPortBuiltInSpeaker]){route=@"IPAD SPEAKER";shortName=@"SPEAKER";}
