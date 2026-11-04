@@ -1004,6 +1004,15 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   }];
  }
 }
+-(void)batteryStateChanged:(NSNotification *)note{
+ UIDeviceBatteryState state=[UIDevice currentDevice].batteryState;
+ if(state==UIDeviceBatteryStateUnplugged){
+  [self showTripSummary];
+ }else if(state==UIDeviceBatteryStateCharging||state==UIDeviceBatteryStateFull){
+  [self restoreDisplayBrightness];
+  [self showWelcome];
+ }
+}
 -(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations{self.gpsUpdates++;self.gpsError=nil;self.fix=[locations lastObject];BOOL wasRunning=self.trip.running;for(CLLocation *fix in locations)[self.trip accept:fix now:[NSDate date]];if(wasRunning!=self.trip.running||!self.lastTripSavedAt||-[self.lastTripSavedAt timeIntervalSinceNow]>=5)[self saveTrip];if([UIApplication sharedApplication].applicationState!=UIApplicationStateBackground){[self refreshSpeed];[self refreshTrip];[self updateMapCar];}}
 -(void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error{self.gpsError=error.description;self.fix=nil;[self.trip breakSegment];[self saveTrip];[self refreshSpeed];[self refreshTrip];}
 -(BOOL)launchBundleApp:(NSString *)identifier{
