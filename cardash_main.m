@@ -696,8 +696,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   AVPlayerItemStatus st=self.radioPlayer.currentItem.status;
   if(st==AVPlayerItemStatusReadyToPlay){
    if(self.radioPlayer.rate>0){
-    self.song.text=self.currentRadioStation?:@"Thai Live Radio";
-    self.artist.text=@"Thai Live Radio · Playing Live";
+    self.song.text=self.currentRadioStation?:@"Live Radio Broadcast";
+    self.artist.text=@"Live Radio Broadcast · Playing Live";
    }else{
     self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:@"Radio"];
     self.artist.text=@"Tap Play button to resume";
@@ -932,23 +932,50 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  [self.radioPlayer play];
 }
 -(void)openRadioStationsMenu{
- TRDSettingsMenu *m=[self settingsMenu:@"THAI RADIO & TRAFFIC" message:@"Direct online audio streams"];
- [m addAction:[TRDSettingAction actionWithTitle:@"📻 COOL Fahrenheit 93 (Hit Music)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"https://coolism-web.cdn.byteark.com/;stream/1" name:@"COOL Fahrenheit 93"];
+ TRDSettingsMenu *m=[self settingsMenu:@"RADIO & MUSIC BROADCAST" message:@"Direct online English & Thai music broadcasts"];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Met 107 (Bangkok English Hits)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"http://rstream.mcot.net:8000/fm107" name:@"Met 107 (English Hits)"];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"📻 จส.100 (JS100 Traffic)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"http://sv4.hostpleng.com:8184/;stream.mp3" name:@"JS100 Traffic จส.100"];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Capital UK (Top 40 Pop & Dance)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/CapitalUK" name:@"Capital UK (Top 40 Hits)"];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"📻 สวพ. FM 91 (Traffic Pro)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"https://www.fm91bkk.com:8900/;stream.mp3" name:@"สวพ. FM 91 Traffic"];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Heart UK (90s, 00s & Pop Variety)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/HeartLondon" name:@"Heart UK (Pop & Variety)"];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"📻 ข่าว MCOT FM 100.5 (News Network)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"https://play-fm1005.mcot.net/fm1005/fm1005.m3u8" name:@"MCOT News 100.5"];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Smooth Radio UK (Relaxing Pop & Soul)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/SmoothUK" name:@"Smooth Radio UK (Relaxing Pop)"];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"📻 ลูกทุ่งรักไทย 90 (Lukthung)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"http://radio11.plathong.net:8896/;stream.mp3" name:@"90 รักไทย"];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Radio X UK (British Indie & Rock)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/RadioXLondon" name:@"Radio X UK (British Indie & Rock)"];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"⏹️ Stop Radio" style:1 handler:^(TRDSettingAction *a){
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Classic FM UK (Soundtracks & Classics)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/ClassicFM" name:@"Classic FM UK (Soundtracks & Classics)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 BBC World Service (Global English News)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"http://stream.live.vc.bbcmedia.co.uk/bbc_world_service" name:@"BBC World Service (Global News)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🎷 Jazz Radio Paris (Smooth Jazz & Lounge)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"http://jazz-wr01.ice.infomaniak.ch/jazz-wr01-128.mp3" name:@"Jazz Radio Paris (Smooth Jazz)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇹🇭 COOL Fahrenheit 93 (No. 1 Thai Pop)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://coolism-web.cdn.byteark.com/;stream/1" name:@"COOL Fahrenheit 93 (Thai Pop)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇹🇭 Green Wave 106.5 (Thai Easy Listening)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://atimehd.smartclick.co.th/greenwave/hls/greenwave.m3u8" name:@"Green Wave 106.5 (Easy Listening)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇹🇭 Flex 104.5 (Bangkok Modern Hits)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://streaming.flexconnect.net/voiceflex/voiceflex/playlist.m3u8" name:@"Flex 104.5 (Modern Hits)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇹🇭 ลูกทุ่งเน็ตเวิร์ก 90 (Lukthung Country)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"http://radio11.plathong.net:8896/;stream.mp3" name:@"ลูกทุ่งเน็ตเวิร์ก 90"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🚗 จส.100 (JS100 Traffic Report)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"http://sv4.hostpleng.com:8184/;stream.mp3" name:@"จส.100 (JS100 Traffic Report)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🚗 สวพ. FM 91 (Traffic Pro Alerts)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://www.fm91bkk.com:8900/;stream.mp3" name:@"สวพ. FM 91 (Traffic Pro Alerts)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⏹️ Stop Radio (หยุดวิทยุ)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:nil name:nil];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🎵 Open audioNINJA / YouTube" style:0 handler:^(TRDSettingAction *a){
@@ -1184,7 +1211,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)fetchRouteWithCoords:(NSString *)coords{NSString *urlStr=[NSString stringWithFormat:@"http://router.project-osrm.org/route/v1/driving/%@?overview=full&geometries=geojson&steps=true",coords];NSURL *url=[NSURL URLWithString:urlStr];if(!url)return;NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url];[req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6)" forHTTPHeaderField:@"User-Agent"];__weak Dashboard *weak=self;[[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){if(data&&!err){NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];if(json){dispatch_async(dispatch_get_main_queue(),^{[weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}",json]];});}}}]resume];}
 -(void)fetchSearchWithQuery:(NSString *)query{if(!query.length)return;NSString *encoded=[query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];CLLocationDegrees lat=self.fix?self.fix.coordinate.latitude:13.7563;CLLocationDegrees lng=self.fix?self.fix.coordinate.longitude:100.5018;NSString *viewbox=[NSString stringWithFormat:@"%.3f,%.3f,%.3f,%.3f",lng-.4,lat+.4,lng+.4,lat-.4];NSString *urlStr=[NSString stringWithFormat:@"http://nominatim.openstreetmap.org/search?q=%@&format=json&countrycodes=th&limit=5&viewbox=%@",encoded,viewbox];NSURL *url=[NSURL URLWithString:urlStr];if(!url)return;NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url];[req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6; Prius)" forHTTPHeaderField:@"User-Agent"];__weak Dashboard *weak=self;[[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){if(data&&!err){NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];if(json){dispatch_async(dispatch_get_main_queue(),^{[weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window._onNominatimResult){window._onNominatimResult(%@);}",json]];});}}}]resume];}
 -(void)openActiveSourceApp{NSDictionary *src=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];NSString *bundle=src[@"bundle"]?:(self.youtubeSource?@"com.himais0giiiin.ytnine":@"com.legacymusic.app");if([bundle isEqualToString:@"com.legacymusic.app"])[self browseSource:bundle];else [self send:bundle];}
--(void)showMusicSources:(UIButton *)button{TRDSettingsMenu *menu=[self settingsMenu:@"AUDIO SOURCES" message:@"Select music, live radio or player"];[menu addAction:[TRDSettingAction actionWithTitle:@"📻 Thai Radio & Traffic" style:0 handler:^(TRDSettingAction *a){[self openRadioStationsMenu];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"💾 Offline Music (เพลงที่โหลดไว้)" style:0 handler:^(TRDSettingAction *a){[self openOfflineMusicMenu];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"🔍 Search Music (ค้นหา audioNINJA)" style:0 handler:^(TRDSettingAction *a){[self openSearchMusic];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"🎵 audioNINJA Player" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.legacymusic.app"];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"▶️ YouTube" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.himais0giiiin.ytnine"];}]];[self presentSettingsMenu:menu];}
+-(void)showMusicSources:(UIButton *)button{TRDSettingsMenu *menu=[self settingsMenu:@"AUDIO SOURCES" message:@"Select music, live radio or player"];[menu addAction:[TRDSettingAction actionWithTitle:@"📻 Live Radio & Music (วิทยุออนไลน์)" style:0 handler:^(TRDSettingAction *a){[self openRadioStationsMenu];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"💾 Offline Music (เพลงที่โหลดไว้)" style:0 handler:^(TRDSettingAction *a){[self openOfflineMusicMenu];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"🔍 Search Music (ค้นหา audioNINJA)" style:0 handler:^(TRDSettingAction *a){[self openSearchMusic];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"🎵 audioNINJA Player" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.legacymusic.app"];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"▶️ YouTube" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.himais0giiiin.ytnine"];}]];[self presentSettingsMenu:menu];}
 -(void)openSearchMusic{[self browseSource:@"com.legacymusic.app"];}
 -(void)openOfflineMusicMenu{
  NSString *libPath=@"/var/mobile/Documents/LegacyMusic/library.plist";
@@ -1224,7 +1251,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  NSArray *ids=@[@"com.himais0giiiin.ytnine",@"com.legacymusic.app",@"com.apple.Maps",@"com.codex.h109viewer",@"com.apple.Preferences"];
  if(button.tag>=1&&button.tag<=5)[self send:ids[button.tag-1]];
 }
--(void)media:(UIButton *)button{if(self.radioPlayer){if(button.tag==21){if(self.radioPlayer.rate>0){[self.radioPlayer pause];self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:@"Radio"];self.artist.text=@"Tap Play button to resume";}else{Boolean (*pCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pCmd||!pCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];[self.radioPlayer play];self.song.text=self.currentRadioStation?:@"Radio";self.artist.text=@"Thai Live Radio · Playing Live";}return;}else if(button.tag==20||button.tag==22){[self openRadioStationsMenu];return;}}NSArray *ids=@[@"libactivator.ipod.previous-track",@"libactivator.ipod.toggle-playback",@"libactivator.ipod.next-track",@"com.r333d.eqe.app"];if(button.tag>=20&&button.tag<=23){Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(button.tag==22){if(!command||!command(4,nil))[self send:ids[2]];}else if(button.tag==20){if(!command||!command(5,nil))[self send:ids[0]];}else if(button.tag==21){NSDictionary *source=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];BOOL youtube=self.youtubeSource||[source[@"bundle"]isEqualToString:@"com.himais0giiiin.ytnine"];if(youtube)notify_post("com.codex.trd.youtube.toggle");else if(!command||!command(2,nil))[self send:ids[1]];}else{[self send:ids[button.tag-20]];}[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.35];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:1.2];}}
+-(void)media:(UIButton *)button{if(self.radioPlayer){if(button.tag==21){if(self.radioPlayer.rate>0){[self.radioPlayer pause];self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:@"Radio"];self.artist.text=@"Tap Play button to resume";}else{Boolean (*pCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pCmd||!pCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];[self.radioPlayer play];self.song.text=self.currentRadioStation?:@"Radio";self.artist.text=@"Live Radio Broadcast · Playing Live";}return;}else if(button.tag==20||button.tag==22){[self openRadioStationsMenu];return;}}NSArray *ids=@[@"libactivator.ipod.previous-track",@"libactivator.ipod.toggle-playback",@"libactivator.ipod.next-track",@"com.r333d.eqe.app"];if(button.tag>=20&&button.tag<=23){Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(button.tag==22){if(!command||!command(4,nil))[self send:ids[2]];}else if(button.tag==20){if(!command||!command(5,nil))[self send:ids[0]];}else if(button.tag==21){NSDictionary *source=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];BOOL youtube=self.youtubeSource||[source[@"bundle"]isEqualToString:@"com.himais0giiiin.ytnine"];if(youtube)notify_post("com.codex.trd.youtube.toggle");else if(!command||!command(2,nil))[self send:ids[1]];}else{[self send:ids[button.tag-20]];}[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.35];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:1.2];}}
 -(void)leaveClock{self.focused=NO;self.mapMode=NO;self.returnTap.enabled=NO;[self.view setNeedsLayout];}
 -(void)testSettingsAction:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<self.settingsSheet.buttons.count)[(UIButton *)self.settingsSheet.buttons[i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
 -(void)testNav:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<self.navButtons.count)[(UIButton *)self.navButtons[i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
@@ -1312,11 +1339,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   if([url.host isEqualToString:@"mode"])[v cycleDriveMode];
  if([url.host isEqualToString:@"radio"]){
   NSString *p=url.path;
-  if([p isEqualToString:@"/0"])[v playRadio:@"https://coolism-web.cdn.byteark.com/;stream/1" name:@"COOL Fahrenheit 93"];
-  else if([p isEqualToString:@"/1"])[v playRadio:@"http://sv4.hostpleng.com:8184/;stream.mp3" name:@"JS100 Traffic จส.100"];
-  else if([p isEqualToString:@"/2"])[v playRadio:@"https://www.fm91bkk.com:8900/;stream.mp3" name:@"สวพ. FM 91 Traffic"];
-  else if([p isEqualToString:@"/3"])[v playRadio:@"https://play-fm1005.mcot.net/fm1005/fm1005.m3u8" name:@"MCOT News 100.5"];
-  else if([p isEqualToString:@"/4"])[v playRadio:@"http://radio11.plathong.net:8896/;stream.mp3" name:@"90 รักไทย"];
+  if([p isEqualToString:@"/0"])[v playRadio:@"http://rstream.mcot.net:8000/fm107" name:@"Met 107 (English Hits)"];
+  else if([p isEqualToString:@"/1"])[v playRadio:@"https://media-ssl.musicradio.com/CapitalUK" name:@"Capital UK (Top 40 Hits)"];
+  else if([p isEqualToString:@"/2"])[v playRadio:@"https://media-ssl.musicradio.com/HeartLondon" name:@"Heart UK (Pop & Variety)"];
+  else if([p isEqualToString:@"/3"])[v playRadio:@"https://media-ssl.musicradio.com/SmoothUK" name:@"Smooth Radio UK (Relaxing Pop)"];
+  else if([p isEqualToString:@"/4"])[v playRadio:@"http://jazz-wr01.ice.infomaniak.ch/jazz-wr01-128.mp3" name:@"Jazz Radio Paris (Smooth Jazz)"];
+  else if([p isEqualToString:@"/5"])[v playRadio:@"https://coolism-web.cdn.byteark.com/;stream/1" name:@"COOL Fahrenheit 93 (Thai Pop)"];
+  else if([p isEqualToString:@"/6"])[v playRadio:@"http://sv4.hostpleng.com:8184/;stream.mp3" name:@"จส.100 (JS100 Traffic Report)"];
   else if([p isEqualToString:@"/stop"])[v playRadio:nil name:nil];
   else [v openRadioStationsMenu];
  }
