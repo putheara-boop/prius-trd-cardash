@@ -594,6 +594,11 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  if((previousPower==UIDeviceBatteryStateCharging||previousPower==UIDeviceBatteryStateFull)&&currentPower==UIDeviceBatteryStateUnplugged){
   [self showTripSummary];
  }else if(previousPower==UIDeviceBatteryStateUnplugged&&(currentPower==UIDeviceBatteryStateCharging||currentPower==UIDeviceBatteryStateFull)){
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
+  if(self.tripSummaryCard){
+   [self.tripSummaryCard removeFromSuperview];
+   self.tripSummaryCard=nil;
+  }
   [self restoreDisplayBrightness];
   [self showWelcome];
  }
@@ -1009,6 +1014,11 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  if(state==UIDeviceBatteryStateUnplugged){
   [self showTripSummary];
  }else if(state==UIDeviceBatteryStateCharging||state==UIDeviceBatteryStateFull){
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
+  if(self.tripSummaryCard){
+   [self.tripSummaryCard removeFromSuperview];
+   self.tripSummaryCard=nil;
+  }
   [self restoreDisplayBrightness];
   [self showWelcome];
  }

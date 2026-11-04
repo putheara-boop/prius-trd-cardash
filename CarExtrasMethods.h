@@ -14,17 +14,13 @@
 -(void)screenOff{
  [UIApplication sharedApplication].idleTimerDisabled=NO;
  [UIScreen mainScreen].brightness=0.0;
- void *bks=dlopen("/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices",RTLD_LAZY);
- if(bks){
-  void (*blank)(BOOL)=(void (*)(BOOL))dlsym(bks,"BKSDisplayServicesSetScreenBlanked");
-  if(blank)blank(YES);
- }
- void *gs=dlopen("/System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices",RTLD_LAZY);
- if(gs){
-  void (*lock)(void)=(void (*)(void))dlsym(gs,"GSEventLockDevice");
-  if(lock)lock();
- }
- [self send:@"libactivator.system.sleep-button"];
+ [self.gps stopUpdatingLocation];
+ [self.audioBars stop];
+ [self.driveCar stop];
+ [self.timer invalidate];
+ self.timer=nil;
+ [self saveTrip];
+ notify_post("com.codex.trd.sleep");
 }
 -(void)showWelcome{[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];[self.welcome removeFromSuperview];self.welcome=[CarWelcome new];self.welcome.frame=self.view.bounds;self.welcome.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[self.welcome addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(hideWelcome)]];[self.view addSubview:self.welcome];[self performSelector:@selector(hideWelcome) withObject:nil afterDelay:2.0];}
 -(void)hideWelcome{[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];CarWelcome *view=self.welcome;self.welcome=nil;[UIView animateWithDuration:.25 animations:^{view.alpha=0;} completion:^(BOOL done){[view removeFromSuperview];}];}
@@ -34,14 +30,14 @@
 
 -(void)restoreDisplayBrightness{
  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
- void *bks=dlopen("/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices",RTLD_LAZY);
- if(bks){
-  void (*blank)(BOOL)=(void (*)(BOOL))dlsym(bks,"BKSDisplayServicesSetScreenBlanked");
-  if(blank)blank(NO);
- }
  [UIApplication sharedApplication].idleTimerDisabled=YES;
  CGFloat target=self.nightMode?.25:.85;
  [UIScreen mainScreen].brightness=target;
+ if(!self.timer){
+  self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];
+  self.timer.tolerance=.1;
+ }
+ [self startGPS];
 }
 
 -(void)openCamera{if(![self launchBundleApp:@"com.codex.h109viewer"]){[self launchBundleApp:@"com.apple.camera"];}}

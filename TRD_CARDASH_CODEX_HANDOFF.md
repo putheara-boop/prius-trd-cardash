@@ -88,18 +88,23 @@ flowchart TD
 * **`browsereturn.m`**:
   * Intercepts media playback in YouTube/browser and returns to CarDash seamlessly.
 
-### 3.2 Power Management Daemons & Binaries
-* **`/usr/local/bin/trd-power-state`** (Setuid root, `chmod 4755`):
-  * No args: Prints `STATE: <battery_state>, LEVEL: <battery_level>` and returns 0 (charging) or 1 (unplugged).
-  * `--screen-off`: Invokes `BKSDisplayServicesSetScreenBlanked(YES)` + `GSEventLockDevice()`.
-  * `--screen-on`: Invokes `BKSDisplayServicesSetScreenBlanked(NO)`.
-  * `--shutdown`: Syncs disks and calls `reboot(0x400)` (instant power off).
+### 3.2 Power Management Daemons, Binaries & SpringBoard Tweak
+* **`TRDSpringBoardPower.m` -> `/Library/MobileSubstrate/DynamicLibraries/TRDSpringBoardPower.dylib`**:
+  * Runs **in-process inside `SpringBoard`** (`[[NSProcessInfo processInfo] processName] == @"SpringBoard"`), holding all Apple private entitlements (`com.apple.wifi.manager-access`, `com.apple.BTServer.allowRestrictedServices`, `com.apple.backboard.client`, `com.apple.keystore.lockassertion`).
+  * Listens for `UIDeviceBatteryStateDidChangeNotification` AND Darwin notifications (`com.codex.trd.sleep`, `com.codex.trd.wake`, `com.codex.trd.status`).
+  * Includes **Engine Crank Debounce (`gSleepGeneration` / 4.2s verification)**: If power briefly drops while cranking the starter motor and returns within 4.2 seconds, the pending sleep timer is automatically cancelled (`++gSleepGeneration`) and `TRDPerformWake()` is called immediately so the screen never locks or goes dark after engine start.
+  * Writes live telemetry to `/var/mobile/codex-car/sb-power-state.plist` (`uiLocked`, `screenIsOn`, `wifiEnabled`, `btEnabled`, `batteryState`, `batteryLevel`).
+* **`trd_power.m` -> `/usr/local/bin/trd-power-state`** (Setuid root, `chmod 4755`):
+  * No args: Prints `STATE: <battery_state>, LEVEL: <battery_level>` and returns 0 (charging/full) or 1 (unplugged).
+  * `--sleep` / `--screen-off`: Posts `notify_post("com.codex.trd.sleep")` to `TRDSpringBoardPower.dylib`.
+  * `--wake` / `--screen-on`: Posts `notify_post("com.codex.trd.wake")` to `TRDSpringBoardPower.dylib`.
+  * `--status`: Posts `notify_post("com.codex.trd.status")` and prints `/var/mobile/codex-car/sb-power-state.plist`.
 * **`/var/mobile/codex-car/stop.sh`**:
   * Triggered on unplug via Activator `libactivator.power.disconnected`.
-  * Debounces for 6 seconds, stops audio, turns off Wi-Fi/BT, and executes `/usr/local/bin/trd-power-state --screen-off`.
+  * Debounces for 4 seconds, aborts if power returned (`trd-power-state`), terminates background music helpers (`YTNine`, `LegacyMusic`, `trd-bt`) **without killing `CarDash`**, and executes `/usr/local/bin/trd-power-state --sleep`.
 * **`/var/mobile/codex-car/start.sh`**:
   * Triggered on power reconnect via Activator `libactivator.power.connected`.
-  * Calls `/usr/local/bin/trd-power-state --screen-on`, dismisses lockscreen, turns on radios, launches CarDash.
+  * Calls `/usr/local/bin/trd-power-state --wake` and starts background hotspot (`trd-network-broker internet`) and Bluetooth (`connect-car.sh`).
 
 ---
 
