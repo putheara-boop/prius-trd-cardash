@@ -644,7 +644,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self.view bringSubviewToFront:self.driveEQ];
   [self.view bringSubviewToFront:self.controls];
  }
- [self.view bringSubviewToFront:self.heading];[self.view bringSubviewToFront:self.owner];[self.view bringSubviewToFront:self.modeButton];[self.view bringSubviewToFront:self.driveButton];[self.view bringSubviewToFront:self.nightButton];[self.view bringSubviewToFront:self.statusStrip];if(self.musicMode)[self.view bringSubviewToFront:self.audioBars];[self.view bringSubviewToFront:self.navigation];if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}
+ [self.view bringSubviewToFront:self.heading];[self.view bringSubviewToFront:self.owner];[self.view bringSubviewToFront:self.modeButton];[self.view bringSubviewToFront:self.driveButton];[self.view bringSubviewToFront:self.nightButton];[self.view bringSubviewToFront:self.statusStrip];if(self.musicMode)[self.view bringSubviewToFront:self.audioBars];[self.view bringSubviewToFront:self.navigation];if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}if(self.tripSummaryCard)[self.view bringSubviewToFront:self.tripSummaryCard];
 
 }
 -(void)update{
@@ -867,7 +867,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)refreshSpeed{
  CLAuthorizationStatus auth=[CLLocationManager authorizationStatus];NSDictionary *gps=TRDDriveGPSStatus(self.fix,[NSDate date],auth,self.hadGPSSpeed);BOOL valid=[gps[@"valid"]boolValue];if(valid)self.hadGPSSpeed=YES;
  double kmh=valid?self.fix.speed*3.6:0;BOOL reliable=valid&&self.fix.horizontalAccuracy<=25;
- if(reliable&&kmh<=1){if(!self.stationarySince)self.stationarySince=[NSDate date];if(-[self.stationarySince timeIntervalSinceNow]>=10)self.autoDriveSuppressed=NO;}else self.stationarySince=nil;
+ if(reliable&&kmh<=1){if(!self.stationarySince)self.stationarySince=[NSDate date];if(-[self.stationarySince timeIntervalSinceNow]>=10){if(self.driveMode&&[UIApplication sharedApplication].applicationState==UIApplicationStateActive){[self homePage];}self.autoDriveSuppressed=NO;}}else self.stationarySince=nil;
  if([UIApplication sharedApplication].applicationState==UIApplicationStateActive&&!self.driveMode&&!self.musicMode&&!self.tripMode&&!self.mapMode&&!self.focused&&!self.autoDriveSuppressed&&reliable&&kmh>=10){if(!self.movingSince)self.movingSince=[NSDate date];if(-[self.movingSince timeIntervalSinceNow]>=5){self.movingSince=nil;[self toggleDrive];}}else self.movingSince=nil;
  self.gpsLive=valid;[self refreshStatusStrip];[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&valid?self.fix.speed*3.6:0];
  NSString *newSpeed=valid?[NSString stringWithFormat:@"%.0f",self.fix.speed*3.6]:@"—";
@@ -1040,6 +1040,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 }
 -(void)showTripSummary{
  if(!self.trip)return;
+ [self homePage];
+ [self hideWelcome];
+ [self.view layoutIfNeeded];
  [self.settingsSheet dismiss];
  if(self.tripSummaryCard){
   [self.tripSummaryCard removeFromSuperview];
