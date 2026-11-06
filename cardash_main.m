@@ -1174,6 +1174,18 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
    return YES;
   }
  }
+ if([identifier isEqualToString:@"com.apple.Preferences"] && (&UIApplicationOpenSettingsURLString != NULL)){
+  NSURL *settingsURL=[NSURL URLWithString:UIApplicationOpenSettingsURLString];
+  UIApplication *app=[UIApplication sharedApplication];
+  if(settingsURL && [app canOpenURL:settingsURL]){
+   if([app respondsToSelector:@selector(openURL:options:completionHandler:)]){
+    [app openURL:settingsURL options:@{} completionHandler:nil];
+   }else{
+    [app openURL:settingsURL];
+   }
+   return YES;
+  }
+ }
  return NO;
 }
 -(void)send:(NSString *)identifier{
