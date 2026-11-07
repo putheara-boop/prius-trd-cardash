@@ -1,14 +1,15 @@
 -(void)openTrip{[self.settingsSheet dismiss];self.carplayMode=NO;self.carplayGridMode=NO;self.tripMode=YES;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:0];[self refreshTrip];[self.view setNeedsLayout];}
--(void)toggleTrip{[self refreshTrip];}
+-(void)toggleTrip{[self.trip start];[self saveTrip];[[NSUserDefaults standardUserDefaults]synchronize];[self refreshTrip];}
+-(void)pauseTrip{[self.trip pause];[self saveTrip];[[NSUserDefaults standardUserDefaults]synchronize];[self refreshTrip];}
 -(void)saveTrip{if(self.trip){NSUserDefaults *p=[NSUserDefaults standardUserDefaults];[p setObject:[self.trip summary] forKey:@"TRDTripSummary"];self.lastTripSavedAt=[NSDate date];}}
--(void)resetTripMenu{TRDSettingsMenu *menu=[self settingsMenu:@"RESET TRIP?" message:@"Clear accumulated distance, moving time and maximum speed? Automatic tracking will continue."];[menu addAction:[TRDSettingAction actionWithTitle:@"Reset this trip" style:0 handler:^(TRDSettingAction *a){self.trip=[TRDTrip new];[self saveTrip];[self refreshTrip];}]];[self presentSettingsMenu:menu];}
+-(void)resetTripMenu{TRDSettingsMenu *menu=[self settingsMenu:@"RESET TRIP?" message:@"Clear accumulated distance, moving time and maximum speed? Your current paused/automatic setting will be kept."];[menu addAction:[TRDSettingAction actionWithTitle:@"Reset this trip" style:0 handler:^(TRDSettingAction *a){BOOL wasPaused=self.trip.manuallyPaused;self.trip=[TRDTrip new];if(wasPaused)[self.trip pause];[self saveTrip];[[NSUserDefaults standardUserDefaults]synchronize];[self refreshTrip];}]];[self presentSettingsMenu:menu];}
 -(void)refreshTrip{
  if(!self.tripView)return;
  TRDTrip *t=self.trip;
  BOOL fresh=TRDTripFixIsReliable(self.fix,[NSDate date]);
  if(!fresh&&t.running)[t breakSegment];
  if(self.driveTripButton&&!self.driveTripButton.hidden){
-  NSString *newTitle=TRDDriveTripText(t.meters,t.seconds,t.running,fresh);
+  NSString *newTitle=t.manuallyPaused?[NSString stringWithFormat:@"TRIP %.2f km · MANUALLY PAUSED",t.meters/1000]:TRDDriveTripText(t.meters,t.seconds,t.running,fresh);
   if(![self.driveTripButton.currentTitle isEqualToString:newTitle]){
    [self.driveTripButton setTitle:newTitle forState:0];
    self.driveTripButton.accessibilityValue=newTitle;
@@ -21,9 +22,13 @@
   UILabel *lbl=(UILabel *)self.tripView.values[i];
   if(![lbl.text isEqualToString:values[i]])lbl.text=values[i];
  }
- NSString *newState=fresh?(t.running?@"AUTO / RECORDING MOVEMENT":@"AUTO / PAUSED WHILE STOPPED"):@"AUTO / WAITING FOR RELIABLE GPS";
+ NSString *newState=t.manuallyPaused?@"PAUSED / PRESS START TO CONTINUE":fresh?(t.running?@"AUTO / RECORDING MOVEMENT":@"AUTO / PAUSED WHILE STOPPED"):@"AUTO / WAITING FOR RELIABLE GPS";
  if(![self.tripView.state.text isEqualToString:newState])self.tripView.state.text=newState;
- self.tripView.run.hidden=YES;
+ self.tripView.run.hidden=NO;
+ self.tripView.pause.hidden=NO;
+ self.tripView.run.accessibilityHint=@"Resume automatic GPS trip tracking without resetting totals";
+ self.tripView.pause.accessibilityHint=@"Pause tracking until START is pressed";
+ self.tripView.pause.enabled=!t.manuallyPaused;
  self.tripView.title.textColor=TRDAccent();
  self.tripView.state.textColor=TRDAccent();
 }
