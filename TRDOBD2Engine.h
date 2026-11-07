@@ -60,6 +60,9 @@ typedef NS_ENUM(NSInteger, TRDOBDConnectionState) {
 @property (nonatomic, assign) BOOL doorOpen;
 @property (nonatomic, assign) BOOL seatbeltUnfastened;
 @property (nonatomic, assign) BOOL isLiveOBD;           // YES = Real BLE OBD2, NO = Demo/GPS
+@property (nonatomic, assign) BOOL isOverSpeed;
+@property (nonatomic, assign) BOOL isHighDeltaWarn;
+@property (nonatomic, assign) BOOL isHighTempWarn;
 
 - (double)blockVoltageAtIndex:(NSUInteger)idx;
 - (void)setBlockVoltage:(double)voltage atIndex:(NSUInteger)idx;
@@ -143,6 +146,8 @@ typedef NS_ENUM(NSInteger, TRDOBDConnectionState) {
 @property (nonatomic, copy, readonly) NSString *adapterName;
 @property (nonatomic, assign) BOOL demoMode;
 @property (nonatomic, assign) BOOL thaiVoiceEnabled;
+@property (nonatomic, assign) double speedLimitKmh; // 0 = Disabled, 90, 120
+@property (nonatomic, assign) BOOL batteryGuardianEnabled;
 
 - (void)start;
 - (void)stop;
@@ -179,6 +184,9 @@ typedef NS_ENUM(NSInteger, TRDOBDConnectionState) {
     NSUInteger _tickCount;
     AVSpeechSynthesizer *_synth;
     NSDate *_lastVoiceAlertDate;
+    NSDate *_lastSpeedAlertDate;
+    NSDate *_lastDeltaAlertDate;
+    NSDate *_lastTempAlertDate;
     BOOL _wasInReverse;
 }
 
@@ -191,6 +199,8 @@ typedef NS_ENUM(NSInteger, TRDOBDConnectionState) {
         _adapterName = @"Vgate vLinker MC+";
         _demoMode = YES;
         _thaiVoiceEnabled = YES;
+        _speedLimitKmh = 0.0;
+        _batteryGuardianEnabled = YES;
         _state = TRDOBDStateDemo;
         _synth = [[AVSpeechSynthesizer alloc] init];
     }
@@ -525,6 +535,40 @@ static NSArray<NSNumber *> *TRDHexBytesFromLine(NSString *raw) {
         }
         if ([self.delegate respondsToSelector:@selector(obdEngineDidDetectReverseGear:)]) {
             [self.delegate obdEngineDidDetectReverseGear:self.telemetry.inReverse];
+        }
+    }
+
+    // Speed limit warning
+    if (self.speedLimitKmh > 0 && self.telemetry.speedKmh > self.speedLimitKmh) {
+        self.telemetry.isOverSpeed = YES;
+        if (!_lastSpeedAlertDate || -[_lastSpeedAlertDate timeIntervalSinceNow] > 40.0) {
+            _lastSpeedAlertDate = [NSDate date];
+            [self speakThai:[NSString stringWithFormat:@"ความเร็วเกินกำหนด %.0f กิโลเมตรต่อชั่วโมง กรุณาลดความเร็ว", self.speedLimitKmh]];
+        }
+    } else {
+        self.telemetry.isOverSpeed = NO;
+    }
+
+    // Proactive Hybrid Battery Guardian
+    if (self.batteryGuardianEnabled) {
+        if (self.telemetry.hvDeltaV > 0.25) {
+            self.telemetry.isHighDeltaWarn = YES;
+            if (!_lastDeltaAlertDate || -[_lastDeltaAlertDate timeIntervalSinceNow] > 600.0) {
+                _lastDeltaAlertDate = [NSDate date];
+                [self speakThai:@"คำเตือน แรงดันเซลล์แบตเตอรี่ไฮบริดเริ่มมีความต่างสูง ควรตรวจสอบเซลล์"];
+            }
+        } else {
+            self.telemetry.isHighDeltaWarn = NO;
+        }
+
+        if (self.telemetry.hvBattTempMaxC > 42.0 || self.telemetry.inverterTempC > 65.0) {
+            self.telemetry.isHighTempWarn = YES;
+            if (!_lastTempAlertDate || -[_lastTempAlertDate timeIntervalSinceNow] > 600.0) {
+                _lastTempAlertDate = [NSDate date];
+                [self speakThai:@"คำเตือน อุณหภูมิระบบไฮบริดสูงกว่าปกติ กรุณาลดการเร่งและเปิดระบบปรับอากาศ"];
+            }
+        } else {
+            self.telemetry.isHighTempWarn = NO;
         }
     }
 }

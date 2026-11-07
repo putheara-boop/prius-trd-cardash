@@ -213,6 +213,9 @@
 @property (nonatomic, strong) NSArray<NSString *> *offlineMusicFiles;
 @property (nonatomic, assign) NSInteger currentTrackIndex;
 @property (nonatomic, strong) NSTimer *uiTimer;
+@property (nonatomic, assign) BOOL autoNightModeEnabled;
+@property (nonatomic, assign) BOOL isNightTime;
+@property (nonatomic, strong) UILabel *nightModeIcon;
 @end
 
 @interface TRDMini2CockpitController ()
@@ -261,6 +264,10 @@
     self.tripMeters = [defs doubleForKey:@"TRDMini2TripMeters"];
     self.tripSeconds = [defs doubleForKey:@"TRDMini2TripSeconds"];
     self.tripMaxSpeed = [defs doubleForKey:@"TRDMini2TripMaxSpeed"];
+    self.autoNightModeEnabled = YES;
+    NSCalendar *cal = [NSCalendar currentCalendar];
+    NSInteger hour = [cal component:NSCalendarUnitHour fromDate:[NSDate date]];
+    self.isNightTime = (hour >= 18 || hour < 6);
 
     [self buildTopBar];
     [self buildLeftZone];
@@ -389,7 +396,14 @@
     [self.obdModeBtn addTarget:self action:@selector(tapOBDMode) forControlEvents:UIControlEventTouchUpInside];
     [self.topBar addSubview:self.obdModeBtn];
 
-    // Clock in Center-Right
+    // Day/Night indicator & Clock in Center-Right
+    self.nightModeIcon = [self makeLabel:CGRectMake(522, 16, 26, 26)
+                                    font:[UIFont systemFontOfSize:16]
+                                   color:[UIColor whiteColor]
+                                   align:NSTextAlignmentCenter
+                                    text:self.isNightTime ? @"🌙" : @"☀️"];
+    [self.topBar addSubview:self.nightModeIcon];
+
     self.clockLabel = [self makeLabel:CGRectMake(550, 10, 155, 38)
                                  font:[UIFont boldSystemFontOfSize:22]
                                 color:[UIColor whiteColor]
@@ -839,6 +853,51 @@
     [m addAction:[TRDSettingAction actionWithTitle:self.obd.thaiVoiceEnabled ? @"🔊 เสียงพูดเตือนภาษาไทย: เปิดอยู่ (แตะเพื่อปิด)" : @"🔇 เสียงพูดเตือนภาษาไทย: ปิดอยู่ (แตะเพื่อเปิด)" style:0 handler:^(TRDSettingAction *a) {
         weakSelf.obd.thaiVoiceEnabled = !weakSelf.obd.thaiVoiceEnabled;
     }]];
+
+    // Auto Night Mode Toggle
+    NSString *nightTitle = self.autoNightModeEnabled
+        ? (self.isNightTime ? @"🌙 โหมดกลางคืนอัตโนมัติ: เปิดอยู่ (กำลังใช้งาน • จอสลัวสบายตา)" : @"🌙 โหมดกลางคืนอัตโนมัติ: เปิดอยู่ (กำลังทำงานโหมดกลางวัน)")
+        : @"☀️ โหมดกลางคืนอัตโนมัติ: ปิดอยู่ (แตะเพื่อเปิด)";
+    [m addAction:[TRDSettingAction actionWithTitle:nightTitle style:0 handler:^(TRDSettingAction *a) {
+        weakSelf.autoNightModeEnabled = !weakSelf.autoNightModeEnabled;
+        UIDeviceBatteryState st = [UIDevice currentDevice].batteryState;
+        if (st == UIDeviceBatteryStateCharging || st == UIDeviceBatteryStateFull) {
+            [UIScreen mainScreen].brightness = (weakSelf.autoNightModeEnabled && weakSelf.isNightTime) ? 0.35 : 0.85;
+        }
+        [weakSelf refreshAllUI];
+    }]];
+
+    // Speed Limit Warning Toggle
+    NSString *spdTitle;
+    if (self.obd.speedLimitKmh <= 0) {
+        spdTitle = @"🚨 แจ้งเตือนความเร็วเกิน: ปิดอยู่ (แตะเพื่อตั้ง 90 km/h)";
+    } else if (self.obd.speedLimitKmh <= 90) {
+        spdTitle = @"🚨 แจ้งเตือนความเร็วเกิน: 90 km/h (แตะเพื่อตั้ง 120 km/h)";
+    } else {
+        spdTitle = @"🚨 แจ้งเตือนความเร็วเกิน: 120 km/h (แตะเพื่อปิด)";
+    }
+    [m addAction:[TRDSettingAction actionWithTitle:spdTitle style:0 handler:^(TRDSettingAction *a) {
+        if (weakSelf.obd.speedLimitKmh <= 0) {
+            weakSelf.obd.speedLimitKmh = 90.0;
+            [weakSelf.obd speakThai:@"เปิดระบบเตือนความเร็วเกิน 90 กิโลเมตรต่อชั่วโมง"];
+        } else if (weakSelf.obd.speedLimitKmh <= 90.0) {
+            weakSelf.obd.speedLimitKmh = 120.0;
+            [weakSelf.obd speakThai:@"เปลี่ยนระบบเตือนความเร็วเกินเป็น 120 กิโลเมตรต่อชั่วโมง"];
+        } else {
+            weakSelf.obd.speedLimitKmh = 0.0;
+            [weakSelf.obd speakThai:@"ปิดระบบเตือนความเร็วเกิน"];
+        }
+        [weakSelf refreshAllUI];
+    }]];
+
+    // Proactive HV Battery & Temp Guardian Toggle
+    NSString *guardTitle = self.obd.batteryGuardianEnabled
+        ? @"🛡️ การตรวจสอบสุขภาพเซลล์ HV และความร้อน: เปิดอยู่ (แตะเพื่อปิด)"
+        : @"🛡️ การตรวจสอบสุขภาพเซลล์ HV และความร้อน: ปิดอยู่ (แตะเพื่อเปิด)";
+    [m addAction:[TRDSettingAction actionWithTitle:guardTitle style:0 handler:^(TRDSettingAction *a) {
+        weakSelf.obd.batteryGuardianEnabled = !weakSelf.obd.batteryGuardianEnabled;
+        [weakSelf refreshAllUI];
+    }]];
     [m addAction:[TRDSettingAction actionWithTitle:@"🌙 พักหน้าจอมืด (Screen Off - ประหยัดไฟขณะจอด)" style:0 handler:^(TRDSettingAction *a) {
         [UIScreen mainScreen].brightness = 0.0;
     }]];
@@ -998,7 +1057,8 @@
 - (void)batteryStateChanged:(NSNotification *)note {
     UIDeviceBatteryState st = [UIDevice currentDevice].batteryState;
     if (st == UIDeviceBatteryStateCharging || st == UIDeviceBatteryStateFull) {
-        [UIScreen mainScreen].brightness = 0.85;
+        CGFloat targetB = (self.autoNightModeEnabled && self.isNightTime) ? 0.35 : 0.85;
+        [UIScreen mainScreen].brightness = targetB;
         [self showWelcomeBanner];
     } else if (st == UIDeviceBatteryStateUnplugged) {
         if (self.offlineAudioPlayer.isPlaying) [self.offlineAudioPlayer pause];
@@ -1118,6 +1178,23 @@
             }
         }
     }
+
+    // Periodic Day/Night check
+    static NSInteger sTickCount = 0;
+    if (++sTickCount % 40 == 0) {
+        NSCalendar *cal = [NSCalendar currentCalendar];
+        NSInteger hour = [cal component:NSCalendarUnitHour fromDate:[NSDate date]];
+        BOOL night = (hour >= 18 || hour < 6);
+        if (night != self.isNightTime) {
+            self.isNightTime = night;
+            self.nightModeIcon.text = night ? @"🌙" : @"☀️";
+            UIDeviceBatteryState st = [UIDevice currentDevice].batteryState;
+            if (st == UIDeviceBatteryStateCharging || st == UIDeviceBatteryStateFull) {
+                [UIScreen mainScreen].brightness = (self.autoNightModeEnabled && self.isNightTime) ? 0.35 : 0.85;
+            }
+        }
+    }
+
     [self refreshAllUI];
 }
 
@@ -1143,9 +1220,17 @@
         [gb setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     }
 
-    // Speed & EV Power
+    // Speed & EV Power (with OverSpeed Warning)
     self.speedValueLabel.text = [NSString stringWithFormat:@"%.0f", t.speedKmh];
-    self.speedSourceLabel.text = t.isLiveOBD ? @"km/h  •  OBD-II CAN LIVE" : (self.gpsLive ? @"km/h  •  GPS HARDWARE LIVE" : @"km/h  •  HYBRID DEMO SIM");
+    if (t.isOverSpeed) {
+        self.speedValueLabel.textColor = [UIColor colorWithRed:1.0 green:0.20 blue:0.25 alpha:1.0];
+        self.speedSourceLabel.text = [NSString stringWithFormat:@"⚠️ เกินกำหนด (จำกัด %.0f km/h)", self.obd.speedLimitKmh];
+        self.speedSourceLabel.textColor = [UIColor colorWithRed:1.0 green:0.25 blue:0.30 alpha:1.0];
+    } else {
+        self.speedValueLabel.textColor = [UIColor whiteColor];
+        self.speedSourceLabel.text = t.isLiveOBD ? @"km/h  •  OBD-II CAN LIVE" : (self.gpsLive ? @"km/h  •  GPS HARDWARE LIVE" : @"km/h  •  HYBRID DEMO SIM");
+        self.speedSourceLabel.textColor = [UIColor colorWithRed:0.0 green:0.82 blue:1.0 alpha:1.0];
+    }
     self.evPowerLabel.text = [NSString stringWithFormat:@"⚡ EV POWER:  %+.1f kW", t.evPowerKw];
     double normKw = (t.evPowerKw + 25.0) / 65.0;
     self.evPowerBar.progress = MAX(0.05, MIN(1.0, normKw));
@@ -1181,19 +1266,36 @@
     self.audioRouteLabel.text = [NSString stringWithFormat:@"🎵 AUDIO ROUTE: %@ (%@)",
                                  outPort.portName ?: @"iPad Speaker", outPort.portType ?: @"Built-In"];
 
-    // Right Zone HV Battery & 14 Blocks
+    // Right Zone HV Battery & 14 Blocks (with Guardian Alerts)
     self.hvSocLabel.text     = [NSString stringWithFormat:@"%.1f%%", t.hvSOCPercent];
     self.hvPackVLabel.text   = [NSString stringWithFormat:@"%.1f V", t.hvPackVoltage];
     self.hvCurrentLabel.text = [NSString stringWithFormat:@"%+.1f A", t.hvPackCurrentA];
-    self.hvDeltaLabel.text   = [NSString stringWithFormat:@"ΔV: %.2f V (%.2f–%.2fV)", t.hvDeltaV, t.hvBlockMinV, t.hvBlockMaxV];
-    self.hvHealthLabel.text  = [NSString stringWithFormat:@"HEALTH (EST.): %.0f%% • %@",
-                                t.hvHealthEstimatePct, (t.hvDeltaV <= 0.15 ? @"BALANCED" : @"CHECK PACK")];
+    
+    if (t.isHighDeltaWarn || t.hvDeltaV > 0.20) {
+        self.hvDeltaLabel.textColor = [UIColor colorWithRed:1.0 green:0.40 blue:0.25 alpha:1.0];
+        self.hvDeltaLabel.text = [NSString stringWithFormat:@"⚠️ ΔV: %.2f V (ต่างสูง)", t.hvDeltaV];
+        self.hvHealthLabel.textColor = [UIColor colorWithRed:1.0 green:0.40 blue:0.25 alpha:1.0];
+        self.hvHealthLabel.text = [NSString stringWithFormat:@"HEALTH: %.0f%% • ⚠️ ตรวจสอบเซลล์", t.hvHealthEstimatePct];
+    } else {
+        self.hvDeltaLabel.textColor = [UIColor whiteColor];
+        self.hvDeltaLabel.text = [NSString stringWithFormat:@"ΔV: %.2f V (%.2f–%.2fV)", t.hvDeltaV, t.hvBlockMinV, t.hvBlockMaxV];
+        self.hvHealthLabel.textColor = [UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0];
+        self.hvHealthLabel.text = [NSString stringWithFormat:@"HEALTH (EST.): %.0f%% • %@",
+                                    t.hvHealthEstimatePct, (t.hvDeltaV <= 0.15 ? @"BALANCED" : @"CHECK PACK")];
+    }
     self.blockGraphView.telemetry = t;
     [self.blockGraphView setNeedsDisplay];
 
-    self.mg2Val.text    = [NSString stringWithFormat:@"%.0f RPM", t.mg2RPM];
-    self.mg1Val.text    = [NSString stringWithFormat:@"%.0f RPM", t.mg1RPM];
-    self.hvTempVal.text = [NSString stringWithFormat:@"%.1f °C", t.hvBattTempMaxC];
+    self.mg2Val.text = [NSString stringWithFormat:@"%.0f RPM", t.mg2RPM];
+    self.mg1Val.text = [NSString stringWithFormat:@"%.0f RPM", t.mg1RPM];
+    
+    if (t.isHighTempWarn || t.hvBattTempMaxC > 42.0) {
+        self.hvTempVal.textColor = [UIColor colorWithRed:1.0 green:0.35 blue:0.25 alpha:1.0];
+        self.hvTempVal.text = [NSString stringWithFormat:@"%.1f °C  ⚠️ ร้อนจัด!", t.hvBattTempMaxC];
+    } else {
+        self.hvTempVal.textColor = [UIColor whiteColor];
+        self.hvTempVal.text = [NSString stringWithFormat:@"%.1f °C", t.hvBattTempMaxC];
+    }
 }
 
 @end
