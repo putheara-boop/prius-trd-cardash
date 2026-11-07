@@ -11,16 +11,10 @@ permissions:
 jobs:
   build-ipa:
     name: Compile ARM64 IPA on macOS Runner
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Setup Xcode Environment
-        run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-path
 
       - name: Setup Permissions
         run: chmod +x build_cardash_mini2_ipa.sh
@@ -28,37 +22,32 @@ jobs:
       - name: Compile and Package IPA
         run: |
           ./build_cardash_mini2_ipa.sh
-          ls -lh CarDash-iPadMini2.ipa
+          ls -lh CarDash-TRD-v3.5.ipa
 
       - name: Upload IPA as Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CarDash-iPadMini2-IPA
-          path: CarDash-iPadMini2.ipa
+          name: CarDash-TRD-v3.5-IPA
+          path: CarDash-TRD-v3.5.ipa
           retention-days: 14
 
-      - name: Create GitHub Release with CarDash-iPadMini2.ipa
+      - name: Create GitHub Release with CarDash-TRD-v3.5.ipa
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.0-mini2
-          name: "CarDash TRD iPad mini 2 (ARM64 / iOS 11.0+) - IPA Download"
+          tag_name: v3.5-trd-cockpit
+          name: "CarDash TRD v3.5 Luxury EV Smart Cockpit (ARM64 / iOS 11.0+) - IPA Download"
           body: |
-            ## CarDash TRD Luxury EV Smart Cockpit (iPad mini 2 / A7 / iOS 11.3)
+            ## CarDash TRD v3.5 Luxury EV Smart Cockpit (iPad mini 2 / A7 / iOS 11.3)
             Compiled automatically via Xcode Clang for Apple A7 (`arm64-apple-ios11.0`).
 
-            ### What's New:
-            - **YouTube Integration:** Direct YouTube button opens in Safari smoothly.
-            - **Prius Gen 3 Hybrid Telemetry:** Vgate vLinker MC+ BLE engine, 14-Block HV Battery voltages, ΔV Health estimation.
-            - **AI Eco Coach & Thai Voice:** Offline Thai voice alerts for reverse gear and warnings.
-            - **Offline Music Player:** Seamlessly reads all `.m4a`, `.mp3`, `.wav` files inside Sandbox `/Documents` (supports 3uTools file management).
-            - **iPad Settings Shortcut:** Instant switch to iPad Settings (`UIApplicationOpenSettingsURLString`).
-
-            ### How to Install via 3uTools on Windows:
-            1. Download `CarDash-iPadMini2.ipa` below.
-            2. Open **3uTools** on your PC with iPad connected via USB.
-            3. Go to **Toolbox → IPA Signature** (Sign with your Apple ID).
-            4. Click **Install** in 3uTools — your 11 songs in Documents will remain untouched!
-          files: CarDash-iPadMini2.ipa
+            ### What's New in v3.5:
+            - **WebKit Native Cockpit Shell:** Embeds the flagship HTML5 TRD Smart Cockpit directly inside the app bundle.
+            - **JBL Synthesis 10-Band EQ:** Studio acoustic mastering suite with presets and Subwoofer control.
+            - **Full Option Modules:** TPMS 4-Wheel monitor, Sentry Dashcam HUD, Trip Financial Calculator, Doors & Dual Climate panel.
+            - **100% Edge-to-Edge:** Fullscreen landscape locked, zero screen dimming while driving.
+          files: |
+            CarDash-TRD-v3.5.ipa
+            CarDash-iPadMini2.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

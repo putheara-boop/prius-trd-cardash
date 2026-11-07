@@ -1,0 +1,2399 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prius TRD Smart Cockpit Update 2.1 Preview</title>
+  <script src="tailwindcss.min.js"></script>
+  <script>if (!window.tailwind) { document.write('<script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"><\/script>'); }</script>
+  <!-- Leaflet Map Assets for In-Cockpit GPS Navigation -->
+  <link rel="stylesheet" href="leaflet.css">
+  <script src="leaflet.js"></script>
+  <style>
+    :root {
+      --accent: #ff2a44;
+      --accent-glow: rgba(255, 42, 68, 0.35);
+      --panel-bg: rgba(14, 18, 25, 0.94);
+      --border-line: rgba(255, 255, 255, 0.14);
+    }
+    .theme-sport {
+      --accent: #ff2a44;
+      --accent-glow: rgba(255, 42, 68, 0.35);
+    }
+    .theme-normal {
+      --accent: #00d2ff;
+      --accent-glow: rgba(0, 210, 255, 0.35);
+    }
+    .theme-eco {
+      --accent: #00e68a;
+      --accent-glow: rgba(0, 230, 138, 0.35);
+    }
+    .font-hud {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    }
+    .accent-border {
+      border-color: var(--accent);
+    }
+    .accent-text {
+      color: var(--accent);
+    }
+    .accent-bg {
+      background-color: var(--accent);
+    }
+    .glow-accent {
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+    @keyframes pulseEnergy {
+      0%, 100% { opacity: 0.4; transform: scaleX(0.98); }
+      50% { opacity: 1; transform: scaleX(1.02); }
+    }
+    .anim-pulse {
+      animation: pulseEnergy 2s ease-in-out infinite;
+    }
+    .night-dim {
+      filter: brightness(0.72) contrast(1.05);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-hud p-1 sm:p-2 antialiased select-none w-full min-h-screen box-border flex flex-col justify-between" id="cockpitRoot">
+  <!-- Controls Bar above the iPad screen (Edge-to-Edge Full Width) -->
+  <div class="w-full mb-2 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 bg-slate-900/70 border border-slate-800 rounded-xl text-xs">
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-950/80 text-red-400 border border-red-800/60">
+        <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+        v2.1 Fullscreen Cockpit Kiosk
+      </span>
+      <span class="text-xs text-slate-400 hidden sm:inline">Night Mode • Speed Limit • Battery Guardian • JBL Sound Suite</span>
+    </div>
+    <!-- Interactive Theme & Speed controls -->
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- Speed Limit Selector -->
+      <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-xs">
+        <span class="text-slate-400 px-1.5 font-bold">เตือนความเร็ว:</span>
+        <button onclick="setSpeedLimit(0)" id="limOff" class="px-2 py-0.5 rounded font-bold transition bg-slate-800 text-white">ปิด</button>
+        <button onclick="setSpeedLimit(90)" id="lim90" class="px-2 py-0.5 rounded font-bold transition text-slate-400 hover:text-white">90</button>
+        <button onclick="setSpeedLimit(120)" id="lim120" class="px-2 py-0.5 rounded font-bold transition text-slate-400 hover:text-white">120</button>
+      </div>
+
+      <!-- Theme Selector -->
+      <div class="flex bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-xs font-medium">
+        <button onclick="setTheme('sport')" id="btnSport" class="px-2.5 py-1 rounded bg-red-600 text-white font-bold transition">SPORT</button>
+        <button onclick="setTheme('normal')" id="btnNormal" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition">NORMAL</button>
+        <button onclick="setTheme('eco')" id="btnEco" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition">ECO</button>
+      </div>
+
+      <!-- Speed Slider -->
+      <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300">
+        <span class="font-bold">จำลองความเร็ว:</span>
+        <input type="range" min="0" max="140" value="0" id="speedSlider" oninput="updateSpeed(this.value)" class="w-20 accent-red-500 cursor-pointer">
+        <span id="sliderVal" class="font-bold w-7 text-right">0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- iPad Frame Container (Edge-to-Edge 100% Full Width) -->
+  <div id="ipadFrame" class="w-full flex-1 bg-slate-950 border border-slate-800/80 rounded-xl p-2 sm:p-2.5 shadow-2xl relative overflow-hidden transition-all duration-500 flex flex-col justify-between">
+    
+    <!-- TOP BAR (Full Width Edge-to-Edge Status + Brand + Clock + Quick Controls) -->
+    <div class="w-full h-14 bg-slate-900/90 border border-slate-800/80 rounded-xl px-3 sm:px-4 flex items-center justify-between mb-2 shadow-inner">
+      <div class="flex items-center gap-3">
+        <div class="w-1.5 h-8 accent-bg rounded-full shadow-[0_0_8px_var(--accent-glow)]"></div>
+        <div>
+          <div class="text-sm sm:text-base font-black tracking-wider uppercase text-white flex items-center gap-2">
+            <span>PRIUS TRD SPORTIVO</span> <span class="text-xs font-normal text-slate-400 hidden sm:inline">• GEN 3 ZVW30</span>
+          </div>
+          <div class="text-xs font-bold tracking-wider text-cyan-400 flex items-center gap-2">
+            <span>LUXURY EV SMART COCKPIT</span> <span class="text-slate-500 text-[10px] hidden md:inline">• FULLSCREEN KIOSK READY</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <!-- OBD Mode Pill -->
+        <button onclick="toggleObd()" id="obdBadge" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/50 transition">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span id="obdText">OBD-II: DEMO SIM</span>
+        </button>
+
+        <!-- Night Mode Auto Indicator & Toggle -->
+        <button onclick="toggleNightMode()" id="nightModeBtn" class="px-2.5 py-1.5 rounded-lg bg-black/50 border border-slate-800 text-xs font-bold text-amber-300 hover:bg-slate-800 transition flex items-center gap-1" title="สลับโหมดกลางวัน/กลางคืน">
+          <span id="nightIcon">☀️</span> <span class="hidden sm:inline text-slate-300" id="nightText">กลางวัน</span>
+        </button>
+
+        <!-- Digital Center Clock (Large & High Contrast for Driving) -->
+        <div class="px-4 py-1 rounded-lg bg-black/60 border border-slate-800 text-lg font-black text-white tracking-widest font-mono shadow-inner" id="clockElem">
+          12:34
+        </div>
+
+        <!-- Thai Voice Button -->
+        <button onclick="speakThai()" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1">
+          <span>🔊</span> <span class="hidden md:inline">เสียงไทย</span>
+        </button>
+
+        <!-- iPad Settings Button -->
+        <button onclick="showToast('เปิดหน้า iPad Settings (UIApplicationOpenSettingsURLString)')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-950/60 hover:bg-blue-900/60 text-blue-300 border border-blue-500/40 flex items-center gap-1">
+          <span>⚙️</span> <span class="hidden md:inline">iPad ตั้งค่า</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN 3-ZONE BALANCED LAYOUT (EQUAL HEIGHT & SYMMETRY) -->
+    <div class="grid grid-cols-12 gap-3 mb-3 items-stretch">
+      
+      <!-- ==================== LEFT ZONE (Vehicle Dynamics, Eco & Thermals) ==================== -->
+      <div class="col-span-12 md:col-span-4 lg:col-span-3 bg-slate-900/80 border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between space-y-2.5">
+        
+        <!-- CARD 1: Speedometer with Integrated Prius GS Electronic Gear Display -->
+        <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
+          
+          <!-- Top Instrument Lamps: Turn Signals & READY Lamp -->
+          <div class="flex justify-between items-center mb-1.5 px-1">
+            <button onclick="toggleTurnSignal('L')" id="blinkerL" class="text-xs font-black text-slate-600 hover:text-emerald-400 transition cursor-pointer" title="ไฟเลี้ยวซ้าย">◀ ◀</button>
+            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/40 text-[10px] font-black text-emerald-400 shadow-[0_0_8px_rgba(0,230,140,0.4)]">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>READY</span>
+            </div>
+            <button onclick="toggleTurnSignal('R')" id="blinkerR" class="text-xs font-black text-slate-600 hover:text-emerald-400 transition cursor-pointer" title="ไฟเลี้ยวขวา">▶ ▶</button>
+          </div>
+
+          <!-- Real High-Precision Analog-Digital Speedometer Gauge Dial (0-180 km/h) -->
+          <div class="relative py-1 px-1 bg-black/60 rounded-xl border border-slate-800/80 mb-2 transition-colors duration-300 flex flex-col items-center justify-center overflow-hidden" id="speedContainer">
+            <canvas id="speedoGaugeCanvas" width="310" height="175" class="w-full h-40 block cursor-pointer" onclick="cycleGearNext()" title="แตะเพื่อสลับเกียร์"></canvas>
+            
+            <!-- Prius GS Gear Badge Overlay inside gauge -->
+            <div class="absolute bottom-2 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-emerald-500/70 bg-emerald-950/80 shadow-[0_0_12px_rgba(0,230,140,0.4)] cursor-pointer" onclick="cycleGearNext()" id="priusGsGearBox" title="แตะเพื่อเปลี่ยนเกียร์">
+              <span id="priusGsGearLetter" class="text-lg font-black text-white">D</span>
+              <span id="priusGsGearLabel" class="text-[9px] font-extrabold text-emerald-400 tracking-wider uppercase">DRIVE</span>
+            </div>
+
+            <div class="absolute bottom-2 right-3 text-[10px] font-bold text-cyan-400 uppercase tracking-widest" id="speedSource">
+              KM / H • DYNAMICS
+            </div>
+          </div>
+
+          <!-- Symmetrical 5 Gear Pills -->
+          <div class="grid grid-cols-5 gap-1 mb-2">
+            <button onclick="setGear('P')" id="gearP" class="h-8 rounded-lg text-xs font-black border transition bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white">P</button>
+            <button onclick="setGear('R')" id="gearR" class="h-8 rounded-lg text-xs font-black border transition bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white">R</button>
+            <button onclick="setGear('N')" id="gearN" class="h-8 rounded-lg text-xs font-black border transition bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white">N</button>
+            <button onclick="setGear('D')" id="gearD" class="h-8 rounded-lg text-xs font-black border-2 transition bg-emerald-600/30 border-emerald-500 text-white glow-accent">D</button>
+            <button onclick="setGear('B')" id="gearB" class="h-8 rounded-lg text-xs font-black border transition bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white">B</button>
+          </div>
+
+          <!-- EV Power Progress Bar -->
+          <div class="mb-2">
+            <div class="flex justify-between text-[11px] font-semibold mb-1">
+              <span class="text-emerald-400" id="evPowerText">⚡ EV POWER: +0.0 kW</span>
+              <span class="text-slate-400 text-[10px]">CHG | ECO | PWR</span>
+            </div>
+            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div id="evPowerBar" class="h-full bg-cyan-400 transition-all duration-300" style="width: 35%;"></div>
+            </div>
+          </div>
+
+          <!-- Toyota Prius Gen 3 Iconic Drive Mode Buttons (EV / ECO / PWR) -->
+          <div class="grid grid-cols-3 gap-1 pt-1.5 border-t border-slate-800/60">
+            <button onclick="selectDriveMode('EV')" id="btnDriveEv" class="py-1 px-1 rounded-md text-[10px] font-extrabold border border-cyan-500/40 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/40 transition">EV MODE</button>
+            <button onclick="selectDriveMode('ECO')" id="btnDriveEco" class="py-1 px-1 rounded-md text-[10px] font-extrabold border-2 border-emerald-500 bg-emerald-950/60 text-white transition glow-accent">ECO MODE</button>
+            <button onclick="selectDriveMode('PWR')" id="btnDrivePwr" class="py-1 px-1 rounded-md text-[10px] font-extrabold border border-red-500/40 bg-red-950/40 text-red-300 hover:bg-red-900/40 transition">PWR MODE</button>
+          </div>
+
+        </div>
+
+        <!-- CARD 2: AI Eco Coach & Regen Analysis Card -->
+        <div class="p-2.5 bg-emerald-950/30 border border-emerald-500/30 rounded-xl">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[11px] font-bold text-emerald-400 tracking-wider uppercase">🌱 AI ECO COACH</span>
+            <span class="text-[11px] font-bold text-cyan-300" id="regenWh">♻️ +14 Wh REGEN</span>
+          </div>
+          <div class="flex items-baseline justify-between mb-1">
+            <div class="text-xl font-black text-white" id="ecoScore">ECO 92 / 100</div>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">GRADE A+</span>
+          </div>
+          <div class="text-[11px] text-slate-300 leading-tight" id="ecoAdvice">
+            ระบบไฮบริดทำงานสมบูรณ์ • เลี้ยงคันเร่งนุ่มนวลเพื่อประหยัดน้ำมันสูงสุด
+          </div>
+        </div>
+
+        <!-- CARD 3: 3 Left Thermal / Voltage Cards -->
+        <div class="space-y-1.5">
+          <div class="p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex justify-between items-center">
+            <div class="text-[11px] font-medium text-slate-400">🌡️ น้ำหล่อเย็น (Coolant)</div>
+            <div class="text-sm font-bold text-white" id="coolantVal">88 °C</div>
+          </div>
+
+          <div class="p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex justify-between items-center">
+            <div class="text-[11px] font-medium text-slate-400">❄️ แอร์ห้องโดยสาร (A/C & Inv)</div>
+            <div class="text-sm font-bold text-white" id="inverterVal">24.5 °C <span class="text-[10px] text-slate-400 font-normal">(42°C Inv)</span></div>
+          </div>
+
+          <div class="p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex justify-between items-center">
+            <div class="text-[11px] font-medium text-slate-400">🔋 แบตเตอรี่สตาร์ท 12V</div>
+            <div class="text-sm font-bold text-emerald-400" id="aux12Val">13.84 V <span class="text-[10px] font-bold">• ชาร์จปกติ</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== CENTER ZONE (Hero Prius with Hybrid Battery Flow) ==================== -->
+      <div class="col-span-12 md:col-span-8 lg:col-span-6 bg-slate-900/80 border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between space-y-2">
+        
+        <!-- Top EV Drive Mode Status Banner -->
+        <div class="w-full py-1.5 px-3 bg-slate-950/90 border border-slate-800 rounded-lg flex items-center justify-between">
+          <span id="evDriveStatus" class="text-xs font-black text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            🌿 PURE EV DRIVE (MG2 → เพลาขับหน้า)
+          </span>
+          <span class="text-[10px] font-bold text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60" id="batteryFlowStateBadge">
+            🔋 ดึงไฟจากแบตเตอรี่ EV
+          </span>
+        </div>
+
+        <!-- PRIUS HERO VEHICLE & HYBRID BATTERY ENERGY FLOW SYSTEM -->
+        <div class="relative py-2.5 px-3 bg-gradient-to-b from-slate-950/80 via-slate-900/60 to-slate-950/90 border border-slate-800/80 rounded-xl overflow-hidden flex flex-col items-center justify-center">
+          
+          <!-- Background Grid & Vehicle Glow Aura -->
+          <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-950/30 via-transparent to-transparent pointer-events-none"></div>
+
+          <!-- TOP LABELS: Front Transaxle vs Rear Hybrid Battery -->
+          <div class="w-full flex justify-between items-center z-10 px-2 mb-1">
+            <div class="flex items-center gap-1.5 bg-slate-950/80 border border-cyan-500/40 px-2.5 py-1 rounded-lg text-left shadow-lg">
+              <span class="text-xs">⚡</span>
+              <div>
+                <div class="text-[9px] text-slate-400 font-bold uppercase">หน้ารถ (Front Transaxle)</div>
+                <div class="text-[11px] font-black text-cyan-300">MOTOR MG1 / MG2</div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-1.5 bg-slate-950/80 border border-emerald-500/40 px-2.5 py-1 rounded-lg text-right shadow-lg" id="batteryNodeBox">
+              <div>
+                <div class="text-[9px] text-slate-400 font-bold uppercase">ท้ายรถ (Rear Battery)</div>
+                <div class="text-[11px] font-black text-emerald-400" id="carBatteryTitle">HV BATTERY PACK</div>
+              </div>
+              <span class="text-xs">🔋</span>
+            </div>
+          </div>
+
+          <!-- Prius Vehicle Graphic Container -->
+          <div class="relative w-full flex items-center justify-center my-1 z-10">
+            <!-- Rear Battery Glow Under Vehicle -->
+            <div class="absolute -right-2 top-1/2 -translate-y-1/2 w-28 h-20 bg-emerald-500/20 rounded-full blur-xl pointer-events-none animate-pulse"></div>
+            <!-- Front Motor Glow Under Vehicle -->
+            <div class="absolute -left-2 top-1/2 -translate-y-1/2 w-28 h-20 bg-cyan-500/20 rounded-full blur-xl pointer-events-none animate-pulse"></div>
+
+            <img src="PriusGS.png" alt="Toyota Prius TRD Sportivo" class="h-28 max-w-[85%] object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.9)] transition-transform duration-300 hover:scale-105">
+
+            <!-- Real-time Interactive Energy Flow Arrow Overlay directly into the Battery -->
+            <div class="absolute inset-x-8 bottom-0 flex items-center justify-between px-6 pointer-events-none">
+              <!-- Front Wheel / Motor Node Point -->
+              <div class="w-3.5 h-3.5 rounded-full bg-cyan-400 shadow-[0_0_12px_#00e5ff] animate-ping"></div>
+
+              <!-- Flow Connection Beam -->
+              <div class="flex-1 mx-3 h-1.5 bg-slate-800 rounded-full relative overflow-hidden border border-slate-700/60">
+                <div id="batteryFlowStream" class="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-cyan-400 via-emerald-400 to-emerald-300 rounded-full transition-all duration-300 animate-pulse" style="width: 100%;"></div>
+              </div>
+
+              <!-- Rear Battery Node Point (Energy Entering Here) -->
+              <div class="w-4 h-4 rounded-full bg-emerald-400 shadow-[0_0_16px_#00e68c] flex items-center justify-center border-2 border-white">
+                <div class="w-1.5 h-1.5 bg-white rounded-full"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Real-time Flow Telemetry Sub-banner -->
+          <div class="w-full mt-2 pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-xs z-10 px-2">
+            <span class="text-slate-400 text-[11px] flex items-center gap-1">
+              <span>กระแสไฟไฮบริด:</span>
+              <strong class="text-emerald-400 font-bold" id="flowDirectionText">⚡ ชาร์จไฟเข้าสู่แบตเตอรี่ (Inflow)</strong>
+            </span>
+            <span class="text-cyan-300 font-mono font-bold text-[11px]" id="flowKwText">
+              +14.2 kW (Regen Active)
+            </span>
+          </div>
+
+        </div>
+
+        <!-- Live Doors & Central Lock Bar -->
+        <div onclick="openDoorsClimateModal()" class="w-full py-1.5 px-3 bg-slate-950/80 border border-slate-800/90 rounded-lg text-center cursor-pointer hover:border-emerald-500/50 transition">
+          <span id="liveDoorStatus" class="text-xs font-bold text-emerald-400">
+            🚪 ประตู 5 บาน: ปิดสนิท  •  🔒 เซ็นทรัลล็อก: ล็อกอยู่  (แตะเพื่อดูรายละเอียด)
+          </span>
+        </div>
+
+        <!-- Offline Music / Bluetooth Mini Player -->
+        <div class="p-2 bg-slate-950/80 border border-slate-800 rounded-xl">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-xs font-bold accent-text flex items-center gap-1.5">
+              <span>🎵</span> CAR MULTIMEDIA & AUDIO
+            </span>
+            <span class="text-[10px] text-slate-400">11 เพลงในเครื่อง • JBL EQUALIZER</span>
+          </div>
+          <div class="text-xs font-semibold text-white truncate mb-1.5" id="currentTrackName">
+            ▶️ Toyota TRD Hybrid Chill Lounge - Road 01.mp3
+          </div>
+          <div class="grid grid-cols-4 gap-1.5">
+            <button onclick="prevTrack()" class="py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white rounded-lg border border-slate-700">⏮ PREV</button>
+            <button onclick="togglePlay()" id="playBtn" class="py-1 accent-bg text-xs font-bold text-white rounded-lg glow-accent">⏸ PAUSE</button>
+            <button onclick="nextTrack()" class="py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white rounded-lg border border-slate-700">⏭ NEXT</button>
+            <button onclick="showToast('เปิดเมนูรายการเพลงออฟไลน์ในเครื่อง')" class="py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-cyan-300 rounded-lg border border-slate-700">📂 เพลง</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== RIGHT ZONE (HV 14-Blocks, Motors & GPS Financials) ==================== -->
+      <div class="col-span-12 md:col-span-12 lg:col-span-3 bg-slate-900/80 border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between space-y-2.5">
+        
+        <!-- CARD 1: POWERTRAIN & HV BATTERY 14 BLOCKS -->
+        <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
+          <div class="text-[11px] font-bold tracking-wider text-slate-400 uppercase mb-1.5 flex justify-between items-center">
+            <span>POWERTRAIN & HV • 7E3</span>
+            <button onclick="toggleWeakCellSim()" id="weakCellBtn" class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700">จำลองเซลล์ล้า</button>
+          </div>
+
+          <!-- HV Battery Top Metrics -->
+          <div class="flex items-baseline justify-between mb-1.5">
+            <div>
+              <div class="text-3xl font-black text-emerald-400" id="hvSoc">64.5%</div>
+              <div class="text-[10px] text-slate-400">SOC (ระดับไฟไฮบริด)</div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold text-white" id="hvVolt">227.4 V</div>
+              <div class="text-[11px] font-bold text-cyan-400" id="hvAmp">+12.4 A (CHG)</div>
+            </div>
+          </div>
+
+          <!-- 14-Block NiMH Battery Graph Container -->
+          <div class="p-2 bg-slate-950 rounded-lg border border-slate-800 mb-1" id="hvContainer">
+            <div class="flex justify-between items-center text-[10px] text-slate-400 font-semibold mb-1">
+              <span>14 BLOCKS (28 NiMH MODULES)</span>
+              <span class="text-emerald-400 font-bold" id="hvStatusTag">สมบูรณ์</span>
+            </div>
+
+            <!-- 14 Dynamic Voltage Bars -->
+            <div class="grid grid-cols-14 gap-0.5 h-10 items-end mb-1.5" id="hvBars">
+              <!-- Rendered via JS -->
+            </div>
+
+            <!-- Delta V and Health -->
+            <div class="text-[10px] font-bold text-white flex justify-between border-t border-slate-800/80 pt-1" id="hvDeltaLine">
+              <span id="hvDelta">ΔV: 0.02 V (Good)</span>
+              <span class="text-slate-400" id="hvRangeMinMax">Min 16.22 / Max 16.24</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CARD 2: 3 Right Motor Cards -->
+        <div class="space-y-1.5">
+          <div class="p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex justify-between items-center">
+            <div class="text-[11px] font-medium text-slate-400">⚙️ มอเตอร์ MG2 (ขับเคลื่อน)</div>
+            <div class="text-xs font-bold text-white" id="mg2Val">1,420 RPM <span class="text-[10px] text-slate-400 font-normal">/ 18 kW</span></div>
+          </div>
+
+          <div class="p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex justify-between items-center">
+            <div class="text-[11px] font-medium text-slate-400">⚡ เจนเนอเรเตอร์ MG1 (ปั่นไฟ)</div>
+            <div class="text-xs font-bold text-white" id="mg1Val">980 RPM <span class="text-[10px] text-slate-400 font-normal">/ 8 kW</span></div>
+          </div>
+
+          <div class="p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex justify-between items-center">
+            <div class="text-[11px] font-medium text-slate-400">🌡️ อุณหภูมิแบตไฮบริด (HV)</div>
+            <div class="text-xs font-bold text-white" id="hvTempVal">35.0 °C <span class="text-[10px] text-cyan-400 font-normal">• พัดลม Low</span></div>
+          </div>
+        </div>
+
+        <!-- CARD 3: GPS Trip Computer & Range Card -->
+        <div class="p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-[10px] font-bold text-slate-400 uppercase">📍 TRIP COMPUTER & RANGE</span>
+            <button onclick="resetTrip()" class="text-[9px] text-red-400 hover:text-red-300 font-bold px-1.5 py-0.5 bg-red-950/40 rounded border border-red-900/40">RESET</button>
+          </div>
+          <div class="grid grid-cols-2 gap-1.5 text-slate-200">
+            <div>
+              <div class="text-[10px] text-slate-400">ระยะทางทริป</div>
+              <div class="text-sm font-bold text-white" id="tripDist">18.42 km</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-slate-400">อัตราสิ้นเปลือง</div>
+              <div class="text-sm font-bold text-emerald-400">23.8 km/L</div>
+            </div>
+          </div>
+          <div class="flex justify-between text-[10px] mt-1 pt-1 border-t border-slate-800/80">
+            <span class="text-slate-400">ค่าน้ำมันทริป: <span class="text-cyan-300 font-bold">฿ 29.80</span></span>
+            <span class="text-cyan-400 font-bold">วิ่งต่อได้: ~520 km</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    </div>
+
+    <!-- BOTTOM APPLICATION DOCK (11 Professional In-Car Apps) -->
+    <div class="w-full bg-slate-900/95 border border-slate-800/90 rounded-xl px-2 py-1 flex items-center justify-between overflow-x-auto gap-1 shadow-2xl z-40">
+      <button onclick="closeAllModals(); showToast('หน้าหลัก EV Cockpit')" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-red-400 font-bold text-[11px] hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">⚡</span>
+        <span>EV COCKPIT</span>
+      </button>
+
+      <button onclick="openMapsModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-slate-300 font-bold text-[11px] hover:text-cyan-400 hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">📍</span>
+        <span>แผนที่ MAPS</span>
+      </button>
+
+      <button onclick="openYouTubeModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-slate-300 font-bold text-[11px] hover:text-red-400 hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">▶️</span>
+        <span>YOUTUBE</span>
+      </button>
+
+      <button onclick="openMusicModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-white font-extrabold text-[11px] hover:bg-slate-800 transition whitespace-nowrap bg-orange-950/40 border border-[#ff5500]/50 shadow-[0_0_8px_rgba(255,85,0,0.3)]">
+        <span class="text-base">🎵</span>
+        <span class="text-[#ff5500]">JBL SOUND</span>
+      </button>
+
+      <button onclick="openHybridLabModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-slate-300 font-bold text-[11px] hover:text-emerald-400 hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">📊</span>
+        <span>HYBRID LAB</span>
+      </button>
+
+      <button onclick="openTpmsModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-slate-300 font-bold text-[11px] hover:text-cyan-300 hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">🛞</span>
+        <span>TPMS ยาง</span>
+      </button>
+
+      <button onclick="openTripFinancialModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-slate-300 font-bold text-[11px] hover:text-amber-400 hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">💰</span>
+        <span>ค่าน้ำมัน TRIP</span>
+      </button>
+
+      <button onclick="openSentryDashcamModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-slate-300 font-bold text-[11px] hover:text-red-400 hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">📹</span>
+        <span>SENTRY กล้อง</span>
+      </button>
+
+      <button onclick="openAmbientLightModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-slate-300 font-bold text-[11px] hover:text-purple-400 hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">🎨</span>
+        <span>ไฟ AMBIENT</span>
+      </button>
+
+      <button onclick="openDoorsClimateModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-slate-300 font-bold text-[11px] hover:text-amber-400 hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">🚪</span>
+        <span>ประตู & แอร์</span>
+      </button>
+
+      <button onclick="openSettingsModal()" class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-slate-300 font-bold text-[11px] hover:text-blue-400 hover:bg-slate-800 transition whitespace-nowrap">
+        <span class="text-base">⚙️</span>
+        <span>SETTINGS</span>
+      </button>
+    </div>
+
+    <!-- ========================================================
+         MODAL 1: GPS MAPS & LIVE NAVIGATION (LEAFLET DARK THEME)
+    ======================================================== -->
+    <div id="mapsModal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border-2 border-cyan-500/50 rounded-2xl max-w-4xl w-full h-[520px] p-3 shadow-2xl flex flex-col justify-between">
+        
+        <!-- Maps Header -->
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span>📍</span> <span>PRIUS TRD GPS NAVIGATION & LIVE TRAFFIC</span>
+            <span class="text-[10px] bg-cyan-950 px-2 py-0.5 rounded text-cyan-300 border border-cyan-800">GPS FIX: 12 SATELLITES</span>
+          </div>
+          <button onclick="closeAllModals()" class="text-slate-400 hover:text-white font-bold px-2.5 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิดแผนที่</button>
+        </div>
+
+        <!-- Quick Search & Shortcuts Bar -->
+        <div class="flex gap-2 my-1.5 text-xs">
+          <input type="text" id="mapSearchInput" placeholder="🔍 ค้นหาสถานที่, ทางด่วน, ปั๊มน้ำมัน, จุดชาร์จ EV..." class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400">
+          <button onclick="searchMapLocation('PTT')" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-bold border border-slate-700">⛽ ปั๊ม PTT</button>
+          <button onclick="searchMapLocation('EV')" class="px-2.5 py-1.5 bg-emerald-950/70 hover:bg-emerald-900/70 text-emerald-300 rounded-lg font-bold border border-emerald-500/40">⚡ ชาร์จ EV</button>
+          <button onclick="searchMapLocation('HOME')" class="px-2.5 py-1.5 bg-cyan-950/70 hover:bg-cyan-900/70 text-cyan-300 rounded-lg font-bold border border-cyan-500/40">🏠 กลับบ้าน</button>
+        </div>
+
+        <!-- Interactive Map Container -->
+        <div class="flex-1 w-full rounded-xl overflow-hidden border border-slate-800 relative" id="mapViewportContainer">
+          <div id="liveLeafletMap" class="w-full h-full"></div>
+          
+          <!-- Telemetry Floating HUD on Map -->
+          <div class="absolute top-3 left-3 bg-slate-950/90 border border-slate-800/90 rounded-xl p-2.5 shadow-2xl z-[1000] flex items-center gap-3">
+            <div class="text-center">
+              <div class="text-2xl font-black text-white" id="mapHudSpeed">0</div>
+              <div class="text-[9px] font-bold text-cyan-400 uppercase">KM / H</div>
+            </div>
+            <div class="h-8 w-px bg-slate-800"></div>
+            <div>
+              <div class="text-xs font-bold text-emerald-400" id="mapRoadName">ทางพิเศษศรีรัช (Si Rat Expy)</div>
+              <div class="text-[10px] text-slate-400">พิกัด: 13.7563° N, 100.5018° E • มุ่งหน้า: เหนือ (N 12°)</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ========================================================
+         MODAL 2: YOUTUBE & CAR SMART ENTERTAINMENT
+    ======================================================== -->
+    <div id="youtubeModal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border-2 border-red-500/50 rounded-2xl max-w-4xl w-full h-[520px] p-3 shadow-2xl flex flex-col justify-between">
+        
+        <!-- YouTube Header -->
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span class="text-red-500 text-lg">▶️</span> <span>YOUTUBE CAR ENTERTAINMENT & MUSIC VIDEOS</span>
+            <span class="text-[10px] bg-red-950 px-2 py-0.5 rounded text-red-300 border border-red-800">LIVE AUDIO ENGINE</span>
+          </div>
+          <button onclick="closeAllModals()" class="text-slate-400 hover:text-white font-bold px-2.5 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิด</button>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="flex gap-2 my-1.5 text-xs">
+          <input type="text" id="ytSearchInput" placeholder="🔍 ค้นหาเพลง, รายการ, พอดแคสต์บน YouTube..." class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-red-400">
+          <button onclick="searchYouTubeVideos()" class="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold">ค้นหา</button>
+        </div>
+
+        <!-- Main Video Screen + Playlist Grid -->
+        <div class="grid grid-cols-12 gap-3 flex-1 overflow-hidden">
+          
+          <!-- Left: Video Player Viewport -->
+          <div class="col-span-7 bg-black rounded-xl border border-slate-800 flex flex-col justify-between overflow-hidden relative">
+            <!-- Simulated Video Canvas / Player -->
+            <div class="flex-1 w-full bg-slate-950 flex flex-col items-center justify-center relative p-3">
+              <div class="w-16 h-16 rounded-full bg-red-600/90 text-white text-2xl flex items-center justify-center shadow-[0_0_25px_rgba(235,35,45,0.7)] mb-2 cursor-pointer hover:scale-110 transition" id="ytBigPlayBtn" onclick="toggleYtPlayback()">
+                ▶
+              </div>
+              <div class="text-sm font-bold text-white text-center" id="ytActiveTitle">แพ้ใจ - Mai Charoenpura (Rock Classic Driving Edition)</div>
+              <div class="text-xs text-slate-400 mt-0.5" id="ytActiveArtist">Toyota TRD In-Car Entertainment • 1080p HD</div>
+            </div>
+
+            <!-- Player Controls Bottom Bar -->
+            <div class="h-10 bg-slate-900 border-t border-slate-800 px-3 flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2">
+                <button onclick="toggleYtPlayback()" class="text-white hover:text-red-400 font-bold" id="ytCtrlPlay">⏸ PAUSE</button>
+                <span class="text-slate-400 text-[10px]" id="ytTimeCode">02:15 / 03:42</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="text-[10px] text-cyan-400 font-bold">JBL STEREO 5.1</span>
+                <button onclick="showToast('เปิดโหมดเต็มจอ Fullscreen Video')" class="text-slate-400 hover:text-white">⛶ ขยายเต็มจอ</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Curated In-Car Playlists Scroll -->
+          <div class="col-span-5 flex flex-col gap-1.5 overflow-y-auto pr-1">
+            <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">เพลงแนะนำยอดนิยมสำหรับขับรถ:</div>
+            
+            <div class="p-2 bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 rounded-lg cursor-pointer transition flex items-center gap-2" onclick="playYtTrack('แพ้ใจ', 'Mai Charoenpura')">
+              <div class="w-8 h-8 rounded bg-red-600/30 text-red-400 flex items-center justify-center text-xs font-bold">1</div>
+              <div class="flex-1 overflow-hidden">
+                <div class="text-xs font-bold text-white truncate">แพ้ใจ</div>
+                <div class="text-[10px] text-slate-400 truncate">Mai Charoenpura · Rock Classics</div>
+              </div>
+              <span class="text-[10px] text-cyan-400 font-bold">03:42</span>
+            </div>
+
+            <div class="p-2 bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 rounded-lg cursor-pointer transition flex items-center gap-2" onclick="playYtTrack('รักเธอเสมอ', 'อัสนี วสันต์')">
+              <div class="w-8 h-8 rounded bg-red-600/30 text-red-400 flex items-center justify-center text-xs font-bold">2</div>
+              <div class="flex-1 overflow-hidden">
+                <div class="text-xs font-bold text-white truncate">รักเธอเสมอ</div>
+                <div class="text-[10px] text-slate-400 truncate">อัสนี วสันต์ · Legend Drive Mix</div>
+              </div>
+              <span class="text-[10px] text-cyan-400 font-bold">04:35</span>
+            </div>
+
+            <div class="p-2 bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 rounded-lg cursor-pointer transition flex items-center gap-2" onclick="playYtTrack('คุกเข่า', 'Cocktail')">
+              <div class="w-8 h-8 rounded bg-red-600/30 text-red-400 flex items-center justify-center text-xs font-bold">3</div>
+              <div class="flex-1 overflow-hidden">
+                <div class="text-xs font-bold text-white truncate">คุกเข่า</div>
+                <div class="text-[10px] text-slate-400 truncate">Cocktail · High Energy Rock</div>
+              </div>
+              <span class="text-[10px] text-cyan-400 font-bold">04:19</span>
+            </div>
+
+            <div class="p-2 bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 rounded-lg cursor-pointer transition flex items-center gap-2" onclick="playYtTrack('อยากให้รู้ว่ารักเธอ', 'Joni Anwar')">
+              <div class="w-8 h-8 rounded bg-red-600/30 text-red-400 flex items-center justify-center text-xs font-bold">4</div>
+              <div class="flex-1 overflow-hidden">
+                <div class="text-xs font-bold text-white truncate">อยากให้รู้ว่ารักเธอ</div>
+                <div class="text-[10px] text-slate-400 truncate">Joni Anwar · 90s Pop Nostalgia</div>
+              </div>
+              <span class="text-[10px] text-cyan-400 font-bold">04:12</span>
+            </div>
+
+            <div class="p-2 bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 rounded-lg cursor-pointer transition flex items-center gap-2" onclick="playYtTrack('ใจสั่งมา', 'Loso')">
+              <div class="w-8 h-8 rounded bg-red-600/30 text-red-400 flex items-center justify-center text-xs font-bold">5</div>
+              <div class="flex-1 overflow-hidden">
+                <div class="text-xs font-bold text-white truncate">ใจสั่งมา</div>
+                <div class="text-[10px] text-slate-400 truncate">Loso · All-Time Hits</div>
+              </div>
+              <span class="text-[10px] text-cyan-400 font-bold">03:30</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ========================================================
+         MODAL 3: JBL SYNTHESIS® GREENEDGE™ ACOUSTIC MASTER SUITE
+    ======================================================== -->
+    <div id="musicModal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border-2 border-[#ff5500]/60 rounded-2xl max-w-4xl w-full p-4 shadow-2xl space-y-3 max-h-[92vh] overflow-y-auto">
+        
+        <!-- Header with Signature JBL Orange Badge -->
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span class="bg-[#ff5500] text-black font-black px-2 py-0.5 rounded text-xs tracking-wider shadow-[0_0_12px_rgba(255,85,0,0.6)]">JBL</span>
+            <span>SYNTHESIS® GREENEDGE™ ACOUSTIC SOUND MASTER</span>
+            <span class="text-[10px] bg-emerald-950 px-2 py-0.5 rounded text-emerald-300 border border-emerald-800 font-bold" id="clariFiBadge">CLARI-FI™ ACTIVE</span>
+            <span class="text-[10px] bg-cyan-950 px-2 py-0.5 rounded text-cyan-300 border border-cyan-800 font-bold">96kHz / 24-bit FLAC</span>
+          </div>
+          <button onclick="closeAllModals()" class="text-slate-400 hover:text-white font-bold px-2.5 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิด</button>
+        </div>
+
+        <!-- Top Row: 16-Band Dynamic Spectrum Visualizer + Subwoofer Punch Visualizer -->
+        <div class="grid grid-cols-12 gap-3">
+          <!-- 16-Band Real-Time Dynamic Frequency Spectrum -->
+          <div class="col-span-8 p-3 bg-black/60 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div class="w-full flex justify-between items-center text-xs text-slate-400 mb-1.5">
+              <span class="font-bold flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                REAL-TIME 16-BAND HIGH-RES SPECTRUM ANALYZER
+              </span>
+              <span class="text-cyan-400 font-bold" id="surroundDspMode">LOGIC 7 QUANTUMLOGIC 3D</span>
+            </div>
+            <div class="flex items-end justify-between gap-1.5 h-20 w-full px-2" id="audioSpectrumBars">
+              <!-- Animated frequency bars with peak hold generated via JS -->
+            </div>
+            <div class="flex justify-between text-[8px] text-slate-500 font-mono mt-1 px-1">
+              <span>32Hz</span><span>64</span><span>125</span><span>250</span><span>500</span><span>1k</span><span>2k</span><span>4k</span><span>8k</span><span>16kHz</span>
+            </div>
+          </div>
+
+          <!-- Subwoofer Punch & Speed-Compensated Volume -->
+          <div class="col-span-4 p-3 bg-black/60 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold text-slate-300">SUBWOOFER BASS</span>
+              <span class="text-xs font-black text-[#ff5500]" id="subGainVal">+6 dB</span>
+            </div>
+            
+            <!-- Animated Subwoofer Cone -->
+            <div class="flex items-center justify-center py-1">
+              <div class="w-16 h-16 rounded-full bg-gradient-to-br from-slate-800 to-black border-4 border-[#ff5500]/70 flex items-center justify-center shadow-[0_0_20px_rgba(255,85,0,0.4)] transition-transform duration-100" id="subConeGraphic">
+                <div class="w-7 h-7 rounded-full bg-slate-900 border-2 border-[#ff5500] flex items-center justify-center text-[9px] font-black text-white">
+                  JBL
+                </div>
+              </div>
+            </div>
+
+            <!-- Subwoofer Gain Slider -->
+            <div>
+              <input type="range" min="0" max="12" value="6" id="subGainSlider" oninput="setSubwooferGain(this.value)" class="w-full accent-[#ff5500] h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+              <div class="flex justify-between text-[9px] text-slate-400 mt-0.5">
+                <span>0 dB (Min)</span>
+                <span>+6 dB</span>
+                <span>+12 dB (Punch)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Middle Row: Interactive 10-Band Graphic Equalizer with Sliders -->
+        <div class="p-3 bg-slate-950 rounded-xl border border-slate-800">
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
+              <span>🎚️</span> 10-BAND PARAMETRIC GRAPHIC EQUALIZER (-12dB to +12dB)
+            </span>
+            <span class="text-[10px] text-slate-400">ลากแถบสไลเดอร์เพื่อปรับความถี่เสียงได้อิสระ</span>
+          </div>
+
+          <div class="grid grid-cols-10 gap-2 items-center text-center">
+            <!-- 10 Sliders generated with custom values -->
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal0">+6dB</span>
+              <input type="range" min="-12" max="12" value="6" id="eqSlider0" oninput="updateEqSlider(0, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">32Hz</span>
+              <span class="text-[8px] text-slate-500">Sub</span>
+            </div>
+
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal1">+5dB</span>
+              <input type="range" min="-12" max="12" value="5" id="eqSlider1" oninput="updateEqSlider(1, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">64Hz</span>
+              <span class="text-[8px] text-slate-500">Bass</span>
+            </div>
+
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal2">+4dB</span>
+              <input type="range" min="-12" max="12" value="4" id="eqSlider2" oninput="updateEqSlider(2, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">125Hz</span>
+              <span class="text-[8px] text-slate-500">Lo-Mid</span>
+            </div>
+
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal3">+1dB</span>
+              <input type="range" min="-12" max="12" value="1" id="eqSlider3" oninput="updateEqSlider(3, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">250Hz</span>
+              <span class="text-[8px] text-slate-500">Warmth</span>
+            </div>
+
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal4">0dB</span>
+              <input type="range" min="-12" max="12" value="0" id="eqSlider4" oninput="updateEqSlider(4, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">500Hz</span>
+              <span class="text-[8px] text-slate-500">Mid</span>
+            </div>
+
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal5">+1dB</span>
+              <input type="range" min="-12" max="12" value="1" id="eqSlider5" oninput="updateEqSlider(5, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">1kHz</span>
+              <span class="text-[8px] text-slate-500">Vocal</span>
+            </div>
+
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal6">+2dB</span>
+              <input type="range" min="-12" max="12" value="2" id="eqSlider6" oninput="updateEqSlider(6, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">2kHz</span>
+              <span class="text-[8px] text-slate-500">Clarity</span>
+            </div>
+
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal7">+3dB</span>
+              <input type="range" min="-12" max="12" value="3" id="eqSlider7" oninput="updateEqSlider(7, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">4kHz</span>
+              <span class="text-[8px] text-slate-500">Presence</span>
+            </div>
+
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal8">+5dB</span>
+              <input type="range" min="-12" max="12" value="5" id="eqSlider8" oninput="updateEqSlider(8, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">8kHz</span>
+              <span class="text-[8px] text-slate-500">Treble</span>
+            </div>
+
+            <div class="flex flex-col items-center">
+              <span class="text-[9px] font-mono font-bold text-[#ff5500]" id="eqVal9">+6dB</span>
+              <input type="range" min="-12" max="12" value="6" id="eqSlider9" oninput="updateEqSlider(9, this.value)" class="h-24 my-1 accent-[#ff5500] cursor-pointer" style="writing-mode: vertical-lr; direction: rtl;">
+              <span class="text-[9px] font-bold text-slate-300">16kHz</span>
+              <span class="text-[8px] text-slate-500">Air</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6 Signature Sound Master Presets -->
+        <div>
+          <div class="text-xs font-bold text-slate-400 uppercase mb-1.5 flex justify-between">
+            <span>JBL ACOUSTIC SIGNATURE PRESETS:</span>
+            <span class="text-[#ff5500] font-bold" id="currentPresetName">ACTIVE: BASS BOOST (+6dB)</span>
+          </div>
+          <div class="grid grid-cols-6 gap-1.5 text-xs">
+            <button onclick="setEqPreset('BASS')" id="eqBass" class="py-2 rounded-lg border-2 border-[#ff5500] bg-orange-950/40 text-white font-extrabold shadow-[0_0_12px_rgba(255,85,0,0.4)]">🔊 BASS BOOST</button>
+            <button onclick="setEqPreset('VOCAL')" id="eqVocal" class="py-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 font-bold hover:text-white">🎤 VOCAL CLARITY</button>
+            <button onclick="setEqPreset('ROCK')" id="eqRock" class="py-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 font-bold hover:text-white">🎸 ROCK DYNAMIC</button>
+            <button onclick="setEqPreset('ACOUSTIC')" id="eqAcoustic" class="py-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 font-bold hover:text-white">🍃 ACOUSTIC CHILL</button>
+            <button onclick="setEqPreset('CLUB')" id="eqClub" class="py-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 font-bold hover:text-white">⚡ CLUB EDM</button>
+            <button onclick="setEqPreset('FLAT')" id="eqFlat" class="py-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 font-bold hover:text-white">🎚️ STUDIO FLAT</button>
+          </div>
+        </div>
+
+        <!-- 2D Soundstage Fader / Balance + DSP Switches -->
+        <div class="grid grid-cols-12 gap-3 text-xs">
+          <!-- 2D Soundstage Cabin Fader -->
+          <div class="col-span-7 bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div class="flex justify-between items-center mb-1">
+              <span class="font-bold text-white uppercase">2D CABIN SOUNDSTAGE & FADER:</span>
+              <span class="text-cyan-400 font-bold" id="soundstageFocusText">🎯 DRIVER FOCUS</span>
+            </div>
+            <div class="grid grid-cols-4 gap-1.5 my-1">
+              <button onclick="setSoundStage('DRIVER')" id="stageDriver" class="py-1.5 px-1 rounded bg-cyan-950 border border-cyan-500 text-cyan-300 font-bold text-center">🎯 คนขับ (Driver)</button>
+              <button onclick="setSoundStage('FRONT')" id="stageFront" class="py-1.5 px-1 rounded bg-slate-800 border border-slate-700 text-slate-300 font-bold text-center hover:text-white">👥 คู่หน้า (Front)</button>
+              <button onclick="setSoundStage('ALL')" id="stageAll" class="py-1.5 px-1 rounded bg-slate-800 border border-slate-700 text-slate-300 font-bold text-center hover:text-white">🌐 ทั้งคัน (Center)</button>
+              <button onclick="setSoundStage('REAR')" id="stageRear" class="py-1.5 px-1 rounded bg-slate-800 border border-slate-700 text-slate-300 font-bold text-center hover:text-white">🛋️ แถวหลัง (Rear)</button>
+            </div>
+            <div class="text-[10px] text-slate-400">ระบบปรับเวลาหน่วงลำโพง Time Alignment 8 จุดรอบคัน เพื่อให้เสียงตกกระทบหูสมบูรณ์แบบ</div>
+          </div>
+
+          <!-- DSP Advanced Toggles -->
+          <div class="col-span-5 bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col justify-between space-y-1.5">
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="font-bold text-white text-[11px]">JBL Clari-Fi™ Music Fix</div>
+                <div class="text-[9px] text-slate-400">ฟื้นฟูมิติเสียงไฟล์ MP3 ให้คมชัด</div>
+              </div>
+              <button onclick="toggleClariFi()" id="btnClariFi" class="px-2.5 py-1 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/50 font-bold">ON</button>
+            </div>
+
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="font-bold text-white text-[11px]">QuantumLogic 3D Surround</div>
+                <div class="text-[9px] text-slate-400">เวทีเสียงโอบล้อม 3 มิติ 7.1</div>
+              </div>
+              <button onclick="toggleQuantumLogic()" id="btnQuantum" class="px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/50 font-bold">ON</button>
+            </div>
+
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="font-bold text-white text-[11px]">Speed-Compensated Volume (SCV)</div>
+                <div class="text-[9px] text-slate-400">เร่งเสียง/เบสตามความเร็วรถอัตโนมัติ</div>
+              </div>
+              <button onclick="toggleScv()" id="btnScv" class="px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700 font-bold">ON</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Current Track Info & Playback Controls -->
+        <div class="p-2.5 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-[#ff5500] to-red-600 flex items-center justify-center text-lg shadow-lg">
+              🎵
+            </div>
+            <div>
+              <div class="text-xs font-bold text-white" id="modalTrackTitle">Toyota TRD Hybrid Chill Lounge - Road 01.mp3</div>
+              <div class="text-[10px] text-slate-400">JBL GreenEdge™ Hi-Fi Stream • 320kbps A2DP Bluetooth</div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="prevTrack()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold">⏮</button>
+            <button onclick="togglePlay()" class="px-3.5 py-1 bg-[#ff5500] hover:bg-orange-600 text-white rounded-lg text-xs font-bold shadow-[0_0_10px_rgba(255,85,0,0.5)]" id="modalPlayBtn">⏸ PAUSE</button>
+            <button onclick="nextTrack()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold">⏭</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ========================================================
+         MODAL 4: HYBRID LAB & 14-BLOCK DEEP DIAGNOSTICS
+    ======================================================== -->
+    <div id="hybridLabModal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border-2 border-emerald-500/50 rounded-2xl max-w-4xl w-full p-4 shadow-2xl space-y-3">
+        
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span>📊</span> <span>TOYOTA PRIUS GEN 3 — HYBRID ECU 7E3 LABORATORY DIAGNOSTICS</span>
+          </div>
+          <button onclick="closeAllModals()" class="text-slate-400 hover:text-white font-bold px-2.5 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิด</button>
+        </div>
+
+        <div class="grid grid-cols-12 gap-3 text-xs">
+          <!-- 14-Block Live Breakdown -->
+          <div class="col-span-8 bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <div class="flex justify-between items-center mb-2">
+              <span class="font-bold text-slate-300">แรงดันแบตเตอรี่ไฮบริด 14 บล็อก (28 โมดูล NiMH):</span>
+              <span class="text-emerald-400 font-bold">DELTA V: 0.02 V (สมบูรณ์ 96%)</span>
+            </div>
+            <div class="grid grid-cols-7 gap-1.5 text-center" id="labBlocksGrid">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+
+          <!-- Battery Cooling Fan & Health -->
+          <div class="col-span-4 bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div>
+              <div class="text-slate-400 font-bold uppercase mb-1">พัดลมเป่าแบตเตอรี่ไฮบริด:</div>
+              <div class="text-lg font-black text-emerald-400">FAN LEVEL: LOW (ปกติ)</div>
+              <div class="text-[10px] text-slate-500">อุณหภูมิแบตเตอรี่ 35.0 °C (ต่ำกว่า 42°C ปลอดภัย)</div>
+            </div>
+            <div class="border-t border-slate-800 pt-2 mt-2">
+              <div class="text-slate-400 font-bold uppercase mb-0.5">ความต้านทานภายใน (Internal R):</div>
+              <div class="text-sm font-bold text-white">0.021 &Omega; ต่อบล็อก (เกณฑ์ดีเยี่ยม)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5-Minute Historical Fuel Economy Bar Chart -->
+        <div class="p-3 bg-slate-950 rounded-xl border border-slate-800">
+          <div class="flex justify-between items-center text-xs text-slate-300 mb-2">
+            <span class="font-bold">สถิติอัตราสิ้นเปลืองน้ำมันย้อนหลังทุก 5 นาที (Past 30 Minutes):</span>
+            <span class="text-cyan-400 font-bold">เฉลี่ย: 23.8 km/L</span>
+          </div>
+          <div class="flex items-end justify-between gap-3 h-16 px-4" id="fuelHistoryBars">
+            <!-- 6 historical 5-min bars -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ========================================================
+         MODAL 5: SETTINGS & SENTRY DASHCAM
+    ======================================================== -->
+    <div id="settingsModal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border-2 border-blue-500/50 rounded-2xl max-w-lg w-full p-4 shadow-2xl space-y-3">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span>⚙️</span> <span>PRIUS TRD SMART COCKPIT — SETTINGS & OPTIONS</span>
+          </div>
+          <button onclick="closeAllModals()" class="text-slate-400 hover:text-white font-bold px-2.5 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิด</button>
+        </div>
+
+        <div class="space-y-2 text-xs">
+          <div class="p-2.5 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-center">
+            <div>
+              <div class="font-bold text-white">การแจ้งเตือนความเร็วเกินกำหนด:</div>
+              <div class="text-[10px] text-slate-400">ส่งเสียงพูดภาษาไทยเมื่อขับเร็วเกิน</div>
+            </div>
+            <div class="flex gap-1">
+              <button onclick="setSpeedLimit(0)" class="px-2 py-1 rounded bg-slate-800 text-white font-bold">ปิด</button>
+              <button onclick="setSpeedLimit(90)" class="px-2 py-1 rounded bg-red-950 text-red-300 font-bold border border-red-800">90 km/h</button>
+              <button onclick="setSpeedLimit(120)" class="px-2 py-1 rounded bg-red-950 text-red-300 font-bold border border-red-800">120 km/h</button>
+            </div>
+          </div>
+
+          <div class="p-2.5 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-center">
+            <div>
+              <div class="font-bold text-white">โหมดหน้าจอสลัวกลางคืน (Auto Night Mode):</div>
+              <div class="text-[10px] text-slate-400">หรี่แสงสลัว 35% สบายตาขณะขับขี่กลางคืน</div>
+            </div>
+            <button onclick="toggleNightMode()" class="px-3 py-1 bg-amber-950 text-amber-300 font-bold rounded border border-amber-500/40">สลับโหมด</button>
+          </div>
+
+          <div class="p-2.5 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-center">
+            <div>
+              <div class="font-bold text-white">ระบบเสียงเตือนภาษาไทย (Thai TTS):</div>
+              <div class="text-[10px] text-slate-400">เตือนอุณหภูมิอินเวอร์เตอร์, แบต 12V และประตู</div>
+            </div>
+            <button onclick="speakThai()" class="px-3 py-1 bg-emerald-950 text-emerald-300 font-bold rounded border border-emerald-500/40">ทดสอบเสียง</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Sheet for Doors & Climate Control -->
+    <div id="doorsClimateModal" class="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+      <div class="bg-slate-900 border-2 border-emerald-500/50 rounded-2xl max-w-lg w-full p-4 shadow-2xl space-y-3">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span>🚪</span> <span>PRIUS TRD — สถานะประตู & ระบบแอร์ (750 / 7C0)</span>
+          </div>
+          <button onclick="closeDoorsClimateModal()" class="text-slate-400 hover:text-white font-bold px-2 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิด</button>
+        </div>
+
+        <!-- Doors Section -->
+        <div>
+          <div class="text-xs font-bold text-slate-400 uppercase mb-1.5 flex justify-between">
+            <span>สถานะประตู 5 บาน (Main Body ECU 750)</span>
+            <span class="text-emerald-400" id="modalLockStatus">🔒 ล็อกอยู่</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="p-2 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-center">
+              <span>ประตูหน้าขวา (คนขับ):</span>
+              <span class="font-bold text-emerald-400" id="mDoorDr">✅ ปิดสนิท</span>
+            </div>
+            <div class="p-2 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-center">
+              <span>ประตูหน้าซ้าย (คนนั่ง):</span>
+              <span class="font-bold text-emerald-400" id="mDoorPs">✅ ปิดสนิท</span>
+            </div>
+            <div class="p-2 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-center">
+              <span>ประตูหลังซ้าย-ขวา:</span>
+              <span class="font-bold text-emerald-400" id="mDoorRr">✅ ปิดสนิท</span>
+            </div>
+            <div class="p-2 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-center">
+              <span>ฝากระโปรงท้าย:</span>
+              <span class="font-bold text-emerald-400" id="mDoorBk">✅ ปิดสนิท</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Climate Section -->
+        <div>
+          <div class="text-xs font-bold text-slate-400 uppercase mb-1.5">ระบบปรับอากาศอินเวอร์เตอร์ (A/C ECU 7C0)</div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="p-2 bg-slate-950 rounded-lg border border-slate-800">
+              <div class="text-slate-400">อุณหภูมิห้องโดยสาร:</div>
+              <div class="text-base font-bold text-cyan-300 mt-0.5" id="mCabinTemp">24.5 °C</div>
+            </div>
+            <div class="p-2 bg-slate-950 rounded-lg border border-slate-800">
+              <div class="text-slate-400">อุณหภูมิแอร์ที่ตั้งไว้:</div>
+              <div class="text-base font-bold text-white mt-0.5" id="mSetTemp">25.0 °C</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex gap-2 pt-1">
+          <button onclick="toggleSimDoorOpen()" class="flex-1 py-2 bg-red-950/60 hover:bg-red-900/60 text-red-300 border border-red-500/40 rounded-lg text-xs font-bold transition">
+            ⚠️ ทดสอบเปิดประตูคนขับ
+          </button>
+          <button onclick="speakThaiDoorsClimate()" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition">
+            🔊 พูดสรุปด้วยเสียงไทย
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================
+         MODAL 7: TPMS TIRE PRESSURE & WHEEL TEMPERATURE
+    ======================================================== -->
+    <div id="tpmsModal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border-2 border-cyan-500/50 rounded-2xl max-w-2xl w-full p-4 shadow-2xl space-y-3">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span>🛞</span> <span>PRIUS TRD TPMS — ระบบตรวจวัดลมยาง & อุณหภูมิ 4 ล้อ เรียลไทม์</span>
+          </div>
+          <button onclick="closeAllModals()" class="text-slate-400 hover:text-white font-bold px-2.5 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิด</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <!-- Front Left -->
+          <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center" id="tpmsCardFL">
+            <div>
+              <div class="text-slate-400 font-bold">ล้อหน้าซ้าย (FL)</div>
+              <div class="text-xl font-black text-emerald-400" id="tpmsValFL">35.2 <span class="text-xs font-normal text-slate-400">PSI</span></div>
+              <div class="text-[10px] text-slate-400">อุณหภูมิ: 32.4 °C • ดอกยาง: 6.8 mm</div>
+            </div>
+            <span class="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/40 px-2 py-1 rounded text-[10px]" id="tpmsBadgeFL">✅ ปกติ</span>
+          </div>
+
+          <!-- Front Right -->
+          <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center" id="tpmsCardFR">
+            <div>
+              <div class="text-slate-400 font-bold">ล้อหน้าขวา (FR)</div>
+              <div class="text-xl font-black text-emerald-400" id="tpmsValFR">35.0 <span class="text-xs font-normal text-slate-400">PSI</span></div>
+              <div class="text-[10px] text-slate-400">อุณหภูมิ: 33.1 °C • ดอกยาง: 6.8 mm</div>
+            </div>
+            <span class="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/40 px-2 py-1 rounded text-[10px]">✅ ปกติ</span>
+          </div>
+
+          <!-- Rear Left -->
+          <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center" id="tpmsCardRL">
+            <div>
+              <div class="text-slate-400 font-bold">ล้อหลังซ้าย (RL)</div>
+              <div class="text-xl font-black text-emerald-400" id="tpmsValRL">33.2 <span class="text-xs font-normal text-slate-400">PSI</span></div>
+              <div class="text-[10px] text-slate-400">อุณหภูมิ: 31.8 °C • ดอกยาง: 7.1 mm</div>
+            </div>
+            <span class="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/40 px-2 py-1 rounded text-[10px]">✅ ปกติ</span>
+          </div>
+
+          <!-- Rear Right -->
+          <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center" id="tpmsCardRR">
+            <div>
+              <div class="text-slate-400 font-bold">ล้อหลังขวา (RR)</div>
+              <div class="text-xl font-black text-emerald-400" id="tpmsValRR">33.1 <span class="text-xs font-normal text-slate-400">PSI</span></div>
+              <div class="text-[10px] text-slate-400">อุณหภูมิ: 31.5 °C • ดอกยาง: 7.0 mm</div>
+            </div>
+            <span class="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/40 px-2 py-1 rounded text-[10px]">✅ ปกติ</span>
+          </div>
+        </div>
+
+        <div class="p-2.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
+          <div>
+            <div class="font-bold text-white">มาตรฐานแรงดันลมยาง Prius Gen 3:</div>
+            <div class="text-[10px] text-slate-400">ล้อหน้า: 35 PSI (240 kPa) • ล้อหลัง: 33 PSI (230 kPa) ขณะยางเย็น</div>
+          </div>
+          <button onclick="toggleTpmsLeakSim()" id="btnTpmsSim" class="px-3 py-1.5 rounded-lg bg-red-950 text-red-300 font-bold border border-red-500/40 hover:bg-red-900 transition">
+            ⚠️ จำลองยางรั่วซึม
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================
+         MODAL 8: TRIP FINANCIAL & FUEL ECONOMY CALCULATOR
+    ======================================================== -->
+    <div id="tripFinancialModal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border-2 border-amber-500/50 rounded-2xl max-w-2xl w-full p-4 shadow-2xl space-y-3">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span>💰</span> <span>PRIUS HYBRID TRIP FINANCIAL CALCULATOR (คำนวณค่าน้ำมันทริปนี้)</span>
+          </div>
+          <button onclick="closeAllModals()" class="text-slate-400 hover:text-white font-bold px-2.5 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิด</button>
+        </div>
+
+        <div class="grid grid-cols-4 gap-2 text-center">
+          <div class="p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400 font-bold uppercase">ค่าน้ำมันทริปนี้</div>
+            <div class="text-xl font-black text-amber-400 mt-1" id="tripCostBaht">68.53 <span class="text-xs font-normal">฿</span></div>
+            <div class="text-[9px] text-slate-500">1.78 ลิตร</div>
+          </div>
+          <div class="p-2.5 bg-slate-950 rounded-xl border border-emerald-500/40 bg-emerald-950/20">
+            <div class="text-[10px] text-emerald-400 font-bold uppercase">ประหยัดเงินได้</div>
+            <div class="text-xl font-black text-emerald-400 mt-1">+68.50 <span class="text-xs font-normal">฿</span></div>
+            <div class="text-[9px] text-emerald-300">เทียบรถทั่วไป 50%</div>
+          </div>
+          <div class="p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400 font-bold uppercase">อัตราเฉลี่ยทริป</div>
+            <div class="text-xl font-black text-cyan-300 mt-1">24.0 <span class="text-xs font-normal">km/L</span></div>
+            <div class="text-[9px] text-slate-500">Eco Hybrid</div>
+          </div>
+          <div class="p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400 font-bold uppercase">ระยะทางที่ขับได้ต่อ</div>
+            <div class="text-xl font-black text-white mt-1">785 <span class="text-xs font-normal">km</span></div>
+            <div class="text-[9px] text-slate-500">Range to Empty</div>
+          </div>
+        </div>
+
+        <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-xs">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-300 font-bold">ราคาน้ำมันอ้างอิง: แก๊สโซฮอล์ 95 (Gasohol 95)</span>
+            <span class="text-amber-400 font-mono font-bold">38.50 บาท/ลิตร</span>
+          </div>
+          <div class="flex justify-between items-center text-slate-400 text-[11px]">
+            <span>ลดการปล่อยก๊าซคาร์บอนไดออกไซด์ทริปนี้:</span>
+            <span class="text-emerald-400 font-bold">-4.2 kg CO₂ (Green Hybrid Impact)</span>
+          </div>
+          <div class="border-t border-slate-800 pt-2 flex justify-between items-center">
+            <span class="text-slate-400 text-[10px]">ขับครบ 10,000 km ช่วยประหยัดเงินในกระเป๋าได้กว่า 16,000 บาท!</span>
+            <button onclick="resetTripFinancial()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-bold">รีเซ็ตทริป</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================
+         MODAL 9: SENTRY GUARD & DASHCAM TELEMETRY OVERLAY
+    ======================================================== -->
+    <div id="sentryDashcamModal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border-2 border-red-500/50 rounded-2xl max-w-3xl w-full p-4 shadow-2xl space-y-3">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span class="text-red-500 text-lg">📹</span> <span>PRIUS TRD SENTRY GUARD & 1080P DASHCAM TELEMETRY</span>
+            <span class="text-[10px] bg-red-950 px-2 py-0.5 rounded text-red-300 border border-red-800 font-bold animate-pulse">REC ● LIVE</span>
+          </div>
+          <button onclick="closeAllModals()" class="text-slate-400 hover:text-white font-bold px-2.5 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิด</button>
+        </div>
+
+        <div class="relative w-full h-56 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+          <div class="absolute inset-0 bg-gradient-to-b from-slate-900 via-slate-950 to-black flex items-center justify-center">
+            <div class="text-center text-slate-700 font-mono text-xs">
+              <div class="text-3xl mb-1">🚗 🛣️</div>
+              [ FRONT 1080P SONY STARVIS™ CAMERA SENSOR ]
+            </div>
+          </div>
+
+          <div class="absolute top-3 left-3 bg-black/75 px-3 py-1.5 rounded-lg border border-white/20 text-white font-mono text-xs shadow-lg space-y-0.5">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping"></span>
+              <span class="text-red-400 font-black">REC 1080P 60FPS</span>
+              <span class="text-slate-400" id="dashcamTimecode">00:14:32</span>
+            </div>
+            <div class="text-[10px] text-cyan-300 font-bold">SPEED: <span id="dashcamHudSpeed">0</span> KM/H • G: 0.12G</div>
+          </div>
+
+          <div class="absolute top-3 right-3 bg-black/75 px-3 py-1.5 rounded-lg border border-white/20 text-right font-mono text-[10px] text-slate-300 shadow-lg">
+            <div>TOYOTA PRIUS TRD SPORTIVO</div>
+            <div class="text-emerald-400 font-bold">GPS: 13.7563° N, 100.5018° E</div>
+          </div>
+
+          <div class="absolute bottom-3 inset-x-3 flex justify-between items-center bg-black/75 px-3 py-2 rounded-lg border border-white/20 text-xs">
+            <div class="flex gap-2">
+              <button onclick="captureDashcamSnap()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded">📸 ถ่ายภาพนิ่ง</button>
+              <button onclick="toggleDashcamLock()" id="btnLockClip" class="px-3 py-1 bg-red-950 text-red-300 border border-red-500/40 hover:bg-red-900 font-bold rounded">🔒 ล็อกคลิปฉุกเฉิน</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="switchCamFeed('FRONT')" id="btnCamFront" class="px-2.5 py-1 bg-cyan-950 text-cyan-300 border border-cyan-500 font-bold rounded">กล้องหน้า</button>
+              <button onclick="switchCamFeed('REAR')" id="btnCamRear" class="px-2.5 py-1 bg-slate-800 text-slate-400 hover:text-white font-bold rounded">กล้องหลัง (ถอยจอด)</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-2.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
+          <div>
+            <div class="font-bold text-white">ระบบเฝ้าระวัง Sentry Guard Active:</div>
+            <div class="text-[10px] text-slate-400">บันทึกวิดีโออัตโนมัติเมื่อตรวจพบแรงกระแทก G-Sensor หรือการเคลื่อนไหวขณะจอดรถ</div>
+          </div>
+          <span class="text-xs font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/40 px-2.5 py-1 rounded-full">🛡️ ARMED</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================
+         MODAL 10: DYNAMIC COCKPIT AMBIENT LIGHT & THEME AURA
+    ======================================================== -->
+    <div id="ambientLightModal" class="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border-2 border-purple-500/50 rounded-2xl max-w-xl w-full p-4 shadow-2xl space-y-3">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div class="text-sm font-black text-white flex items-center gap-2">
+            <span>🎨</span> <span>DYNAMIC COCKPIT AMBIENT LIGHT & INTERIOR ILLUMINATION</span>
+          </div>
+          <button onclick="closeAllModals()" class="text-slate-400 hover:text-white font-bold px-2.5 py-1 bg-slate-800 rounded-lg text-xs">✕ ปิด</button>
+        </div>
+
+        <div class="text-xs font-bold text-slate-400 uppercase">เลือกโทนแสงไฟ AMBIENT LIGHT ในห้องโดยสาร:</div>
+        
+        <div class="grid grid-cols-3 gap-2 text-xs">
+          <button onclick="setAmbientColor('#ff2a44', 'TRD Crimson Red')" class="p-2.5 rounded-xl border border-red-500 bg-red-950/40 text-white font-bold flex items-center gap-2 shadow-[0_0_10px_rgba(255,42,68,0.4)]">
+            <span class="w-4 h-4 rounded-full bg-[#ff2a44] shadow-[0_0_8px_#ff2a44]"></span>
+            <span>🔴 TRD Crimson</span>
+          </button>
+
+          <button onclick="setAmbientColor('#00e5ff', 'Electric Cyan')" class="p-2.5 rounded-xl border border-cyan-500 bg-cyan-950/40 text-white font-bold flex items-center gap-2 shadow-[0_0_10px_rgba(0,229,255,0.4)]">
+            <span class="w-4 h-4 rounded-full bg-[#00e5ff] shadow-[0_0_8px_#00e5ff]"></span>
+            <span>🔵 Electric Cyan</span>
+          </button>
+
+          <button onclick="setAmbientColor('#00e68c', 'Emerald Eco')" class="p-2.5 rounded-xl border border-emerald-500 bg-emerald-950/40 text-white font-bold flex items-center gap-2 shadow-[0_0_10px_rgba(0,230,140,0.4)]">
+            <span class="w-4 h-4 rounded-full bg-[#00e68c] shadow-[0_0_8px_#00e68c]"></span>
+            <span>🟢 Emerald Eco</span>
+          </button>
+
+          <button onclick="setAmbientColor('#a855f7', 'Cyber Violet')" class="p-2.5 rounded-xl border border-purple-500 bg-purple-950/40 text-white font-bold flex items-center gap-2 shadow-[0_0_10px_rgba(168,85,247,0.4)]">
+            <span class="w-4 h-4 rounded-full bg-[#a855f7] shadow-[0_0_8px_#a855f7]"></span>
+            <span>🟣 Cyber Violet</span>
+          </button>
+
+          <button onclick="setAmbientColor('#f59e0b', 'Champagne Gold')" class="p-2.5 rounded-xl border border-amber-500 bg-amber-950/40 text-white font-bold flex items-center gap-2 shadow-[0_0_10px_rgba(245,158,11,0.4)]">
+            <span class="w-4 h-4 rounded-full bg-[#f59e0b] shadow-[0_0_8px_#f59e0b]"></span>
+            <span>🟡 Gold Lounge</span>
+          </button>
+
+          <button onclick="setAmbientColor('#e2e8f0', 'Arctic Ice White')" class="p-2.5 rounded-xl border border-slate-400 bg-slate-800 text-white font-bold flex items-center gap-2 shadow-[0_0_10px_rgba(226,232,240,0.4)]">
+            <span class="w-4 h-4 rounded-full bg-[#e2e8f0] shadow-[0_0_8px_#e2e8f0]"></span>
+            <span>⚪ Arctic Ice</span>
+          </button>
+        </div>
+
+        <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-xs">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-300 font-bold">ความสว่างออร่าขอบจอ (Brightness):</span>
+            <span class="text-cyan-400 font-bold" id="ambientBrightVal">80%</span>
+          </div>
+          <input type="range" min="10" max="100" value="80" oninput="setAmbientBrightness(this.value)" class="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+
+          <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+            <div>
+              <div class="text-white font-bold">⚡ กระพริบตามจังหวะเพลง (Pulse with Bass)</div>
+              <div class="text-[10px] text-slate-400">ออร่าขอบจอเต้นตามเสียงเบสของลำโพง JBL</div>
+            </div>
+            <button onclick="toggleAmbientPulse()" id="btnAmbientPulse" class="px-3 py-1 bg-slate-800 text-slate-300 font-bold rounded border border-slate-700">ON</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Toast Popup inside Cockpit -->
+    <div id="cockpitToast" class="absolute bottom-20 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700 text-white text-xs font-bold px-4 py-2 rounded-full shadow-2xl opacity-0 pointer-events-none transition-all duration-300 flex items-center gap-2 z-50">
+      <span class="w-2 h-2 rounded-full accent-bg" id="toastDot"></span>
+      <span id="toastMsg">แจ้งเตือนระบบ</span>
+    </div>
+
+  </div>
+
+  <script>
+    // Cockpit State
+    let currentTheme = 'sport';
+    let currentSpeed = 0;
+    let displayedSpeed = 0;
+    let currentGear = 'D';
+    let isPlaying = true;
+    let isBleLive = false;
+    let isNight = false;
+    let speedLimit = 0; // 0 = off, 90, 120
+    let weakCellSim = false;
+    let trackIdx = 0;
+    let lastOverspeedToast = 0;
+    let isYtPlaying = true;
+    let currentEq = 'BASS';
+    let spectrumInterval = null;
+    let leafletMapInstance = null;
+    let carMarkerInstance = null;
+    let blinkerLActive = false;
+    let blinkerRActive = false;
+    let isSimDoorOpen = false;
+    let currentDriveMode = 'ECO';
+
+    const tracks = [
+      "Toyota TRD Hybrid Chill Lounge - Road 01.mp3",
+      "Bangkok Expressway Midnight Drive - 02.m4a",
+      "Siam Acoustic Live Session - 03.mp3",
+      "Prius Gen 3 Smooth Cruise - 04.m4a"
+    ];
+
+    // Clock updater
+    function updateClock() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const el = document.getElementById('clockElem');
+      if (el) el.innerText = `${h}:${m}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // =========================================================================
+    // HIGH-PRECISION ANALOG-DIGITAL SPEEDOMETER GAUGE CANVAS (0-180 KM/H)
+    // =========================================================================
+    function initSpeedoGauge() {
+      const canvas = document.getElementById('speedoGaugeCanvas');
+      if (!canvas) return;
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const targetW = rect.width || 310;
+      const targetH = rect.height || 175;
+      canvas.width = targetW * dpr;
+      canvas.height = targetH * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+      ctx.scale(dpr, dpr);
+    }
+
+    function drawSpeedoGauge() {
+      const canvas = document.getElementById('speedoGaugeCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Smooth needle interpolation (silky 60fps sweep)
+      displayedSpeed += (currentSpeed - displayedSpeed) * 0.14;
+
+      const cx = w / 2;
+      const cy = h - 22;
+      const radius = Math.min(cx - 24, cy - 8);
+
+      // Automotive sweep angles: 135 deg to 405 deg (270 deg total)
+      const startAngle = (135 * Math.PI) / 180;
+      const totalSweep = (270 * Math.PI) / 180;
+      const maxSpeed = 180;
+
+      // 1. Dark Background Track
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, startAngle, startAngle + totalSweep, false);
+      ctx.lineWidth = 10;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // 2. Redline Zone (120 - 180 km/h)
+      const redlineStartAngle = startAngle + (120 / maxSpeed) * totalSweep;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, redlineStartAngle, startAngle + totalSweep, false);
+      ctx.lineWidth = 10;
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.28)';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // 3. Dynamic Filled Glow Arc
+      const clampedSpeed = Math.min(maxSpeed, Math.max(0, displayedSpeed));
+      const currentAngle = startAngle + (clampedSpeed / maxSpeed) * totalSweep;
+
+      if (clampedSpeed > 0.5) {
+        const activeGrad = ctx.createLinearGradient(cx - radius, cy, cx + radius, cy);
+        if (currentTheme === 'sport') {
+          activeGrad.addColorStop(0, '#00e5ff');
+          activeGrad.addColorStop(0.5, '#f59e0b');
+          activeGrad.addColorStop(1, '#ef4444');
+        } else if (currentTheme === 'eco') {
+          activeGrad.addColorStop(0, '#10b981');
+          activeGrad.addColorStop(0.7, '#06b6d4');
+          activeGrad.addColorStop(1, '#3b82f6');
+        } else {
+          activeGrad.addColorStop(0, '#06b6d4');
+          activeGrad.addColorStop(0.6, '#3b82f6');
+          activeGrad.addColorStop(1, '#8b5cf6');
+        }
+
+        ctx.save();
+        ctx.shadowColor = (speedLimit > 0 && clampedSpeed > speedLimit) ? 'rgba(239, 68, 68, 0.8)' : (currentTheme === 'sport' ? 'rgba(239, 68, 68, 0.5)' : 'rgba(0, 229, 255, 0.5)');
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, startAngle, currentAngle, false);
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = activeGrad;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 4. Tick Scale & Numbers (0, 20, 40, ... 180)
+      for (let s = 0; s <= maxSpeed; s += 10) {
+        const tAngle = startAngle + (s / maxSpeed) * totalSweep;
+        const isMajor = s % 20 === 0;
+        const tickLen = isMajor ? 10 : 5;
+        const innerR = radius - 14;
+        const outerR = innerR - tickLen;
+
+        const x1 = cx + innerR * Math.cos(tAngle);
+        const y1 = cy + innerR * Math.sin(tAngle);
+        const x2 = cx + outerR * Math.cos(tAngle);
+        const y2 = cy + outerR * Math.sin(tAngle);
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.lineWidth = isMajor ? 2 : 1;
+        ctx.strokeStyle = s >= 120 ? 'rgba(239, 68, 68, 0.85)' : (isMajor ? 'rgba(255, 255, 255, 0.65)' : 'rgba(255, 255, 255, 0.25)');
+        ctx.stroke();
+
+        // Major Tick Digits
+        if (isMajor) {
+          const textR = outerR - 10;
+          const tx = cx + textR * Math.cos(tAngle);
+          const ty = cy + textR * Math.sin(tAngle);
+
+          ctx.save();
+          ctx.font = 'bold 9px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+          ctx.fillStyle = s >= 120 ? '#f87171' : '#94a3b8';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(s.toString(), tx, ty);
+          ctx.restore();
+        }
+      }
+
+      // 5. Center Digital Readout
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const roundedSpd = Math.round(displayedSpeed);
+      const isOverspeed = (speedLimit > 0 && roundedSpd > speedLimit);
+
+      // Digital Number
+      ctx.font = '900 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = isOverspeed ? '#ef4444' : '#ffffff';
+      ctx.shadowColor = isOverspeed ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 229, 255, 0.4)';
+      ctx.shadowBlur = isOverspeed ? 16 : 8;
+      ctx.fillText(roundedSpd.toString(), cx, cy - 36);
+
+      // KM / H Unit
+      ctx.font = 'bold 10px -apple-system, sans-serif';
+      ctx.fillStyle = isOverspeed ? '#f87171' : '#38bdf8';
+      ctx.shadowBlur = 0;
+      ctx.fillText('KM / H', cx, cy - 12);
+
+      ctx.restore();
+
+      // 6. Sweeping LED Needle
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(currentAngle);
+
+      ctx.shadowColor = currentTheme === 'sport' ? '#ef4444' : '#00e5ff';
+      ctx.shadowBlur = 14;
+
+      const needleGrad = ctx.createLinearGradient(0, 0, radius - 4, 0);
+      needleGrad.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+      needleGrad.addColorStop(0.5, currentTheme === 'sport' ? '#ef4444' : '#00e5ff');
+      needleGrad.addColorStop(1, '#ffffff');
+
+      ctx.beginPath();
+      ctx.moveTo(-8, 0);
+      ctx.lineTo(radius - 6, 0);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = needleGrad;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Pivot Hub
+      ctx.beginPath();
+      ctx.arc(0, 0, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#0f172a';
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = currentTheme === 'sport' ? '#ef4444' : '#00e5ff';
+      ctx.stroke();
+
+      // Center Jewel
+      ctx.beginPath();
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function renderLoop() {
+      drawSpeedoGauge();
+      requestAnimationFrame(renderLoop);
+    }
+
+    // =========================================================================
+    // THEMES & SPEED CONTROLS
+    // =========================================================================
+    function setTheme(theme) {
+      currentTheme = theme;
+      const root = document.getElementById('cockpitRoot');
+      if (root) {
+        root.className = root.className.replace(/theme-\w+/g, '');
+        root.classList.add(`theme-${theme}`);
+      }
+
+      const bS = document.getElementById('btnSport');
+      const bN = document.getElementById('btnNormal');
+      const bE = document.getElementById('btnEco');
+      if (bS) bS.className = theme === 'sport' ? 'px-2.5 py-1 rounded bg-red-600 text-white font-bold transition' : 'px-2.5 py-1 rounded text-slate-400 hover:text-white transition';
+      if (bN) bN.className = theme === 'normal' ? 'px-2.5 py-1 rounded bg-cyan-600 text-white font-bold transition' : 'px-2.5 py-1 rounded text-slate-400 hover:text-white transition';
+      if (bE) bE.className = theme === 'eco' ? 'px-2.5 py-1 rounded bg-emerald-600 text-white font-bold transition' : 'px-2.5 py-1 rounded text-slate-400 hover:text-white transition';
+
+      showToast(`เปลี่ยนโหมดธีมเป็น: ${theme.toUpperCase()}`);
+    }
+
+    function setSpeedLimit(lim) {
+      speedLimit = lim;
+      const lOff = document.getElementById('limOff');
+      const l90 = document.getElementById('lim90');
+      const l120 = document.getElementById('lim120');
+      if (lOff) lOff.className = lim === 0 ? 'px-2 py-0.5 rounded font-bold transition bg-slate-800 text-white' : 'px-2 py-0.5 rounded font-bold transition text-slate-400 hover:text-white';
+      if (l90) l90.className = lim === 90 ? 'px-2 py-0.5 rounded font-bold transition bg-red-700 text-white' : 'px-2 py-0.5 rounded font-bold transition text-slate-400 hover:text-white';
+      if (l120) l120.className = lim === 120 ? 'px-2 py-0.5 rounded font-bold transition bg-red-700 text-white' : 'px-2 py-0.5 rounded font-bold transition text-slate-400 hover:text-white';
+      
+      if (lim > 0) {
+        showToast(`🚨 เปิดการแจ้งเตือนความเร็วเกิน ${lim} km/h (พร้อมเสียงเตือนภาษาไทย)`);
+      } else {
+        showToast('ปิดระบบแจ้งเตือนความเร็วเกิน');
+      }
+      checkOverspeed();
+    }
+
+    function toggleNightMode() {
+      isNight = !isNight;
+      const frame = document.getElementById('ipadFrame');
+      const icon = document.getElementById('nightIcon');
+      const text = document.getElementById('nightText');
+      if (isNight) {
+        if (frame) frame.classList.add('night-dim');
+        if (icon) icon.innerText = '🌙';
+        if (text) text.innerText = 'กลางคืน';
+        showToast('🌙 โหมดกลางคืนเปิดใช้งาน • หรี่จอสลัว 35% สบายตาขณะขับขี่');
+      } else {
+        if (frame) frame.classList.remove('night-dim');
+        if (icon) icon.innerText = '☀️';
+        if (text) text.innerText = 'กลางวัน';
+        showToast('☀️ โหมดกลางวัน • เร่งความสว่างจอ 85% สู้แสงแดด');
+      }
+    }
+
+    function updateSpeed(val) {
+      currentSpeed = parseInt(val, 10);
+      const sVal = document.getElementById('sliderVal');
+      if (sVal) sVal.innerText = currentSpeed;
+
+      // Update EV Power bar & text
+      const evPower = (currentSpeed * 0.45).toFixed(1);
+      const evText = document.getElementById('evPowerText');
+      if (evText) evText.innerText = `⚡ EV POWER: +${evPower} kW`;
+      const barW = Math.min(100, Math.max(10, currentSpeed * 0.7));
+      const evBar = document.getElementById('evPowerBar');
+      if (evBar) evBar.style.width = `${barW}%`;
+
+      // Update Motors
+      const mg2Rpm = currentSpeed * 45;
+      const mg2 = document.getElementById('mg2Val');
+      if (mg2) mg2.innerHTML = `${mg2Rpm.toLocaleString()} RPM <span class="text-xs text-slate-400 font-normal">/ ${(currentSpeed * 0.4).toFixed(0)} kW</span>`;
+
+      // Update Coolant slightly
+      const cTemp = 85 + Math.floor(currentSpeed * 0.05);
+      const cl = document.getElementById('coolantVal');
+      if (cl) cl.innerText = `${cTemp} °C`;
+
+      // Update Map HUD & Dashcam Floating Speed
+      const mapSpd = document.getElementById('mapHudSpeed');
+      if (mapSpd) mapSpd.innerText = currentSpeed;
+      const dCamSpd = document.getElementById('dashcamHudSpeed');
+      if (dCamSpd) dCamSpd.innerText = currentSpeed;
+
+      // Update Hybrid Battery Inflow/Outflow Visualizer on Car Graphic
+      const flowBadge = document.getElementById('batteryFlowStateBadge');
+      const flowText = document.getElementById('flowDirectionText');
+      const flowKw = document.getElementById('flowKwText');
+      const stream = document.getElementById('batteryFlowStream');
+
+      if (currentSpeed === 0) {
+        if (flowBadge) flowBadge.innerText = '🔋 Standby พร้อมทำงาน';
+        if (flowText) flowText.innerText = '⚡ แบตเตอรี่ไฮบริดพร้อมจ่ายไฟ (Ready)';
+        if (flowKw) flowKw.innerText = '+0.0 kW (Idle)';
+        if (stream) stream.className = 'absolute top-0 bottom-0 left-0 bg-slate-700 rounded-full transition-all duration-300';
+      } else if (currentSpeed <= 40) {
+        if (flowBadge) flowBadge.innerText = '⚡ ดึงไฟขับเคลื่อน EV';
+        if (flowText) flowText.innerText = '⚡ ดึงกระแสไฟจากแบตเตอรี่ → มอเตอร์ MG2';
+        if (flowKw) flowKw.innerText = `-${(currentSpeed * 0.35).toFixed(1)} kW (EV Discharging)`;
+        if (stream) stream.className = 'absolute top-0 bottom-0 left-0 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full transition-all duration-300 animate-pulse';
+      } else {
+        if (flowBadge) flowBadge.innerText = '🔥 HYBRID DRIVE เต็มกำลัง';
+        if (flowText) flowText.innerText = '⚡ เครื่องยนต์ + แบตเตอรี่ไฮบริดร่วมส่งกำลัง';
+        if (flowKw) flowKw.innerText = `+${(currentSpeed * 0.55).toFixed(1)} kW (Combined Drive)`;
+        if (stream) stream.className = 'absolute top-0 bottom-0 left-0 bg-gradient-to-r from-cyan-400 via-amber-400 to-red-500 rounded-full transition-all duration-300 animate-pulse';
+      }
+
+      checkOverspeed();
+    }
+
+    function checkOverspeed() {
+      const srcElem = document.getElementById('speedSource');
+      if (speedLimit > 0 && currentSpeed > speedLimit) {
+        if (srcElem) {
+          srcElem.innerHTML = `⚠️ เกินกำหนด (${speedLimit} km/h)`;
+          srcElem.className = 'absolute bottom-2 right-3 text-[10px] font-bold tracking-widest text-red-400 uppercase animate-bounce';
+        }
+        const now = Date.now();
+        if (now - lastOverspeedToast > 8000) {
+          lastOverspeedToast = now;
+          showToast(`🚨 เสียงเตือน: "ความเร็วเกินกำหนด ${speedLimit} กิโลเมตรต่อชั่วโมง กรุณาลดความเร็ว"`);
+        }
+      } else {
+        if (srcElem) {
+          srcElem.innerHTML = 'KM / H • DYNAMICS';
+          srcElem.className = 'absolute bottom-2 right-3 text-[10px] font-bold text-cyan-400 uppercase tracking-widest';
+        }
+      }
+    }
+
+    // =========================================================================
+    // PRIUS GS ELECTRONIC GEAR SELECTOR & DRIVE MODES
+    // =========================================================================
+    function cycleGearNext() {
+      const order = ['P', 'R', 'N', 'D', 'B'];
+      const nextIdx = (order.indexOf(currentGear) + 1) % order.length;
+      setGear(order[nextIdx]);
+    }
+
+    function setGear(g) {
+      currentGear = g;
+      ['P', 'R', 'N', 'D', 'B'].forEach(x => {
+        const btn = document.getElementById(`gear${x}`);
+        if (btn) {
+          if (x === g) {
+            btn.className = 'h-8 rounded-lg text-xs font-black border-2 transition bg-red-600/30 border-red-500 text-white glow-accent';
+          } else {
+            btn.className = 'h-8 rounded-lg text-xs font-black border border-slate-700 bg-slate-800/60 text-slate-400 hover:text-white transition';
+          }
+        }
+      });
+
+      // Update Prius GS Gear Badge
+      const gearBox = document.getElementById('priusGsGearBox');
+      const gearLetter = document.getElementById('priusGsGearLetter');
+      const gearLabel = document.getElementById('priusGsGearLabel');
+
+      if (gearLetter) gearLetter.innerText = g;
+      const gearConfigs = {
+        'P': { label: 'PARK', color: 'border-red-500 bg-red-950/60 text-red-400 shadow-[0_0_15px_rgba(235,35,45,0.5)]', labelColor: 'text-red-400' },
+        'R': { label: 'REVERSE', color: 'border-amber-500 bg-amber-950/60 text-amber-300 shadow-[0_0_15px_rgba(255,183,3,0.5)]', labelColor: 'text-amber-300' },
+        'N': { label: 'NEUTRAL', color: 'border-slate-500 bg-slate-900/60 text-slate-300 shadow-[0_0_10px_rgba(148,163,184,0.3)]', labelColor: 'text-slate-400' },
+        'D': { label: 'DRIVE', color: 'border-emerald-500 bg-emerald-950/60 text-emerald-400 shadow-[0_0_15px_rgba(0,230,140,0.5)]', labelColor: 'text-emerald-400' },
+        'B': { label: 'BRAKE REGEN', color: 'border-cyan-500 bg-cyan-950/60 text-cyan-300 shadow-[0_0_15px_rgba(0,229,255,0.5)]', labelColor: 'text-cyan-300' }
+      };
+
+      const cfg = gearConfigs[g] || gearConfigs['D'];
+      if (gearLabel) {
+        gearLabel.innerText = cfg.label;
+        gearLabel.className = `text-[9px] font-extrabold ${cfg.labelColor} tracking-wider uppercase mt-1`;
+      }
+      if (gearBox) {
+        gearBox.className = `absolute bottom-2 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border-2 ${cfg.color} cursor-pointer transition-all duration-300`;
+      }
+
+      const gearMessages = {
+        'P': 'เกียร์ P • จอดรถ (Parking Pawl ล็อกชุดส่งกำลัง)',
+        'R': 'เกียร์ R • ถอยหลัง (ระบบตัดเข้ากล้องหลังอัตโนมัติ)',
+        'N': 'เกียร์ N • ตำแหน่งว่าง',
+        'D': 'เกียร์ D • โหมดขับเคลื่อนปกติ พร้อมระบบประหยัดน้ำมัน',
+        'B': 'เกียร์ B • โหมดหน่วงเครื่องยนต์ชะลอความเร็ว & ชาร์จไฟกลับ'
+      };
+      showToast(gearMessages[g] || `เกียร์ ${g}`);
+    }
+
+    function selectDriveMode(mode) {
+      currentDriveMode = mode;
+      const btnEv = document.getElementById('btnDriveEv');
+      const btnEco = document.getElementById('btnDriveEco');
+      const btnPwr = document.getElementById('btnDrivePwr');
+
+      if (btnEv) btnEv.className = mode === 'EV' ? 'py-1 px-1 rounded-md text-[10px] font-extrabold border-2 border-cyan-400 bg-cyan-950/70 text-white transition glow-accent' : 'py-1 px-1 rounded-md text-[10px] font-extrabold border border-cyan-500/40 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/40 transition';
+      if (btnEco) btnEco.className = mode === 'ECO' ? 'py-1 px-1 rounded-md text-[10px] font-extrabold border-2 border-emerald-500 bg-emerald-950/70 text-white transition glow-accent' : 'py-1 px-1 rounded-md text-[10px] font-extrabold border border-emerald-500/40 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900/40 transition';
+      if (btnPwr) btnPwr.className = mode === 'PWR' ? 'py-1 px-1 rounded-md text-[10px] font-extrabold border-2 border-red-500 bg-red-950/70 text-white transition glow-accent' : 'py-1 px-1 rounded-md text-[10px] font-extrabold border border-red-500/40 bg-red-950/40 text-red-300 hover:bg-red-900/40 transition';
+
+      const modeDesc = {
+        'EV': '⚡ โหมดไฟฟ้าล้วน EV MODE • ขับเคลื่อนด้วยแบตเตอรี่ไฮบริด 100% ไร้มลพิษ',
+        'ECO': '🌱 โหมดประหยัด ECO MODE • ปรับคันเร่งและแอร์ให้อยู่ในเกณฑ์ประหยัดสูงสุด',
+        'PWR': '🔥 โหมดกำลังสูง PWR MODE (TRD) • มอเตอร์ MG2 ตอบสนองเต็มพิกัด'
+      };
+      showToast(modeDesc[mode]);
+    }
+
+    function toggleTurnSignal(side) {
+      if (side === 'L') {
+        blinkerLActive = !blinkerLActive;
+        blinkerRActive = false;
+      } else {
+        blinkerRActive = !blinkerRActive;
+        blinkerLActive = false;
+      }
+
+      const elL = document.getElementById('blinkerL');
+      const elR = document.getElementById('blinkerR');
+      if (blinkerLActive) {
+        if (elL) elL.className = 'text-xs font-black text-emerald-400 animate-ping transition cursor-pointer';
+        if (elR) elR.className = 'text-xs font-black text-slate-600 hover:text-emerald-400 transition cursor-pointer';
+        showToast('◀ เปิดสัญญาณไฟเลี้ยวซ้าย (Left Indicator)');
+      } else if (blinkerRActive) {
+        if (elR) elR.className = 'text-xs font-black text-emerald-400 animate-ping transition cursor-pointer';
+        if (elL) elL.className = 'text-xs font-black text-slate-600 hover:text-emerald-400 transition cursor-pointer';
+        showToast('▶ เปิดสัญญาณไฟเลี้ยวขวา (Right Indicator)');
+      } else {
+        if (elL) elL.className = 'text-xs font-black text-slate-600 hover:text-emerald-400 transition cursor-pointer';
+        if (elR) elR.className = 'text-xs font-black text-slate-600 hover:text-emerald-400 transition cursor-pointer';
+      }
+    }
+
+    // =========================================================================
+    // MODAL DIALOGS CONTROLLER (10 INTEGRATED IN-CAR APPS)
+    // =========================================================================
+    function closeAllModals() {
+      const modalIds = [
+        'mapsModal', 'youtubeModal', 'musicModal', 'hybridLabModal', 
+        'doorsClimateModal', 'settingsModal', 'tpmsModal', 
+        'tripFinancialModal', 'sentryDashcamModal', 'ambientLightModal'
+      ];
+      modalIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
+    }
+
+    // Modal 1: Maps
+    function openMapsModal() {
+      closeAllModals();
+      const m = document.getElementById('mapsModal');
+      if (m) m.classList.remove('hidden');
+      initLeafletMap();
+      showToast('📍 เปิดระบบแผนที่นำทาง GPS (Prius TRD Navigation)');
+    }
+
+    function initLeafletMap() {
+      if (typeof L === 'undefined') {
+        console.warn('Leaflet map library is not loaded');
+        return;
+      }
+      setTimeout(() => {
+        if (!leafletMapInstance) {
+          leafletMapInstance = L.map('liveLeafletMap', {
+            zoomControl: true,
+            attributionControl: false
+          }).setView([13.7466, 100.5349], 15);
+
+          L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            subdomains: 'abcd'
+          }).addTo(leafletMapInstance);
+
+          const carIcon = L.divIcon({
+            className: 'custom-car-pin',
+            html: '<div style="background:#ff2a44;width:24px;height:24px;border-radius:50%;border:3px solid #ffffff;box-shadow:0 0 16px #ff2a44;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:900;">▲</div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
+
+          carMarkerInstance = L.marker([13.7466, 100.5349], { icon: carIcon }).addTo(leafletMapInstance);
+          carMarkerInstance.bindPopup('<b>Toyota Prius TRD Sportivo</b><br>พร้อมระบบนำทางสด').openPopup();
+        } else {
+          leafletMapInstance.invalidateSize();
+        }
+      }, 200);
+    }
+
+    function searchMapLocation(type) {
+      if (!leafletMapInstance) {
+        initLeafletMap();
+      }
+      const locs = {
+        'PTT': { coords: [13.7500, 100.5400], name: '⛽ ปั๊มน้ำมัน PTT Station แยกเพลินจิต' },
+        'EV': { coords: [13.7450, 100.5380], name: '⚡ สถานีชาร์จ PTT EV Station PlenZhit (DC 120kW)' },
+        'HOME': { coords: [13.7650, 100.5300], name: '🏠 จุดหมายปลายทาง: บ้าน (Home Safe)' }
+      };
+      const target = locs[type] || locs['PTT'];
+      if (leafletMapInstance) {
+        leafletMapInstance.flyTo(target.coords, 16, { duration: 1.5 });
+        if (carMarkerInstance) {
+          carMarkerInstance.setLatLng(target.coords);
+          carMarkerInstance.bindPopup(`<b>${target.name}</b><br>กำลังนำทาง...`).openPopup();
+        }
+      }
+      showToast(`นำทางไปยัง: ${target.name}`);
+    }
+
+    // Modal 2: YouTube
+    function openYouTubeModal() {
+      closeAllModals();
+      const m = document.getElementById('youtubeModal');
+      if (m) m.classList.remove('hidden');
+      showToast('▶️ เปิดระบบความบันเทิง YouTube Car Cinema');
+    }
+
+    function toggleYtPlayback() {
+      isYtPlaying = !isYtPlaying;
+      const btn = document.getElementById('ytCtrlPlay');
+      const bigBtn = document.getElementById('ytBigPlayBtn');
+      if (btn) btn.innerText = isYtPlaying ? '⏸ PAUSE' : '▶️ PLAY';
+      if (bigBtn) bigBtn.innerText = isYtPlaying ? '⏸' : '▶';
+      showToast(isYtPlaying ? 'เล่นวิดีโอ YouTube ต่อ' : 'หยุดวิดีโอชั่วคราว');
+    }
+
+    function playYtTrack(title, artist) {
+      const tElem = document.getElementById('ytActiveTitle');
+      const aElem = document.getElementById('ytActiveArtist');
+      if (tElem) tElem.innerText = `${title} - ${artist}`;
+      if (aElem) aElem.innerText = 'Toyota TRD In-Car Entertainment • 1080p HD';
+      isYtPlaying = true;
+      const btn = document.getElementById('ytCtrlPlay');
+      if (btn) btn.innerText = '⏸ PAUSE';
+      const bigBtn = document.getElementById('ytBigPlayBtn');
+      if (bigBtn) bigBtn.innerText = '⏸';
+      showToast(`กำลังเล่นบน YouTube: ${title} (${artist})`);
+    }
+
+    function searchYouTubeVideos() {
+      const input = document.getElementById('ytSearchInput');
+      const query = input ? input.value.trim() : '';
+      if (query) {
+        playYtTrack(query, 'YouTube Video Search');
+      } else {
+        showToast('กรุณากรอกคำค้นหาวิดีโอบน YouTube');
+      }
+    }
+
+    // =========================================================================
+    // MODAL 3: JBL SYNTHESIS® GREENEDGE™ SOUND MASTER & 10-BAND EQUALIZER
+    // =========================================================================
+    let eqValues = [6, 5, 4, 1, 0, 1, 2, 3, 5, 6];
+    let isClariFi = true;
+    let isQuantum = true;
+    let isScv = true;
+
+    function openMusicModal() {
+      closeAllModals();
+      const m = document.getElementById('musicModal');
+      if (m) m.classList.remove('hidden');
+      renderSpectrumBars();
+      showToast('🎵 เปิด JBL Synthesis® Sound Master & 10-Band Equalizer');
+    }
+
+    function renderSpectrumBars() {
+      const container = document.getElementById('audioSpectrumBars');
+      if (!container) return;
+      if (container.children.length === 0) {
+        container.innerHTML = '';
+        for (let i = 0; i < 16; i++) {
+          const bar = document.createElement('div');
+          bar.className = 'w-3.5 rounded-t-sm transition-all duration-100 bg-gradient-to-t from-emerald-500 via-cyan-400 to-[#ff5500]';
+          bar.style.height = '40%';
+          container.appendChild(bar);
+        }
+      }
+      if (!spectrumInterval) {
+        spectrumInterval = setInterval(() => {
+          if (!isPlaying) return;
+          const bars = container.children;
+          for (let i = 0; i < bars.length; i++) {
+            const h = Math.floor(Math.random() * 75) + 20;
+            bars[i].style.height = `${h}%`;
+          }
+          // Subwoofer pulsing animation
+          const sub = document.getElementById('subConeGraphic');
+          if (sub) {
+            const scale = 1 + (Math.random() * 0.08);
+            sub.style.transform = `scale(${scale})`;
+          }
+        }, 120);
+      }
+    }
+
+    function updateEqSlider(idx, val) {
+      eqValues[idx] = parseInt(val, 10);
+      const valEl = document.getElementById(`eqVal${idx}`);
+      if (valEl) {
+        valEl.innerText = (eqValues[idx] > 0 ? '+' : '') + eqValues[idx] + 'dB';
+      }
+      const pName = document.getElementById('currentPresetName');
+      if (pName) pName.innerText = 'ACTIVE: CUSTOM USER EQ';
+    }
+
+    function setEqPreset(preset) {
+      currentEq = preset;
+      const presets = {
+        'BASS': { vals: [8, 7, 5, 2, 0, 0, 1, 2, 4, 5], sub: 9, name: 'BASS BOOST (+6dB)' },
+        'VOCAL': { vals: [-2, -1, 0, 2, 4, 6, 5, 3, 2, 1], sub: 3, name: 'VOCAL CLARITY' },
+        'ROCK': { vals: [6, 5, 3, -1, -2, 2, 4, 6, 6, 7], sub: 7, name: 'ROCK DYNAMIC' },
+        'ACOUSTIC': { vals: [3, 3, 2, 1, 2, 3, 3, 4, 4, 5], sub: 4, name: 'ACOUSTIC CHILL' },
+        'CLUB': { vals: [9, 8, 4, 0, 1, 2, 4, 6, 7, 8], sub: 11, name: 'CLUB ELECTRONIC' },
+        'FLAT': { vals: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], sub: 6, name: 'STUDIO FLAT' }
+      };
+
+      const sel = presets[preset] || presets['BASS'];
+      eqValues = [...sel.vals];
+
+      // Update 10 sliders & value labels
+      for (let i = 0; i < 10; i++) {
+        const slider = document.getElementById(`eqSlider${i}`);
+        const valEl = document.getElementById(`eqVal${i}`);
+        if (slider) slider.value = eqValues[i];
+        if (valEl) valEl.innerText = (eqValues[i] > 0 ? '+' : '') + eqValues[i] + 'dB';
+      }
+
+      // Update Subwoofer Gain
+      setSubwooferGain(sel.sub);
+      const subSld = document.getElementById('subGainSlider');
+      if (subSld) subSld.value = sel.sub;
+
+      // Update preset buttons styling
+      ['BASS', 'VOCAL', 'ROCK', 'ACOUSTIC', 'CLUB', 'FLAT'].forEach(p => {
+        const btn = document.getElementById(`eq${p.charAt(0) + p.slice(1).toLowerCase()}`);
+        if (btn) {
+          if (p === preset) {
+            btn.className = 'py-2 rounded-lg border-2 border-[#ff5500] bg-orange-950/50 text-white font-extrabold shadow-[0_0_12px_rgba(255,85,0,0.5)]';
+          } else {
+            btn.className = 'py-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 font-bold hover:text-white';
+          }
+        }
+      });
+
+      const pName = document.getElementById('currentPresetName');
+      if (pName) pName.innerText = `ACTIVE: ${sel.name}`;
+
+      showToast(`🔊 โหลดพรีเซ็ตเสียง JBL: ${sel.name}`);
+    }
+
+    function setSubwooferGain(val) {
+      const v = parseInt(val, 10);
+      const el = document.getElementById('subGainVal');
+      if (el) el.innerText = `+${v} dB`;
+      const sub = document.getElementById('subConeGraphic');
+      if (sub) {
+        sub.style.boxShadow = `0 0 ${10 + v * 2.5}px rgba(255,85,0,${0.3 + v * 0.05})`;
+      }
+    }
+
+    function setSoundStage(focus) {
+      ['DRIVER', 'FRONT', 'ALL', 'REAR'].forEach(f => {
+        const btn = document.getElementById(`stage${f.charAt(0) + f.slice(1).toLowerCase()}`);
+        if (btn) {
+          if (f === focus) {
+            btn.className = 'py-1.5 px-1 rounded bg-cyan-950 border border-cyan-500 text-cyan-300 font-bold text-center shadow-[0_0_8px_rgba(0,229,255,0.4)]';
+          } else {
+            btn.className = 'py-1.5 px-1 rounded bg-slate-800 border border-slate-700 text-slate-300 font-bold text-center hover:text-white';
+          }
+        }
+      });
+      const t = document.getElementById('soundstageFocusText');
+      const descs = {
+        'DRIVER': '🎯 DRIVER FOCUS (เน้นตำแหน่งคนขับ)',
+        'FRONT': '👥 FRONT STAGE (ผู้โดยสารแถวหน้า)',
+        'ALL': '🌐 ALL SEATS 3D (เวทีเสียงสมดุลทั้งคัน)',
+        'REAR': '🛋️ REAR LOUNGE (ผู้โดยสารแถวหลัง)'
+      };
+      if (t) t.innerText = descs[focus] || focus;
+      showToast(`ปรับเวทีเสียงห้องโดยสาร: ${descs[focus]}`);
+    }
+
+    function toggleClariFi() {
+      isClariFi = !isClariFi;
+      const btn = document.getElementById('btnClariFi');
+      const badge = document.getElementById('clariFiBadge');
+      if (btn) {
+        btn.innerText = isClariFi ? 'ON' : 'OFF';
+        btn.className = isClariFi ? 'px-2.5 py-1 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/50 font-bold' : 'px-2.5 py-1 rounded bg-slate-800 text-slate-400 font-bold border border-slate-700';
+      }
+      if (badge) {
+        badge.style.display = isClariFi ? 'inline-block' : 'none';
+      }
+      showToast(isClariFi ? 'เปิด JBL Clari-Fi™ Music Restoration' : 'ปิด JBL Clari-Fi™');
+    }
+
+    function toggleQuantumLogic() {
+      isQuantum = !isQuantum;
+      const btn = document.getElementById('btnQuantum');
+      const mode = document.getElementById('surroundDspMode');
+      if (btn) {
+        btn.innerText = isQuantum ? 'ON' : 'OFF';
+        btn.className = isQuantum ? 'px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/50 font-bold' : 'px-2.5 py-1 rounded bg-slate-800 text-slate-400 font-bold border border-slate-700';
+      }
+      if (mode) {
+        mode.innerText = isQuantum ? 'LOGIC 7 QUANTUMLOGIC 3D' : 'STEREO 2.0 STANDARD';
+      }
+      showToast(isQuantum ? 'เปิดระบบเสียงรอบทิศทาง QuantumLogic 3D' : 'สลับสู่โหมดสเตอริโอ 2.0');
+    }
+
+    function toggleScv() {
+      isScv = !isScv;
+      const btn = document.getElementById('btnScv');
+      if (btn) {
+        btn.innerText = isScv ? 'ON' : 'OFF';
+        btn.className = isScv ? 'px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/50 font-bold' : 'px-2.5 py-1 rounded bg-slate-800 text-slate-400 font-bold border border-slate-700';
+      }
+      showToast(isScv ? 'เปิด Speed-Compensated Volume (ปรับเบสและเสียงตามความเร็วรถ)' : 'ปิด SCV');
+    }
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      const playBtn = document.getElementById('playBtn');
+      if (playBtn) playBtn.innerText = isPlaying ? '⏸ PAUSE' : '▶️ PLAY';
+      const mBtn = document.getElementById('modalPlayBtn');
+      if (mBtn) mBtn.innerText = isPlaying ? '⏸ PAUSE' : '▶️ PLAY';
+      showToast(isPlaying ? 'เล่นเพลงต่อ' : 'หยุดเพลงชั่วคราว');
+    }
+
+    function nextTrack() {
+      trackIdx = (trackIdx + 1) % tracks.length;
+      updateTrackDisplay();
+      showToast(`เล่นเพลง: ${tracks[trackIdx]}`);
+    }
+
+    function prevTrack() {
+      trackIdx = (trackIdx - 1 + tracks.length) % tracks.length;
+      updateTrackDisplay();
+      showToast(`เล่นเพลง: ${tracks[trackIdx]}`);
+    }
+
+    function updateTrackDisplay() {
+      const current = tracks[trackIdx];
+      const t1 = document.getElementById('currentTrackName');
+      if (t1) t1.innerText = `▶️ ${current}`;
+      const t2 = document.getElementById('modalTrackTitle');
+      if (t2) t2.innerText = current;
+    }
+
+    // Modal 4: Hybrid Lab
+    function openHybridLabModal() {
+      closeAllModals();
+      const m = document.getElementById('hybridLabModal');
+      if (m) m.classList.remove('hidden');
+      renderLabBlocks();
+      renderFuelHistory();
+      showToast('📊 เปิดห้องวิเคราะห์ Hybrid ECU & แบตเตอรี่ 14 บล็อก');
+    }
+
+    function renderLabBlocks() {
+      const container = document.getElementById('labBlocksGrid');
+      if (!container) return;
+      container.innerHTML = '';
+      for (let i = 1; i <= 14; i++) {
+        let volt = (14.38 + (Math.sin(i * 1.5) * 0.04)).toFixed(2);
+        let borderCls = 'border-slate-800 bg-slate-900';
+        let textCls = 'text-emerald-400';
+        if (weakCellSim && (i === 7 || i === 8)) {
+          volt = '13.88';
+          borderCls = 'border-red-500 bg-red-950/50 animate-pulse';
+          textCls = 'text-red-400 font-extrabold';
+        }
+        const cell = document.createElement('div');
+        cell.className = `p-1.5 rounded-lg border ${borderCls} flex flex-col items-center justify-center`;
+        cell.innerHTML = `
+          <div class="text-[9px] text-slate-400 font-bold">BLK ${i}</div>
+          <div class="text-xs font-black ${textCls}">${volt}V</div>
+        `;
+        container.appendChild(cell);
+      }
+    }
+
+    function renderFuelHistory() {
+      const container = document.getElementById('fuelHistoryBars');
+      if (!container) return;
+      container.innerHTML = '';
+      const histories = [
+        { label: '30m', val: 21.2, h: 65 },
+        { label: '25m', val: 24.5, h: 78 },
+        { label: '20m', val: 19.8, h: 60 },
+        { label: '15m', val: 26.4, h: 86 },
+        { label: '10m', val: 23.1, h: 72 },
+        { label: 'Now', val: 27.8, h: 92 }
+      ];
+      histories.forEach(item => {
+        const col = document.createElement('div');
+        col.className = 'flex flex-col items-center flex-1 h-full justify-end';
+        col.innerHTML = `
+          <span class="text-[9px] font-bold text-cyan-300 mb-0.5">${item.val}</span>
+          <div class="w-full bg-gradient-to-t from-emerald-600 to-cyan-400 rounded-t-sm transition-all duration-300" style="height: ${item.h}%;"></div>
+          <span class="text-[9px] text-slate-500 mt-1">${item.label}</span>
+        `;
+        container.appendChild(col);
+      });
+    }
+
+    // Modal 5: Settings
+    function openSettingsModal() {
+      closeAllModals();
+      const m = document.getElementById('settingsModal');
+      if (m) m.classList.remove('hidden');
+      showToast('⚙️ เปิดหน้าต่างตั้งค่า Smart Cockpit');
+    }
+
+    // Modal 6: Doors & Climate
+    function openDoorsClimateModal() {
+      closeAllModals();
+      const m = document.getElementById('doorsClimateModal');
+      if (m) m.classList.remove('hidden');
+    }
+
+    function closeDoorsClimateModal() {
+      const m = document.getElementById('doorsClimateModal');
+      if (m) m.classList.add('hidden');
+    }
+
+    function toggleSimDoorOpen() {
+      isSimDoorOpen = !isSimDoorOpen;
+      const mDr = document.getElementById('mDoorDr');
+      const liveBar = document.getElementById('liveDoorStatus');
+      if (isSimDoorOpen) {
+        if (mDr) {
+          mDr.innerText = '⚠️ เปิดอยู่!';
+          mDr.className = 'font-bold text-red-400 animate-pulse';
+        }
+        if (liveBar) {
+          liveBar.innerText = '⚠️ ประตูเปิดอยู่ • 🔓 ปลดล็อก';
+          liveBar.className = 'text-xs font-bold text-red-400 animate-pulse';
+        }
+        showToast('⚠️ สัญญาณเตือน: "คำเตือน ประตูรถปิดไม่สนิท กรุณาตรวจสอบ"');
+      } else {
+        if (mDr) {
+          mDr.innerText = '✅ ปิดสนิท';
+          mDr.className = 'font-bold text-emerald-400';
+        }
+        if (liveBar) {
+          liveBar.innerText = '🚪 ประตู 5 บาน: ปิดสนิท • 🔒 เซ็นทรัลล็อก: ล็อกอยู่';
+          liveBar.className = 'text-xs font-bold text-emerald-400';
+        }
+        showToast('ประตูทุกบานปิดสนิทเรียบร้อย');
+      }
+    }
+
+    function speakThaiDoorsClimate() {
+      showToast('🔊 เสียงพูดภาษาไทย: "ประตูทุกบานปิดสนิท ระบบเซ็นทรัลล็อกทำงานแล้ว อุณหภูมิในห้องโดยสาร 24 องศาเซลเซียส"');
+    }
+
+    // =========================================================================
+    // MODAL 7: TPMS TIRE PRESSURE MONITOR
+    // =========================================================================
+    let isTpmsLeaking = false;
+    function openTpmsModal() {
+      closeAllModals();
+      const m = document.getElementById('tpmsModal');
+      if (m) m.classList.remove('hidden');
+      showToast('🛞 ตรวจสอบแรงดันลมยาง & อุณหภูมิ 4 ล้อ เรียลไทม์');
+    }
+
+    function toggleTpmsLeakSim() {
+      isTpmsLeaking = !isTpmsLeaking;
+      const card = document.getElementById('tpmsCardFL');
+      const val = document.getElementById('tpmsValFL');
+      const badge = document.getElementById('tpmsBadgeFL');
+      const btn = document.getElementById('btnTpmsSim');
+      if (isTpmsLeaking) {
+        if (card) card.className = 'p-3 bg-red-950/50 rounded-xl border-2 border-red-500 flex justify-between items-center animate-pulse';
+        if (val) val.innerHTML = '23.8 <span class="text-xs font-normal text-red-400">PSI (ต่ำกว่าเกณฑ์)</span>';
+        if (badge) { badge.innerText = '⚠️ ลมยางต่ำ'; badge.className = 'text-red-400 font-bold bg-red-950 border border-red-500 px-2 py-1 rounded text-[10px]'; }
+        if (btn) btn.innerText = 'คืนค่าปกติ (Reset)';
+        showToast('🚨 สัญญาณเตือน: "คำเตือน ยางล้อหน้าซ้ายมีแรงดันต่ำกว่าเกณฑ์ กรุณาเติมลมยาง"');
+      } else {
+        if (card) card.className = 'p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center';
+        if (val) val.innerHTML = '35.2 <span class="text-xs font-normal text-slate-400">PSI</span>';
+        if (badge) { badge.innerText = '✅ ปกติ'; badge.className = 'text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/40 px-2 py-1 rounded text-[10px]'; }
+        if (btn) btn.innerText = '⚠️ จำลองยางรั่วซึม';
+        showToast('แรงดันลมยางคืนสู่สภาวะปกติสมบูรณ์');
+      }
+    }
+
+    // =========================================================================
+    // MODAL 8: TRIP FINANCIAL CALCULATOR
+    // =========================================================================
+    function openTripFinancialModal() {
+      closeAllModals();
+      const m = document.getElementById('tripFinancialModal');
+      if (m) m.classList.remove('hidden');
+      showToast('💰 คำนวณค่าน้ำมันทริปนี้ & ยอดเงินประหยัดสะสม');
+    }
+
+    function resetTripFinancial() {
+      const c = document.getElementById('tripCostBaht');
+      if (c) c.innerHTML = '0.00 <span class="text-xs font-normal">฿</span>';
+      showToast('รีเซ็ตข้อมูลค่าน้ำมันทริปนี้เรียบร้อย');
+    }
+
+    // =========================================================================
+    // MODAL 9: SENTRY DASHCAM
+    // =========================================================================
+    let isDashcamLocked = false;
+    function openSentryDashcamModal() {
+      closeAllModals();
+      const m = document.getElementById('sentryDashcamModal');
+      if (m) m.classList.remove('hidden');
+      const sHud = document.getElementById('dashcamHudSpeed');
+      if (sHud) sHud.innerText = currentSpeed;
+      showToast('📹 เปิดหน้าจอกล้องหน้ารถ & ระบบเฝ้าระวัง Sentry Guard');
+    }
+
+    function captureDashcamSnap() {
+      showToast('📸 บันทึกภาพนิ่งความละเอียดสูง 1080p ลงในคลังภาพเรียบร้อย');
+    }
+
+    function toggleDashcamLock() {
+      isDashcamLocked = !isDashcamLocked;
+      const btn = document.getElementById('btnLockClip');
+      if (btn) {
+        btn.innerText = isDashcamLocked ? '🔒 ล็อกไฟล์สำเร็จ (Protected)' : '🔒 ล็อกคลิปฉุกเฉิน';
+        btn.className = isDashcamLocked ? 'px-3 py-1 bg-red-600 text-white font-bold rounded shadow-[0_0_12px_rgba(239,68,68,0.7)]' : 'px-3 py-1 bg-red-950 text-red-300 border border-red-500/40 hover:bg-red-900 font-bold rounded';
+      }
+      showToast(isDashcamLocked ? '🔒 ล็อกไฟล์วิดีโอนี้เพื่อป้องกันการบันทึกทับ' : 'ปลดล็อกไฟล์');
+    }
+
+    function switchCamFeed(mode) {
+      const bFront = document.getElementById('btnCamFront');
+      const bRear = document.getElementById('btnCamRear');
+      if (mode === 'FRONT') {
+        if (bFront) bFront.className = 'px-2.5 py-1 bg-cyan-950 text-cyan-300 border border-cyan-500 font-bold rounded';
+        if (bRear) bRear.className = 'px-2.5 py-1 bg-slate-800 text-slate-400 hover:text-white font-bold rounded';
+        showToast('สลับดูกล้องมุมมองด้านหน้ารถ (Front Cam)');
+      } else {
+        if (bRear) bRear.className = 'px-2.5 py-1 bg-cyan-950 text-cyan-300 border border-cyan-500 font-bold rounded';
+        if (bFront) bFront.className = 'px-2.5 py-1 bg-slate-800 text-slate-400 hover:text-white font-bold rounded';
+        showToast('สลับดูกล้องถอยจอดด้านหลังรถ (Rear Backup Cam)');
+      }
+    }
+
+    // =========================================================================
+    // MODAL 10: AMBIENT LIGHT & THEME AURA
+    // =========================================================================
+    let ambientPulseActive = true;
+    function openAmbientLightModal() {
+      closeAllModals();
+      const m = document.getElementById('ambientLightModal');
+      if (m) m.classList.remove('hidden');
+      showToast('🎨 เปิดระบบปรับแต่งไฟ Ambient Light ในห้องโดยสาร');
+    }
+
+    function setAmbientColor(hex, name) {
+      document.documentElement.style.setProperty('--accent', hex);
+      document.documentElement.style.setProperty('--accent-glow', hex + '55');
+      showToast(`เปลี่ยนสีไฟ Ambient Light: ${name}`);
+    }
+
+    function setAmbientBrightness(val) {
+      const el = document.getElementById('ambientBrightVal');
+      if (el) el.innerText = `${val}%`;
+    }
+
+    function toggleAmbientPulse() {
+      ambientPulseActive = !ambientPulseActive;
+      const btn = document.getElementById('btnAmbientPulse');
+      if (btn) {
+        btn.innerText = ambientPulseActive ? 'ON' : 'OFF';
+        btn.className = ambientPulseActive ? 'px-3 py-1 bg-purple-950 text-purple-300 font-bold rounded border border-purple-500' : 'px-3 py-1 bg-slate-800 text-slate-400 font-bold rounded border border-slate-700';
+      }
+      showToast(ambientPulseActive ? 'เปิดโหมดไฟเต้นตามจังหวะเบสเพลง' : 'ปิดโหมดเต้นตามเพลง');
+    }
+
+    // =========================================================================
+    // BATTERY DIAGNOSTICS & HARDWARE SIMULATION
+    // =========================================================================
+    function toggleWeakCellSim() {
+      weakCellSim = !weakCellSim;
+      const btn = document.getElementById('weakCellBtn');
+      if (weakCellSim) {
+        if (btn) {
+          btn.className = 'text-[10px] px-2 py-0.5 rounded bg-amber-600 text-white font-bold border border-amber-500';
+          btn.innerText = 'เซลล์มีปัญหา (Active)';
+        }
+        showToast('⚠️ สัญญาณเตือน: "คำเตือน แรงดันเซลล์แบตเตอรี่ไฮบริดมีความต่างสูง ควรตรวจสอบเซลล์"');
+      } else {
+        if (btn) {
+          btn.className = 'text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700';
+          btn.innerText = 'จำลองเซลล์ล้า';
+        }
+        showToast('คืนค่าเซลล์แบตเตอรี่สู่สภาวะสมดุลปกติ (Balanced)');
+      }
+      renderHvBars();
+      renderLabBlocks();
+    }
+
+    function renderHvBars() {
+      const container = document.getElementById('hvBars');
+      if (!container) return;
+      container.innerHTML = '';
+      for (let i = 1; i <= 14; i++) {
+        let heightPct = 60 + Math.floor(Math.sin(i) * 15);
+        let colorClass = 'bg-emerald-400/90 hover:bg-cyan-300';
+        
+        if (weakCellSim && (i === 7 || i === 8)) {
+          heightPct = 25;
+          colorClass = 'bg-red-500/90 animate-pulse';
+        }
+
+        const barCol = document.createElement('div');
+        barCol.className = 'flex flex-col items-center h-full justify-end group relative';
+        barCol.innerHTML = `
+          <div class="w-full ${colorClass} rounded-sm transition-all duration-300 shadow-sm" style="height: ${heightPct}%;"></div>
+          <span class="text-[9px] text-slate-500 mt-1">${i}</span>
+        `;
+        container.appendChild(barCol);
+      }
+
+      const dEl = document.getElementById('hvDelta');
+      const stEl = document.getElementById('hvStatusTag');
+      const hlEl = document.getElementById('hvHealthLabel');
+
+      if (weakCellSim) {
+        if (dEl) { dEl.innerHTML = '⚠️ ΔV: 0.32 V'; dEl.className = 'text-red-400 font-bold'; }
+        if (stEl) { stEl.innerText = 'เตือนเซลล์ล้า'; stEl.className = 'text-red-400 font-bold'; }
+        if (hlEl) { hlEl.innerHTML = 'HEALTH (EST.): 68% • ⚠️ ตรวจสอบเซลล์'; hlEl.className = 'text-xs font-bold text-red-400 mt-0.5'; }
+      } else {
+        if (dEl) { dEl.innerHTML = 'ΔV: 0.02 V'; dEl.className = 'text-white font-bold'; }
+        if (stEl) { stEl.innerText = 'สมบูรณ์'; stEl.className = 'text-emerald-400 font-bold'; }
+        if (hlEl) { hlEl.innerHTML = 'HEALTH (EST.): 96% • BALANCED'; hlEl.className = 'text-xs font-bold text-emerald-400 mt-0.5'; }
+      }
+    }
+
+    function toggleObd() {
+      isBleLive = !isBleLive;
+      const badge = document.getElementById('obdBadge');
+      const text = document.getElementById('obdText');
+      if (isBleLive) {
+        if (text) text.innerText = 'OBD-II: BLE LIVE (Vgate)';
+        if (badge) badge.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 transition';
+        showToast('เชื่อมต่อ Vgate vLinker MC+ ผ่าน Bluetooth สำเร็จ');
+      } else {
+        if (text) text.innerText = 'OBD-II: DEMO SIM';
+        if (badge) badge.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 transition';
+        showToast('สลับเข้าสู่โหมดจำลองข้อมูลไฮบริด (Demo Simulator)');
+      }
+    }
+
+    function resetTrip() {
+      const d = document.getElementById('tripDist');
+      const t = document.getElementById('tripTime');
+      const m = document.getElementById('tripMax');
+      if (d) d.innerText = '0.00 km';
+      if (t) t.innerText = '00:00:00';
+      if (m) m.innerText = '0 km/h';
+      showToast('รีเซ็ตข้อมูลการเดินทาง (Trip Computer) เรียบร้อย');
+    }
+
+    function speakThai() {
+      showToast('🔊 เสียงพูดภาษาไทย: "ยินดีต้อนรับ คุณพุทธ รถพรีอุส ทีอาร์ดี ไฮบริด พร้อมเดินทาง"');
+    }
+
+    let toastTimer = null;
+    function showToast(msg) {
+      const toast = document.getElementById('cockpitToast');
+      const text = document.getElementById('toastMsg');
+      if (text) text.innerText = msg;
+      if (toast) {
+        toast.classList.remove('opacity-0', 'pointer-events-none');
+        toast.classList.add('opacity-100');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toast.classList.remove('opacity-100');
+          toast.classList.add('opacity-0', 'pointer-events-none');
+        }, 3200);
+      }
+    }
+
+    // Window Init
+    window.addEventListener('DOMContentLoaded', () => {
+      initSpeedoGauge();
+      renderHvBars();
+      renderSpectrumBars();
+      renderLabBlocks();
+      renderFuelHistory();
+      setGear('D');
+      requestAnimationFrame(renderLoop);
+    });
+
+    window.addEventListener('resize', () => {
+      initSpeedoGauge();
+    });
+  </script>
+</body>
+</html>

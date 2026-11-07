@@ -1,0 +1,1870 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Toyota Prius TRD Sportivo - Smart Cockpit (Luxury EV Edition)</title>
+
+  <!-- PWA & iOS Fullscreen Kiosk Meta (iPad mini Optimized) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TRD Cockpit">
+  <meta name="theme-color" content="#06080c">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <style>
+    :root {
+      --bg-dark: #06080c;
+      --card-bg: rgba(14, 18, 26, 0.94);
+      --card-border: rgba(45, 55, 75, 0.65);
+      --trd-red: #eb232d;
+      --trd-red-glow: rgba(235, 35, 45, 0.45);
+      --hud-cyan: #00e5ff;
+      --hud-cyan-glow: rgba(0, 229, 255, 0.4);
+      --hud-green: #00e68c;
+      --hud-green-glow: rgba(0, 230, 140, 0.4);
+      --hud-amber: #ffb703;
+      --text-main: #f0f4fc;
+      --text-muted: #8898aa;
+      --text-dim: #4d5b6e;
+      --aura-color: rgba(0, 229, 255, 0.25);
+    }
+
+    /* THEME MODES */
+    body.theme-day {
+      --bg-dark: #e8ecf2;
+      --card-bg: rgba(255, 255, 255, 0.96);
+      --card-border: rgba(180, 190, 205, 0.8);
+      --text-main: #141820;
+      --text-muted: #5a6878;
+      --text-dim: #90a0b2;
+      --aura-color: rgba(0, 150, 255, 0.2);
+    }
+
+    body.theme-cyber {
+      --bg-dark: #030a14;
+      --card-bg: rgba(6, 22, 38, 0.92);
+      --card-border: rgba(0, 229, 255, 0.4);
+      --trd-red: #00e5ff;
+      --trd-red-glow: rgba(0, 229, 255, 0.5);
+      --aura-color: rgba(0, 229, 255, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: var(--bg-dark);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: background 0.4s ease;
+    }
+
+    /* Module 14: Dynamic Screen Perimeter Ambient Aura */
+    #ambientAura {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      z-index: 1;
+      box-shadow: inset 0 0 65px var(--aura-color);
+      transition: box-shadow 0.5s ease;
+    }
+
+    /* TOP HEADER BAR */
+    header.hud-header {
+      height: 60px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(10, 13, 20, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 50;
+      flex-shrink: 0;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .trd-logo-badge {
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #fff;
+      background: linear-gradient(135deg, #eb232d, #99000a);
+      padding: 4px 10px;
+      border-radius: 4px;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+      box-shadow: 0 0 12px var(--trd-red-glow);
+    }
+
+    .brand-title {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand-title h1 {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      color: var(--text-main);
+    }
+
+    .brand-title span {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+    }
+
+    /* Status Pills */
+    .header-center-pills {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hud-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--card-border);
+    }
+
+    .hud-pill.ready {
+      color: var(--hud-green);
+      border-color: rgba(0, 230, 140, 0.4);
+      box-shadow: 0 0 8px var(--hud-green-glow);
+    }
+
+    .hud-pill.conn {
+      color: var(--hud-cyan);
+      border-color: rgba(0, 229, 255, 0.4);
+    }
+
+    .hud-pill.alert {
+      color: var(--trd-red);
+      border-color: var(--trd-red);
+      animation: pulseAlert 1s infinite alternate;
+    }
+
+    @keyframes pulseAlert {
+      from { box-shadow: 0 0 4px var(--trd-red-glow); }
+      to { box-shadow: 0 0 16px var(--trd-red); }
+    }
+
+    .header-right-tools {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hud-clock {
+      font-size: 18px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-main);
+      letter-spacing: 1px;
+    }
+
+    .btn-tool {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn-tool:hover, .btn-tool:active {
+      background: var(--trd-red);
+      border-color: var(--trd-red);
+      color: #fff;
+    }
+
+    /* MAIN COCKPIT GRID (3-ZONE LUXURY LAYOUT - EQUAL HEIGHT & SYMMETRY) */
+    main.cockpit-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 320px 1fr 320px;
+      gap: 12px;
+      padding: 10px 14px 14px 14px;
+      overflow: hidden;
+      z-index: 10;
+      align-items: stretch;
+    }
+
+    /* COMMON PANEL CARDS */
+    .card-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .card-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-title span.tag {
+      font-size: 9px;
+      background: rgba(255,255,255,0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text-main);
+    }
+
+    /* LEFT ZONE: HYBRID BATTERY & TEMPERATURES */
+    .zone-left {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .hv-card {
+      flex: 1.2;
+    }
+
+    .soc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 6px;
+    }
+
+    .soc-val {
+      font-size: 32px;
+      font-weight: 900;
+      color: var(--hud-cyan);
+      letter-spacing: -0.5px;
+    }
+
+    .soc-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .blocks-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .block-cell {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      padding: 4px 2px;
+      text-align: center;
+      transition: background 0.3s;
+    }
+
+    .block-cell.peak {
+      border-color: var(--hud-cyan);
+      background: rgba(0, 229, 255, 0.15);
+    }
+
+    .block-num {
+      font-size: 8px;
+      color: var(--text-dim);
+    }
+
+    .block-v {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .delta-v-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      margin-top: 6px;
+      color: var(--text-muted);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding-top: 4px;
+    }
+
+    /* Thermals & Aux Card */
+    .thermal-card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .gauge-metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .metric-box {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 6px 8px;
+    }
+
+    .metric-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    .metric-val {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .metric-val span {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-left: 2px;
+    }
+
+    /* CENTER ZONE: HUD SPEEDOMETER, ARC GAUGE, HOLOGRAM */
+    .zone-center {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+
+    .main-hud-card {
+      flex: 1.4;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      padding: 10px;
+      background: radial-gradient(circle at 50% 40%, rgba(20, 28, 44, 0.7) 0%, var(--card-bg) 80%);
+    }
+
+    /* Canvas Arc Gauge (Charge / Eco / Power) */
+    #arcCanvas {
+      width: 100%;
+      height: 190px;
+      display: block;
+    }
+
+    /* Gear Selection Bar */
+    .gear-bar {
+      display: flex;
+      gap: 8px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--card-border);
+      padding: 4px 10px;
+      border-radius: 30px;
+      margin-top: -10px;
+      z-index: 5;
+    }
+
+    .gear-item {
+      font-size: 16px;
+      font-weight: 900;
+      color: var(--text-dim);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .gear-item.active {
+      color: #fff;
+      background: var(--trd-red);
+      box-shadow: 0 0 14px var(--trd-red-glow);
+      transform: scale(1.15);
+    }
+
+    /* Dynamic Visualizer & 3D Hologram */
+    .visualizer-card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #visualizerCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* RIGHT ZONE: DOORS, TRIP FINANCIAL, AI COACH, SENTRY */
+    .zone-right {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .doors-card {
+      flex: 1;
+    }
+
+    .car-chassis-container {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 4px 0;
+    }
+
+    /* Door Status Grid */
+    .doors-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .door-btn {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      padding: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.2s;
+    }
+
+    .door-btn.open {
+      background: rgba(235, 35, 45, 0.2);
+      border-color: var(--trd-red);
+      color: #fff;
+    }
+
+    .door-btn.locked {
+      border-color: var(--hud-green);
+      color: var(--hud-green);
+    }
+
+    /* Financial & Eco Coach Card */
+    .coach-card {
+      flex: 1.2;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .coach-tip-box {
+      background: rgba(0, 229, 255, 0.08);
+      border-left: 3px solid var(--hud-cyan);
+      padding: 6px 10px;
+      border-radius: 0 6px 6px 0;
+      font-size: 11px;
+      line-height: 1.4;
+      color: #e0f7fa;
+      margin: 4px 0;
+    }
+
+    .financial-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .fin-box {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 6px;
+      padding: 6px;
+    }
+
+    .fin-label {
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .fin-val {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .fin-val span {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* G-Force & Sentry Card */
+    .sentry-card {
+      flex: 0.9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+    }
+
+    #gForceCanvas {
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--card-border);
+    }
+
+    .sentry-info {
+      flex: 1;
+      margin-left: 12px;
+    }
+
+    .sentry-status {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--hud-green);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .sentry-status .rec-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--trd-red);
+      animation: blink 1s infinite alternate;
+    }
+
+    @keyframes blink {
+      from { opacity: 0.2; }
+      to { opacity: 1; }
+    }
+
+    /* REVERSE CAMERA OVERLAY (MODULE 2) */
+    #cameraOverlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #000;
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+    }
+
+    #cameraOverlay.active {
+      display: flex;
+    }
+
+    .cam-header {
+      height: 48px;
+      background: rgba(0,0,0,0.85);
+      border-bottom: 1px solid #333;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: 1px;
+    }
+
+    .cam-view {
+      flex: 1;
+      position: relative;
+      background: #080c14;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #camCanvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* WELCOME & GOODBYE OVERLAYS (MODULE 15) */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(6, 8, 12, 0.95);
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+    }
+
+    .modal-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-box {
+      background: rgba(18, 24, 36, 0.95);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 32px 48px;
+      text-align: center;
+      box-shadow: 0 0 40px rgba(0,0,0,0.8);
+      max-width: 480px;
+    }
+
+    /* FLOATING TEST CONTROLS DRAWER */
+    #testDrawer {
+      position: fixed;
+      bottom: 12px;
+      right: 12px;
+      background: rgba(10, 14, 22, 0.92);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 60;
+      font-size: 11px;
+    }
+
+    .btn-test {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--text-main);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-test:hover, .btn-test:active {
+      background: var(--trd-red);
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Module 14: Dynamic Ambient Screen Edge Glow -->
+  <div id="ambientAura"></div>
+
+  <!-- TOP HEADER BAR -->
+  <header class="hud-header">
+    <div class="brand-group">
+      <div class="trd-logo-badge">TRD</div>
+      <div class="brand-title">
+        <h1>PRIUS SPORTIVO</h1>
+        <span>GEN 3 CUSTOM SMART COCKPIT</span>
+      </div>
+    </div>
+
+    <!-- Status indicators -->
+    <div class="header-center-pills">
+      <div id="readyPill" class="hud-pill ready">● READY</div>
+      <div id="evPill" class="hud-pill">EV MODE</div>
+      <div id="connPill" class="hud-pill conn">OBD2: SIMULATED</div>
+      <div id="pingPill" class="hud-pill" style="font-size: 9px; opacity: 0.8;">12ms</div>
+    </div>
+
+    <div class="header-right-tools">
+      <div id="hudClock" class="hud-clock">12:00:00</div>
+      <button id="btnVoiceToggle" class="btn-tool" onclick="toggleVoiceAlerts()">🔊 เสียงเตือน: ON</button>
+      <button id="btnThemeToggle" class="btn-tool" onclick="cycleTheme()">🎨 ธีม</button>
+    </div>
+  </header>
+
+  <!-- MAIN COCKPIT 3-ZONE BALANCED GRID -->
+  <main class="cockpit-grid">
+
+    <!-- ==========================================
+         LEFT ZONE: INSTRUMENT CLUSTER, ECO & THERMALS
+    =========================================== -->
+    <section class="zone-left" style="display: flex; flex-direction: column; gap: 10px; justify-content: space-between;">
+      
+      <!-- CARD 1: Main HUD Speedometer & Arc Power Gauge (Module 14) -->
+      <div class="card-panel main-hud-card" style="padding: 10px 8px; flex: 1.3;">
+        <canvas id="arcCanvas" style="height: 165px;"></canvas>
+
+        <!-- Gear Selector Badge Bar (Module 3) -->
+        <div class="gear-bar" style="margin-top: -6px;">
+          <div class="gear-item" id="gearP" onclick="setManualGear('P')">P</div>
+          <div class="gear-item" id="gearR" onclick="setManualGear('R')">R</div>
+          <div class="gear-item" id="gearN" onclick="setManualGear('N')">N</div>
+          <div class="gear-item active" id="gearD" onclick="setManualGear('D')">D</div>
+          <div class="gear-item" id="gearB" onclick="setManualGear('B')">B</div>
+        </div>
+      </div>
+
+      <!-- CARD 2: AI Eco-Coach & Driving Dynamics (Module 5) -->
+      <div class="card-panel coach-card" style="padding: 10px; flex: 0.9;">
+        <div class="card-title" style="margin-bottom: 4px;">
+          <span>AI ECO-COACH</span>
+          <span id="ecoGradeTag" class="tag" style="background: rgba(0, 230, 140, 0.2); color: var(--hud-green);">GRADE A+</span>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+          <div style="font-size: 22px; font-weight: 900; color: #fff;" id="ecoScore">92 / 100</div>
+          <div style="font-size: 11px; font-weight: 700; color: var(--hud-cyan);" id="regenText">&#9851; +14 Wh REGEN</div>
+        </div>
+
+        <div class="coach-tip-box" id="coachMessage" style="font-size: 10.5px; margin: 0;">
+          รักษาคันเร่งนุ่มนวลดีมาก ระบบไฮบริดทำงานได้อย่างมีประสิทธิภาพสูงสุด
+        </div>
+      </div>
+
+      <!-- CARD 3: ECU Thermals & 12V Aux Battery (Module 3 & 11) -->
+      <div class="card-panel thermal-card" style="padding: 10px; flex: 1;">
+        <div class="card-title" style="margin-bottom: 6px;">
+          <span>ECU THERMALS & AUXILIARY</span>
+          <span id="aux12VBadge" class="tag" style="color: var(--hud-green);">12V OK</span>
+        </div>
+
+        <div class="gauge-metrics-grid" style="gap: 6px;">
+          <div class="metric-box" style="padding: 4px 6px;">
+            <div class="metric-label">COOLANT (ECT)</div>
+            <div class="metric-val" id="coolantVal" style="font-size: 14px;">88<span>&deg;C</span></div>
+          </div>
+          <div class="metric-box" style="padding: 4px 6px;">
+            <div class="metric-label">INVERTER TEMP</div>
+            <div class="metric-val" id="inverterVal" style="font-size: 14px; color: var(--hud-cyan);">48<span>&deg;C</span></div>
+          </div>
+          <div class="metric-box" style="padding: 4px 6px;">
+            <div class="metric-label">A/C EVAPORATOR</div>
+            <div class="metric-val" id="evapVal" style="font-size: 14px;">5.2<span>&deg;C</span></div>
+          </div>
+          <div class="metric-box" style="padding: 4px 6px;">
+            <div class="metric-label">12V AUX BATT</div>
+            <div class="metric-val" id="aux12VVal" style="font-size: 14px; color: var(--hud-green);">14.1<span>V</span></div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ==========================================
+         CENTER ZONE: HERO PRIUS CAR WITH HYBRID BATTERY INFLOW/OUTFLOW
+    =========================================== -->
+    <section class="zone-center" style="display: flex; flex-direction: column; gap: 10px; justify-content: space-between;">
+      
+      <!-- Top EV Drive Mode Status Banner -->
+      <div style="background: rgba(14, 18, 26, 0.95); border: 1px solid var(--card-border); border-radius: 8px; padding: 6px 14px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="font-size: 12px; font-weight: 900; color: var(--hud-green); letter-spacing: 1px; display: flex; align-items: center; gap: 6px;">
+          <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--hud-green); box-shadow: 0 0 8px var(--hud-green);"></span>
+          <span id="evDriveStatusText">PURE EV DRIVE (MG2 &rarr; เพลาขับหน้า)</span>
+        </div>
+        <div id="batteryFlowStateBadge" style="font-size: 10px; font-weight: 800; color: var(--hud-cyan); background: rgba(0, 229, 255, 0.12); padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(0, 229, 255, 0.3);">
+          &#9889; กำลังดึงไฟขับเคลื่อน EV
+        </div>
+      </div>
+
+      <!-- PRIUS HERO VEHICLE & HYBRID BATTERY ENERGY FLOW SYSTEM -->
+      <div class="card-panel" style="flex: 1.5; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; background: radial-gradient(ellipse at center, rgba(16, 28, 48, 0.6) 0%, var(--card-bg) 75%);">
+        
+        <!-- Vehicle Nodes Label Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; z-index: 10;">
+          <!-- Front Node (Motor / Inverter) -->
+          <div style="background: rgba(10, 16, 26, 0.85); border: 1px solid rgba(0, 229, 255, 0.4); padding: 4px 10px; border-radius: 6px;">
+            <div style="font-size: 8px; color: var(--text-dim); font-weight: 800; text-transform: uppercase;">หน้ารถ (Front Transaxle)</div>
+            <div style="font-size: 11px; font-weight: 900; color: var(--hud-cyan);">&#9889; MOTOR MG1 / MG2</div>
+          </div>
+
+          <!-- Rear Node (HV Battery Pack) -->
+          <div style="background: rgba(10, 16, 26, 0.85); border: 1px solid rgba(0, 230, 140, 0.4); padding: 4px 10px; border-radius: 6px; text-align: right;">
+            <div style="font-size: 8px; color: var(--text-dim); font-weight: 800; text-transform: uppercase;">ท้ายรถ (Rear Battery Pack)</div>
+            <div style="font-size: 11px; font-weight: 900; color: var(--hud-green);">&#128267; 201.6V HV BATTERY</div>
+          </div>
+        </div>
+
+        <!-- Prius Hero Car Image with Dynamic Battery Inflow Animation -->
+        <div style="position: relative; width: 100%; display: flex; align-items: center; justify-content: center; margin: 4px 0;">
+          <!-- Rear Battery Ambient Glow -->
+          <div style="position: absolute; right: 10%; top: 35%; width: 90px; height: 60px; background: rgba(0, 230, 140, 0.25); border-radius: 50%; filter: blur(20px); pointer-events: none;"></div>
+          <!-- Front Motor Ambient Glow -->
+          <div style="position: absolute; left: 10%; top: 35%; width: 90px; height: 60px; background: rgba(0, 229, 255, 0.25); border-radius: 50%; filter: blur(20px); pointer-events: none;"></div>
+
+          <img src="PriusGS.png" alt="Toyota Prius TRD Sportivo" style="max-height: 115px; max-width: 88%; object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0,0,0,0.85));">
+
+          <!-- Interactive Dynamic Energy Flow Stream Beam directly into the battery -->
+          <div style="position: absolute; bottom: 8px; left: 12%; right: 12%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); display: flex; align-items: center;">
+            <div id="batteryFlowBeam" style="width: 100%; height: 100%; background: linear-gradient(90deg, #00e5ff, #00e68c); border-radius: 4px; transition: all 0.3s;"></div>
+          </div>
+        </div>
+
+        <!-- Telemetry Flow Status Footer -->
+        <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px; display: flex; justify-content: space-between; align-items: center; z-index: 10;">
+          <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">
+            <span>กระแสไฟไฮบริด:</span>
+            <strong id="flowStatusText" style="color: var(--hud-green); font-weight: 800;">&#9889; ชาร์จไฟเข้าสู่แบตเตอรี่ไฮบริด (Inflow)</strong>
+          </div>
+          <div id="flowKwBadge" style="font-size: 11px; font-weight: 900; color: var(--hud-cyan); font-family: monospace;">
+            +14.2 kW (Regen Active)
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Live Door Status & Central Lock Bar -->
+      <div class="card-panel" style="padding: 8px 12px; flex: 0.6; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 14px;">🚪</span>
+          <span style="font-size: 11px; font-weight: 800; color: var(--text-main);">DOORS & CENTRAL LOCK:</span>
+          <span id="lockStatusTag" class="tag" style="color: var(--hud-green);">LOCKED</span>
+        </div>
+        <div style="display: flex; gap: 4px;" id="doorsQuickPills">
+          <span class="door-btn" id="doorFL" style="padding: 2px 6px; font-size: 9px;">FL: ปิด</span>
+          <span class="door-btn" id="doorFR" style="padding: 2px 6px; font-size: 9px;">FR: ปิด</span>
+          <span class="door-btn" id="doorRL" style="padding: 2px 6px; font-size: 9px;">RL: ปิด</span>
+          <span class="door-btn" id="doorRR" style="padding: 2px 6px; font-size: 9px;">RR: ปิด</span>
+          <span class="door-btn" id="doorTrunk" style="padding: 2px 6px; font-size: 9px;">ฝาท้าย: ปิด</span>
+        </div>
+      </div>
+
+      <!-- Car Multimedia / Audio Player -->
+      <div class="card-panel" style="padding: 8px 12px; flex: 0.7; display: flex; flex-direction: column; justify-content: space-between;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 10px; font-weight: 800; color: var(--trd-red); letter-spacing: 1px;">🎵 CAR MULTIMEDIA & AUDIO</span>
+          <span style="font-size: 9px; color: var(--text-muted);">JBL LIVE ACOUSTIC</span>
+        </div>
+        <div style="font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 2px 0;">
+          ▶️ Toyota TRD Hybrid Chill Lounge - Road 01.mp3
+        </div>
+        <div style="display: flex; gap: 6px; justify-content: center;">
+          <button class="btn-test" style="padding: 2px 14px;">⏮ PREV</button>
+          <button class="btn-test" style="padding: 2px 14px; background: var(--trd-red); color: #fff;">⏸ PAUSE</button>
+          <button class="btn-test" style="padding: 2px 14px;">⏭ NEXT</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ==========================================
+         RIGHT ZONE: HV 14-BLOCKS, MOTORS & FINANCIAL
+    =========================================== -->
+    <section class="zone-right" style="display: flex; flex-direction: column; gap: 10px; justify-content: space-between;">
+      
+      <!-- CARD 1: HV Battery Guardian & 14-Block NiMH Matrix -->
+      <div class="card-panel hv-card" style="padding: 10px; flex: 1.2;">
+        <div class="card-title" style="margin-bottom: 4px;">
+          <span>HV BATTERY GUARDIAN</span>
+          <span id="packVTag" class="tag">220.4 V</span>
+        </div>
+        <div class="soc-header" style="margin-bottom: 4px;">
+          <div>
+            <div id="socVal" class="soc-val" style="font-size: 26px;">62.5%</div>
+            <div class="soc-sub">State of Charge (SOC)</div>
+          </div>
+          <div style="text-align: right;">
+            <div id="sohVal" style="font-size: 15px; font-weight: 800; color: var(--hud-green);">96.5%</div>
+            <div style="font-size: 9px; color: var(--text-muted);">SOH Health</div>
+          </div>
+        </div>
+
+        <!-- 14 Block Voltages Visualizer -->
+        <div class="blocks-grid" id="blocksGrid">
+          <!-- 14 blocks dynamically rendered -->
+        </div>
+
+        <div class="delta-v-row" style="margin-top: 4px; padding-top: 3px;">
+          <span>Cell Spread (&Delta;V):</span>
+          <strong id="deltaVVal" style="color: var(--hud-green);">45 mV (Good)</strong>
+        </div>
+      </div>
+
+      <!-- CARD 2: Dual MG Motors & Battery Thermals (Module 4) -->
+      <div class="card-panel" style="padding: 10px; flex: 0.9;">
+        <div class="card-title" style="margin-bottom: 6px;">
+          <span>DUAL MOTOR GENERATORS</span>
+          <span class="tag" style="color: var(--hud-cyan);">MG1 • MG2</span>
+        </div>
+
+        <div class="gauge-metrics-grid" style="gap: 6px;">
+          <div class="metric-box" style="padding: 4px 6px;">
+            <div class="metric-label">MG2 DRIVE MOTOR</div>
+            <div class="metric-val" id="mg2Val" style="font-size: 13px;">1,420<span>RPM</span></div>
+          </div>
+          <div class="metric-box" style="padding: 4px 6px;">
+            <div class="metric-label">MG1 GENERATOR</div>
+            <div class="metric-val" id="mg1Val" style="font-size: 13px;">980<span>RPM</span></div>
+          </div>
+          <div class="metric-box" style="padding: 4px 6px;">
+            <div class="metric-label">HV PACK TEMP</div>
+            <div class="metric-val" id="hvTempVal" style="font-size: 13px; color: var(--hud-cyan);">35.0<span>&deg;C</span></div>
+          </div>
+          <div class="metric-box" style="padding: 4px 6px;">
+            <div class="metric-label">ABS PRESSURE</div>
+            <div class="metric-val" id="brakeVal" style="font-size: 13px;">0.00<span>MPa</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CARD 3: Trip Financial Calculator & G-Force Meter (Module 9 & 15) -->
+      <div class="card-panel" style="padding: 10px; flex: 1.1;">
+        <div class="card-title" style="margin-bottom: 4px;">
+          <span>TRIP FINANCIAL & RANGE</span>
+          <span class="tag" style="color: var(--hud-cyan);">G-METER</span>
+        </div>
+
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <canvas id="gForceCanvas" style="width: 58px; height: 58px;"></canvas>
+          <div class="financial-grid" style="flex: 1; margin-top: 0; gap: 4px;">
+            <div class="fin-box" style="padding: 3px 6px;">
+              <div class="fin-label">DISTANCE</div>
+              <div class="fin-val" id="tripDistVal" style="font-size: 13px;">14.8 <span>km</span></div>
+            </div>
+            <div class="fin-box" style="padding: 3px 6px;">
+              <div class="fin-label">ECONOMY</div>
+              <div class="fin-val" id="fuelConsVal" style="font-size: 13px;">23.8 <span>km/L</span></div>
+            </div>
+            <div class="fin-box" style="padding: 3px 6px;">
+              <div class="fin-label">TRIP COST</div>
+              <div class="fin-val" id="tripCostVal" style="font-size: 13px; color: var(--hud-cyan);">&#3647; 23.8</div>
+            </div>
+            <div class="fin-box" style="padding: 3px 6px;">
+              <div class="fin-label">RANGE</div>
+              <div class="fin-val" id="rangeVal" style="font-size: 13px;">785 <span>km</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ==========================================
+       MODULE 2: REVERSE CAMERA OVERLAY
+  =========================================== -->
+  <div id="cameraOverlay">
+    <div class="cam-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: var(--trd-red);">● REAR CAMERA ACTIVE</span>
+        <span style="font-size: 11px; color: #aaa;">GEAR: R (REVERSE)</span>
+      </div>
+      <button class="btn-tool" onclick="setManualGear('D')">&times; ออกจากโหมดถอย</button>
+    </div>
+    <div class="cam-view">
+      <canvas id="camCanvas"></canvas>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODULE 15: WELCOME SEQUENCE OVERLAY
+  =========================================== -->
+  <div id="welcomeOverlay" class="modal-overlay">
+    <div class="modal-box">
+      <div class="trd-logo-badge" style="font-size: 22px; padding: 6px 18px; margin-bottom: 12px; display: inline-block;">TRD SPORTIVO</div>
+      <h2 style="font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 8px;">TOYOTA PRIUS GEN 3</h2>
+      <p style="font-size: 13px; color: var(--hud-cyan); letter-spacing: 1.5px; margin-bottom: 16px;">HYBRID SYSTEM CHECK OK</p>
+      <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+        <div id="welcomeProgress" style="width: 0%; height: 100%; background: var(--trd-red); transition: width 1.2s ease;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       FLOATING QUICK TEST CONTROLS DRAWER
+  =========================================== -->
+  <div id="testDrawer">
+    <span style="font-weight: 800; color: var(--trd-red);">TEST:</span>
+    <button class="btn-test" onclick="setManualGear('R')">เกียร์ R (กล้องหลัง)</button>
+    <button class="btn-test" onclick="setManualGear('D')">เกียร์ D</button>
+    <button class="btn-test" onclick="toggleDoorFL()">เปิด/ปิด ประตู FL</button>
+    <button class="btn-test" onclick="testVoice()">🔊 ทดสอบเสียง</button>
+    <button class="btn-test" onclick="toggleIgnition()">ดับ/สตาร์ทรถ</button>
+  </div>
+
+  <script>
+    /* =========================================================================
+       TOYOTA PRIUS TRD SMART COCKPIT CLIENT ENGINE (PURE VANILLA JS + CANVAS 2D)
+       Zero Heavy Frameworks - Ultra Lightweight for iPad mini A5/A7 Chips (60fps)
+    ========================================================================= */
+
+    // System Telemetry State
+    const state = {
+      speed: 0,
+      rpm: 0,
+      gear: "D",
+      camTrigger: false,
+      soc: 62.5,
+      packV: 220.4,
+      deltaV: 45,
+      blocks: [15.72, 15.68, 15.74, 15.70, 15.69, 15.71, 15.73, 15.68, 15.70, 15.72, 15.69, 15.71, 15.70, 15.72],
+      coolant: 88,
+      inverter: 48,
+      evap: 5.2,
+      cabin: 23.5,
+      aux12V: 14.12,
+      aux12VAlert: false,
+      mg1Rpm: 0,
+      mg2Rpm: 0,
+      evKw: 4.5,
+      powerArc: 15.0, // -100 to +100
+      energyMode: "EV_DRIVE",
+      ecoScore: 92,
+      soh: 96.5,
+      coachMsg: "รักษาคันเร่งนุ่มนวลดีมาก ระบบไฮบริดทำงานได้อย่างมีประสิทธิภาพสูงสุด",
+      driveMode: "ECO",
+      gx: 0.02,
+      gy: 0.05,
+      doors: { fl: false, fr: false, rl: false, rr: false, trunk: false, hood: false, locked: true },
+      tripKm: 14.8,
+      fuelConsKmL: 23.8,
+      costThb: 23.87,
+      rangeKm: 785,
+      ignition: true,
+      ready: true,
+      wsConnected: false
+    };
+
+    let voiceEnabled = true;
+    let audioCtx = null;
+    let themeIndex = 0;
+    const themes = ["theme-night", "theme-day", "theme-cyber"];
+
+    // Initialize UI on window load
+    window.addEventListener("load", () => {
+      initAudio();
+      initClock();
+      initBlocksGrid();
+      initCanvases();
+      connectWebSocket();
+      startAnimationLoop();
+      playWelcomeSequence();
+    });
+
+    /* =========================================================================
+       MODULE 1: WEBSOCKET CLIENT (DUAL DATA BRIDGE)
+    ========================================================================= */
+    let ws = null;
+    function connectWebSocket() {
+      const host = window.location.hostname || "localhost";
+      const wsUrl = `ws://${host}:8081/telemetry`;
+      
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          state.wsConnected = true;
+          document.getElementById("connPill").innerText = "OBD2: LIVE STREAM";
+          document.getElementById("connPill").style.color = "var(--hud-green)";
+          document.getElementById("connPill").style.borderColor = "var(--hud-green)";
+        };
+        ws.onmessage = (evt) => {
+          try {
+            const data = JSON.parse(evt.data);
+            applyTelemetryPayload(data);
+          } catch (e) {}
+        };
+        ws.onerror = () => { ws.close(); };
+        ws.onclose = () => {
+          state.wsConnected = false;
+          document.getElementById("connPill").innerText = "OBD2: SIMULATED";
+          document.getElementById("connPill").style.color = "var(--hud-cyan)";
+          // Auto-reconnect after 3 seconds
+          setTimeout(connectWebSocket, 3000);
+        };
+      } catch (e) {
+        // Fallback to client-side autonomous simulation
+        setTimeout(connectWebSocket, 3000);
+      }
+    }
+
+    function applyTelemetryPayload(data) {
+      if (data.speed !== undefined) state.speed = data.speed;
+      if (data.rpm !== undefined) state.rpm = data.rpm;
+      if (data.gear !== undefined) handleGearChange(data.gear);
+      if (data.soc !== undefined) state.soc = data.soc;
+      if (data.packV !== undefined) state.packV = data.packV;
+      if (data.deltaV !== undefined) state.deltaV = data.deltaV;
+      if (data.blocks && data.blocks.length === 14) state.blocks = data.blocks;
+      if (data.coolant !== undefined) state.coolant = data.coolant;
+      if (data.inverter !== undefined) state.inverter = data.inverter;
+      if (data.evap !== undefined) state.evap = data.evap;
+      if (data.aux12V !== undefined) state.aux12V = data.aux12V;
+      if (data.powerArc !== undefined) state.powerArc = data.powerArc;
+      if (data.energyMode !== undefined) state.energyMode = data.energyMode;
+      if (data.ecoScore !== undefined) state.ecoScore = data.ecoScore;
+      if (data.soh !== undefined) state.soh = data.soh;
+      if (data.coachMsg) state.coachMsg = data.coachMsg;
+      if (data.gx !== undefined) state.gx = data.gx;
+      if (data.gy !== undefined) state.gy = data.gy;
+      if (data.doors) state.doors = data.doors;
+      if (data.tripKm !== undefined) state.tripKm = data.tripKm;
+      if (data.kmL !== undefined) state.fuelConsKmL = data.kmL;
+      if (data.costThb !== undefined) state.costThb = data.costThb;
+      if (data.rangeKm !== undefined) state.rangeKm = data.rangeKm;
+
+      // Handle server-triggered voice alerts
+      if (data.voicePending && data.voiceAlert) {
+        speakThai(data.voiceAlert);
+      }
+
+      updateDOMFields();
+    }
+
+    /* =========================================================================
+       MODULE 2: SMART CAMERA SWITCHING & REVERSE BUZZER
+    ========================================================================= */
+    let reverseBuzzerInterval = null;
+
+    function handleGearChange(newGear) {
+      if (state.gear === newGear) return;
+      state.gear = newGear;
+
+      // Update Gear UI Badges
+      ["P", "R", "N", "D", "B"].forEach(g => {
+        const el = document.getElementById(`gear${g}`);
+        if (el) el.classList.toggle("active", g === newGear);
+      });
+
+      const camOverlay = document.getElementById("cameraOverlay");
+      if (newGear === "R") {
+        state.camTrigger = true;
+        camOverlay.classList.add("active");
+        startReverseBuzzer();
+      } else {
+        state.camTrigger = false;
+        camOverlay.classList.remove("active");
+        stopReverseBuzzer();
+      }
+    }
+
+    function startReverseBuzzer() {
+      stopReverseBuzzer();
+      playBuzzerBeep();
+      reverseBuzzerInterval = setInterval(playBuzzerBeep, 800);
+    }
+
+    function stopReverseBuzzer() {
+      if (reverseBuzzerInterval) {
+        clearInterval(reverseBuzzerInterval);
+        reverseBuzzerInterval = null;
+      }
+    }
+
+    function playBuzzerBeep() {
+      if (!audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(1400, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.16);
+      } catch (e) {}
+    }
+
+    /* =========================================================================
+       MODULE 8: THAI VOICE ALERTS & AUDIO ENGINE
+    ========================================================================= */
+    function initAudio() {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) audioCtx = new AudioContext();
+    }
+
+    function speakThai(text) {
+      if (!voiceEnabled || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "th-TH";
+      utterance.rate = 1.05;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function toggleVoiceAlerts() {
+      voiceEnabled = !voiceEnabled;
+      document.getElementById("btnVoiceToggle").innerText = `🔊 เสียงเตือน: ${voiceEnabled ? 'ON' : 'OFF'}`;
+      if (voiceEnabled) speakThai("ระบบเสียงเตือนพร้อมทำงาน");
+    }
+
+    function testVoice() {
+      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+      speakThai("ยินดีต้อนรับสู่ Toyota Prius TRD Sportivo ระบบทำงานปกติ");
+    }
+
+    /* =========================================================================
+       MODULE 14: ARC POWER GAUGE & SPEEDOMETER (CANVAS 2D)
+    ========================================================================= */
+    let arcCanvas, arcCtx;
+    let visCanvas, visCtx;
+    let gCanvas, gCtx;
+    let camCanvas, camCtx;
+
+    function initCanvases() {
+      arcCanvas = document.getElementById("arcCanvas");
+      arcCtx = arcCanvas.getContext("2d");
+
+      visCanvas = document.getElementById("visualizerCanvas");
+      visCtx = visCanvas.getContext("2d");
+
+      gCanvas = document.getElementById("gForceCanvas");
+      gCtx = gCanvas.getContext("2d");
+
+      camCanvas = document.getElementById("camCanvas");
+      camCtx = camCanvas.getContext("2d");
+
+      resizeCanvases();
+      window.addEventListener("resize", resizeCanvases);
+    }
+
+    function resizeCanvases() {
+      [arcCanvas, visCanvas, camCanvas].forEach(c => {
+        if (c) {
+          c.width = c.clientWidth * (window.devicePixelRatio || 1);
+          c.height = c.clientHeight * (window.devicePixelRatio || 1);
+        }
+      });
+      if (gCanvas) {
+        gCanvas.width = 140;
+        gCanvas.height = 140;
+      }
+    }
+
+    function drawArcPowerGauge() {
+      const w = arcCanvas.width;
+      const h = arcCanvas.height;
+      arcCtx.clearRect(0, 0, w, h);
+
+      const cx = w / 2;
+      const cy = h * 0.72;
+      const r = Math.min(w * 0.42, h * 0.85);
+
+      // Arc Angles: -140 deg to -40 deg
+      const startAngle = Math.PI * 0.80; // Left (CHG)
+      const midAngle = Math.PI * 1.50;   // Top center (0 / Neutral)
+      const endAngle = Math.PI * 2.20;   // Right (PWR)
+
+      // 1. Background Arc Track
+      arcCtx.beginPath();
+      arcCtx.arc(cx, cy, r, startAngle, endAngle);
+      arcCtx.lineWidth = 14 * (w / 400);
+      arcCtx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+      arcCtx.stroke();
+
+      // 2. Zone Bands:
+      // CHG Zone (Blue): startAngle to midAngle
+      arcCtx.beginPath();
+      arcCtx.arc(cx, cy, r, startAngle, midAngle);
+      arcCtx.lineWidth = 14 * (w / 400);
+      arcCtx.strokeStyle = "rgba(0, 229, 255, 0.35)";
+      arcCtx.stroke();
+
+      // ECO Zone (Green): midAngle to midAngle + 0.4
+      const ecoEndAngle = midAngle + (endAngle - midAngle) * 0.55;
+      arcCtx.beginPath();
+      arcCtx.arc(cx, cy, r, midAngle, ecoEndAngle);
+      arcCtx.strokeStyle = "rgba(0, 230, 140, 0.4)";
+      arcCtx.stroke();
+
+      // PWR Zone (Red): ecoEndAngle to endAngle
+      arcCtx.beginPath();
+      arcCtx.arc(cx, cy, r, ecoEndAngle, endAngle);
+      arcCtx.strokeStyle = "rgba(235, 35, 45, 0.45)";
+      arcCtx.stroke();
+
+      // 3. Active Needle / Arc Value
+      // powerArc is -100 to +100
+      let normVal = (state.powerArc + 100) / 200; // 0 to 1
+      normVal = Math.max(0, Math.min(1, normVal));
+      const currentAngle = startAngle + normVal * (endAngle - startAngle);
+
+      arcCtx.beginPath();
+      arcCtx.arc(cx, cy, r, Math.min(midAngle, currentAngle), Math.max(midAngle, currentAngle));
+      arcCtx.lineWidth = 18 * (w / 400);
+      arcCtx.strokeStyle = state.powerArc < 0 ? "#00e5ff" : (state.powerArc > 45 ? "#eb232d" : "#00e68c");
+      arcCtx.stroke();
+
+      // 4. Integrated Prius GS Electronic Gear Badge & Speedometer
+      const speedX = cx + (w * 0.08); // Slight offset to right
+      const gearX = cx - (w * 0.22);  // Gear badge directly on left of speed
+      const speedY = cy - (h * 0.15);
+
+      // Draw Prius GS Gear Badge Box on Canvas
+      const gearBoxW = w * 0.16;
+      const gearBoxH = h * 0.30;
+      const gearBoxX = gearX - gearBoxW / 2;
+      const gearBoxY = speedY - gearBoxH / 2;
+
+      let gearBorder = "#00e68c";
+      let gearFill = "rgba(0, 230, 140, 0.22)";
+      let gearLabel = "DRIVE";
+      if (state.gear === "P") {
+        gearBorder = "#eb232d"; gearFill = "rgba(235, 35, 45, 0.28)"; gearLabel = "PARK";
+      } else if (state.gear === "R") {
+        gearBorder = "#ffb703"; gearFill = "rgba(255, 183, 3, 0.28)"; gearLabel = "REVERSE";
+      } else if (state.gear === "N") {
+        gearBorder = "#8c9cb0"; gearFill = "rgba(140, 156, 176, 0.22)"; gearLabel = "NEUTRAL";
+      } else if (state.gear === "B") {
+        gearBorder = "#00e5ff"; gearFill = "rgba(0, 229, 255, 0.28)"; gearLabel = "REGEN";
+      }
+
+      // Rounded Gear Box
+      arcCtx.fillStyle = gearFill;
+      arcCtx.strokeStyle = gearBorder;
+      arcCtx.lineWidth = 2.5;
+      drawRoundRect(arcCtx, gearBoxX, gearBoxY, gearBoxW, gearBoxH, 6);
+      arcCtx.fill();
+      arcCtx.stroke();
+
+      // Gear Letter
+      arcCtx.textAlign = "center";
+      arcCtx.textBaseline = "middle";
+      arcCtx.fillStyle = "#ffffff";
+      arcCtx.font = `900 ${Math.round(h * 0.20)}px -apple-system, sans-serif`;
+      arcCtx.fillText(state.gear, gearX, speedY - h * 0.03);
+
+      // Gear Sub-label
+      arcCtx.fillStyle = gearBorder;
+      arcCtx.font = `800 ${Math.round(h * 0.055)}px -apple-system, sans-serif`;
+      arcCtx.fillText(gearLabel, gearX, speedY + h * 0.09);
+
+      // Large Digital Speedometer (km/h)
+      arcCtx.fillStyle = "#ffffff";
+      arcCtx.font = `900 ${Math.round(h * 0.36)}px -apple-system, sans-serif`;
+      arcCtx.fillText(Math.round(Math.abs(state.speed)), speedX, speedY);
+
+      arcCtx.fillStyle = "rgba(255, 255, 255, 0.55)";
+      arcCtx.font = `700 ${Math.round(h * 0.075)}px -apple-system, sans-serif`;
+      arcCtx.fillText("KM/H", speedX, speedY + h * 0.22);
+
+      // 5. Zone Labels (CHG | ECO | PWR)
+      arcCtx.font = `800 ${Math.round(h * 0.065)}px -apple-system, sans-serif`;
+      arcCtx.fillStyle = "#00e5ff";
+      arcCtx.fillText("CHG", cx - r * 0.85, cy + h * 0.1);
+
+      arcCtx.fillStyle = "#00e68c";
+      arcCtx.fillText("ECO", cx, cy - r * 1.05);
+
+      arcCtx.fillStyle = "#eb232d";
+      arcCtx.fillText("PWR", cx + r * 0.85, cy + h * 0.1);
+
+      // Update Screen Aura Color based on power
+      updateAmbientAura();
+    }
+
+    function drawRoundRect(ctx, x, y, w, h, r) {
+      if (ctx.roundRect) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+    }
+
+    function updateAmbientAura() {
+      const aura = document.getElementById("ambientAura");
+      if (state.powerArc < -5) {
+        aura.style.setProperty("--aura-color", "rgba(0, 229, 255, 0.35)");
+      } else if (state.powerArc > 45) {
+        aura.style.setProperty("--aura-color", "rgba(235, 35, 45, 0.4)");
+      } else {
+        aura.style.setProperty("--aura-color", "rgba(0, 230, 140, 0.25)");
+      }
+    }
+
+    /* =========================================================================
+       MODULE 4 & 13: 3D VEHICLE HOLOGRAM & ENERGY FLOW (CANVAS 2D)
+    ========================================================================= */
+    let particleOffset = 0;
+
+    function drawHologramAndEnergyFlow() {
+      const w = visCanvas.width;
+      const h = visCanvas.height;
+      visCtx.clearRect(0, 0, w, h);
+
+      particleOffset = (particleOffset + (state.speed * 0.08 + 1.2)) % 40;
+
+      const cx = w / 2;
+      const cy = h / 2;
+
+      // Draw Vehicle Isometric Silhouette
+      visCtx.save();
+      visCtx.translate(cx, cy);
+
+      // Chassis Cyber Outline
+      visCtx.strokeStyle = "rgba(0, 229, 255, 0.4)";
+      visCtx.lineWidth = 2;
+      visCtx.beginPath();
+      // Aerodynamic Prius Gen 3 wedge profile
+      visCtx.moveTo(-110, 15);
+      visCtx.lineTo(-80, -25);
+      visCtx.lineTo(20, -32);
+      visCtx.lineTo(90, -10);
+      visCtx.lineTo(110, 15);
+      visCtx.lineTo(95, 25);
+      visCtx.lineTo(-95, 25);
+      visCtx.closePath();
+      visCtx.stroke();
+
+      // Front & Rear Wheels (rotates with speed)
+      const wheelRot = (Date.now() * 0.01 * (state.speed + 1)) % (Math.PI * 2);
+      drawWheel(-70, 25, wheelRot);
+      drawWheel(70, 25, wheelRot);
+
+      // Headlight Beam
+      if (state.speed > 0) {
+        visCtx.fillStyle = "rgba(0, 229, 255, 0.15)";
+        visCtx.beginPath();
+        visCtx.moveTo(110, 10);
+        visCtx.lineTo(170, -5);
+        visCtx.lineTo(170, 30);
+        visCtx.closePath();
+        visCtx.fill();
+      }
+
+      // Energy Flow Nodes
+      // Engine Node (Front)
+      const nodeEngine = { x: 45, y: 0, label: "ICE" };
+      // Electric Motor MG2 Node (Mid-front)
+      const nodeMotor = { x: 10, y: 10, label: "MG2" };
+      // HV Battery Node (Rear floor)
+      const nodeBattery = { x: -55, y: 12, label: "HV BAT" };
+      // Wheels Node
+      const nodeWheels = { x: 70, y: 25, label: "" };
+
+      // Draw Energy Particles Flowing
+      if (state.energyMode === "EV_DRIVE") {
+        drawStream(nodeBattery, nodeMotor, "#00e5ff");
+        drawStream(nodeMotor, nodeWheels, "#00e5ff");
+      } else if (state.energyMode === "HYBRID_DRIVE") {
+        drawStream(nodeEngine, nodeMotor, "#ff9e00");
+        drawStream(nodeBattery, nodeMotor, "#00e5ff");
+        drawStream(nodeMotor, nodeWheels, "#ff9e00");
+      } else if (state.energyMode === "REGEN_CHARGE") {
+        drawStream(nodeWheels, nodeMotor, "#00e68c");
+        drawStream(nodeMotor, nodeBattery, "#00e68c");
+      }
+
+      // Draw Node badges
+      [nodeEngine, nodeMotor, nodeBattery].forEach(n => {
+        visCtx.fillStyle = "rgba(10, 16, 26, 0.9)";
+        visCtx.strokeStyle = "rgba(255,255,255,0.4)";
+        visCtx.lineWidth = 1;
+        visCtx.beginPath();
+        visCtx.arc(n.x, n.y, 14, 0, Math.PI * 2);
+        visCtx.fill();
+        visCtx.stroke();
+
+        visCtx.fillStyle = "#fff";
+        visCtx.font = "800 8px -apple-system, sans-serif";
+        visCtx.textAlign = "center";
+        visCtx.textBaseline = "middle";
+        visCtx.fillText(n.label, n.x, n.y);
+      });
+
+      visCtx.restore();
+    }
+
+    function drawWheel(x, y, rot) {
+      visCtx.save();
+      visCtx.translate(x, y);
+      visCtx.rotate(rot);
+      visCtx.fillStyle = "#111";
+      visCtx.strokeStyle = "rgba(0, 229, 255, 0.6)";
+      visCtx.lineWidth = 2;
+      visCtx.beginPath();
+      visCtx.arc(0, 0, 12, 0, Math.PI * 2);
+      visCtx.fill();
+      visCtx.stroke();
+      // Spokes
+      visCtx.beginPath();
+      visCtx.moveTo(-10, 0); visCtx.lineTo(10, 0);
+      visCtx.moveTo(0, -10); visCtx.lineTo(0, 10);
+      visCtx.stroke();
+      visCtx.restore();
+    }
+
+    function drawStream(from, to, color) {
+      visCtx.strokeStyle = color;
+      visCtx.lineWidth = 2.5;
+      visCtx.beginPath();
+      visCtx.moveTo(from.x, from.y);
+      visCtx.lineTo(to.x, to.y);
+      visCtx.stroke();
+
+      // Moving energy dot
+      const t = (particleOffset % 40) / 40;
+      const px = from.x + (to.x - from.x) * t;
+      const py = from.y + (to.y - from.y) * t;
+
+      visCtx.fillStyle = color;
+      visCtx.beginPath();
+      visCtx.arc(px, py, 4, 0, Math.PI * 2);
+      visCtx.fill();
+    }
+
+    /* =========================================================================
+       MODULE 15: 2-AXIS G-FORCE RING METER (CANVAS 2D)
+    ========================================================================= */
+    function drawGForceMeter() {
+      const w = gCanvas.width;
+      const h = gCanvas.height;
+      gCtx.clearRect(0, 0, w, h);
+
+      const cx = w / 2;
+      const cy = h / 2;
+      const r = w * 0.42;
+
+      // Circular Reference Grids (0.5G & 1.0G rings)
+      gCtx.strokeStyle = "rgba(255,255,255,0.12)";
+      gCtx.lineWidth = 1;
+
+      gCtx.beginPath();
+      gCtx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+      gCtx.stroke();
+
+      gCtx.beginPath();
+      gCtx.arc(cx, cy, r, 0, Math.PI * 2);
+      gCtx.stroke();
+
+      // Crosshairs
+      gCtx.beginPath();
+      gCtx.moveTo(cx - r, cy); gCtx.lineTo(cx + r, cy);
+      gCtx.moveTo(cx, cy - r); gCtx.lineTo(cx, cy + r);
+      gCtx.stroke();
+
+      // G-Force Position (gx = Lateral, gy = Longitudinal)
+      // Clamped to 1.2G max
+      const maxG = 1.0;
+      const px = cx + (state.gx / maxG) * r;
+      const py = cy - (state.gy / maxG) * r;
+
+      // Glowing G-Ball
+      gCtx.fillStyle = "rgba(235, 35, 45, 0.4)";
+      gCtx.beginPath();
+      gCtx.arc(px, py, 10, 0, Math.PI * 2);
+      gCtx.fill();
+
+      gCtx.fillStyle = "#eb232d";
+      gCtx.beginPath();
+      gCtx.arc(px, py, 4, 0, Math.PI * 2);
+      gCtx.fill();
+
+      const totalG = Math.sqrt(state.gx * state.gx + state.gy * state.gy);
+      document.getElementById("gVal").innerText = `${totalG.toFixed(2)} G`;
+    }
+
+    /* =========================================================================
+       MODULE 2: REVERSE CAMERA GUIDELINES CANVAS (CANVAS 2D)
+    ========================================================================= */
+    function drawCameraGuidelines() {
+      if (!state.camTrigger) return;
+      const w = camCanvas.width;
+      const h = camCanvas.height;
+      camCtx.clearRect(0, 0, w, h);
+
+      // Simulated Rear Video Noise / Texture
+      camCtx.fillStyle = "#0c121e";
+      camCtx.fillRect(0, 0, w, h);
+
+      // Trajectory Lines
+      const cx = w / 2;
+      const bottom = h * 0.95;
+      const top = h * 0.35;
+
+      // Green Safe Line (2.0m)
+      camCtx.strokeStyle = "#00e68c";
+      camCtx.lineWidth = 4;
+      camCtx.beginPath();
+      camCtx.moveTo(cx - w * 0.35, bottom);
+      camCtx.lineTo(cx - w * 0.20, top);
+      camCtx.moveTo(cx + w * 0.35, bottom);
+      camCtx.lineTo(cx + w * 0.20, top);
+      camCtx.stroke();
+
+      // Distance Horizontal Markers
+      // 0.5m (Red Warning)
+      camCtx.strokeStyle = "#eb232d";
+      camCtx.beginPath();
+      camCtx.moveTo(cx - w * 0.33, bottom - 40);
+      camCtx.lineTo(cx + w * 0.33, bottom - 40);
+      camCtx.stroke();
+
+      // 1.0m (Yellow Caution)
+      camCtx.strokeStyle = "#ffb703";
+      camCtx.beginPath();
+      camCtx.moveTo(cx - w * 0.28, bottom - 120);
+      camCtx.lineTo(cx + w * 0.28, bottom - 120);
+      camCtx.stroke();
+
+      // 2.0m (Green Safe)
+      camCtx.strokeStyle = "#00e68c";
+      camCtx.beginPath();
+      camCtx.moveTo(cx - w * 0.23, bottom - 200);
+      camCtx.lineTo(cx + w * 0.23, bottom - 200);
+      camCtx.stroke();
+    }
+
+    /* =========================================================================
+       MODULE 3: 14 BLOCK VOLTAGES DOM INITIALIZATION
+    ========================================================================= */
+    function initBlocksGrid() {
+      const grid = document.getElementById("blocksGrid");
+      grid.innerHTML = "";
+      for (let i = 0; i < 14; i++) {
+        const div = document.createElement("div");
+        div.className = "block-cell";
+        div.id = `blockCell${i}`;
+        div.innerHTML = `
+          <div class="block-num">B${i+1}</div>
+          <div class="block-v" id="blockV${i}">15.7</div>
+        `;
+        grid.appendChild(div);
+      }
+    }
+
+    function updateDOMFields() {
+      // HV SOC & Pack
+      document.getElementById("socVal").innerText = `${state.soc.toFixed(1)}%`;
+      document.getElementById("packVTag").innerText = `${state.packV.toFixed(1)} V`;
+      document.getElementById("sohVal").innerText = `${state.soh.toFixed(1)}%`;
+
+      // 14 Blocks
+      let minV = 999, maxV = 0;
+      state.blocks.forEach(v => {
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
+      });
+
+      state.blocks.forEach((v, i) => {
+        const el = document.getElementById(`blockV${i}`);
+        const cell = document.getElementById(`blockCell${i}`);
+        if (el) el.innerText = v.toFixed(2);
+        if (cell) cell.classList.toggle("peak", v === maxV);
+      });
+
+      // Delta V
+      const dV = (maxV - minV) * 1000;
+      const dVEl = document.getElementById("deltaVVal");
+      dVEl.innerText = `${dV.toFixed(0)} mV (${dV < 80 ? 'Good' : 'Check'})`;
+      dVEl.style.color = dV < 80 ? "var(--hud-green)" : "var(--trd-red)";
+
+      // Thermals & Aux
+      document.getElementById("coolantVal").innerHTML = `${Math.round(state.coolant)}<span>&deg;C</span>`;
+      document.getElementById("inverterVal").innerHTML = `${Math.round(state.inverter)}<span>&deg;C</span>`;
+      document.getElementById("evapVal").innerHTML = `${state.evap.toFixed(1)}<span>&deg;C</span>`;
+      document.getElementById("aux12VVal").innerHTML = `${state.aux12V.toFixed(1)}<span>V</span>`;
+
+      // Hybrid Powertrain Inflow / Outflow Visualizer on Car Graphic
+      const flowBadge = document.getElementById("batteryFlowStateBadge");
+      const flowText = document.getElementById("flowStatusText");
+      const flowKw = document.getElementById("flowKwBadge");
+      const beam = document.getElementById("batteryFlowBeam");
+      const evDriveTitle = document.getElementById("evDriveStatusText");
+
+      if (state.speed < 1.0) {
+        if (flowBadge) flowBadge.innerText = "🔋 Standby พร้อมทำงาน";
+        if (flowText) flowText.innerText = "⚡ แบตเตอรี่ไฮบริดพร้อมจ่ายไฟ (Ready)";
+        if (flowKw) flowKw.innerText = "+0.0 kW (Idle)";
+        if (beam) beam.style.background = "rgba(255,255,255,0.2)";
+        if (evDriveTitle) evDriveTitle.innerText = "HYBRID SYSTEM READY (โหมดพร้อมขับขี่)";
+      } else if (state.powerArc < -5 || state.evKw < -1.0) {
+        // Charging / Regen
+        if (flowBadge) flowBadge.innerText = "⚡ ชาร์จไฟกลับ REGEN";
+        if (flowText) flowText.innerText = "⚡ กระแสไฟกำลังชาร์จเข้าแบตเตอรี่ไฮบริด (Inflow)";
+        if (flowKw) flowKw.innerText = `${state.evKw.toFixed(1)} kW (Regen Active)`;
+        if (beam) beam.style.background = "linear-gradient(90deg, #00e5ff, #00e68c, #00e68c)";
+        if (evDriveTitle) evDriveTitle.innerText = "REGENERATIVE BRAKING (ชาร์จไฟเข้าสู่แบตเตอรี่)";
+      } else if (state.rpm === 0) {
+        // Pure EV Drive
+        if (flowBadge) flowBadge.innerText = "⚡ ดึงไฟขับเคลื่อน EV";
+        if (flowText) flowText.innerText = "⚡ ดึงกระแสไฟจากแบตเตอรี่ไฮบริด → มอเตอร์ MG2";
+        if (flowKw) flowKw.innerText = `-${state.evKw.toFixed(1)} kW (EV Discharging)`;
+        if (beam) beam.style.background = "linear-gradient(90deg, #00e68c, #00e5ff)";
+        if (evDriveTitle) evDriveTitle.innerText = "PURE EV DRIVE (MG2 → เพลาขับหน้า)";
+      } else {
+        // Hybrid / Power Drive
+        if (flowBadge) flowBadge.innerText = "🔥 HYBRID FULL POWER";
+        if (flowText) flowText.innerText = "⚡ เครื่องยนต์ + แบตเตอรี่ไฮบริดร่วมส่งกำลัง";
+        if (flowKw) flowKw.innerText = `+${state.evKw.toFixed(1)} kW (Combined Drive)`;
+        if (beam) beam.style.background = "linear-gradient(90deg, #00e5ff, #ffb703, #eb232d)";
+        if (evDriveTitle) evDriveTitle.innerText = "HYBRID POWER DRIVE (เครื่องยนต์ + มอเตอร์)";
+      }
+
+      // Motors
+      const mg2El = document.getElementById("mg2Val");
+      if (mg2El) mg2El.innerHTML = `${state.mg2Rpm.toLocaleString()}<span>RPM</span>`;
+      const mg1El = document.getElementById("mg1Val");
+      if (mg1El) mg1El.innerHTML = `${state.mg1Rpm.toLocaleString()}<span>RPM</span>`;
+
+      // AI Coach & Financial
+      const ecoScoreEl = document.getElementById("ecoScore");
+      if (ecoScoreEl) ecoScoreEl.innerText = `${state.ecoScore} / 100`;
+      const coachMsgEl = document.getElementById("coachMessage");
+      if (coachMsgEl) coachMsgEl.innerText = state.coachMsg;
+      document.getElementById("tripDistVal").innerHTML = `${state.tripKm.toFixed(1)} <span>km</span>`;
+      document.getElementById("fuelConsVal").innerHTML = `${state.fuelConsKmL.toFixed(1)} <span>km/L</span>`;
+      document.getElementById("tripCostVal").innerHTML = `&#3647; ${state.costThb.toFixed(1)}`;
+      document.getElementById("rangeVal").innerHTML = `${Math.round(state.rangeKm)} <span>km</span>`;
+
+      // Doors Update
+      updateDoorBtn("doorFL", state.doors.fl, "หน้าซ้าย (FL)");
+      updateDoorBtn("doorFR", state.doors.fr, "หน้าขวา (FR)");
+      updateDoorBtn("doorRL", state.doors.rl, "หลังซ้าย (RL)");
+      updateDoorBtn("doorRR", state.doors.rr, "หลังขวา (RR)");
+      updateDoorBtn("doorTrunk", state.doors.trunk, "ฝาท้าย (Trunk)");
+      updateDoorBtn("doorHood", state.doors.hood, "ฝากระโปรง (Hood)");
+
+      const lockTag = document.getElementById("lockStatusTag");
+      lockTag.innerText = state.doors.locked ? "LOCKED" : "UNLOCKED";
+      lockTag.style.color = state.doors.locked ? "var(--hud-green)" : "var(--trd-red)";
+    }
+
+    function updateDoorBtn(id, isOpen, label) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle("open", !!isOpen);
+      el.innerHTML = `<span>${label}</span><strong>${isOpen ? 'เปิด' : 'ปิด'}</strong>`;
+    }
+
+    /* =========================================================================
+       REAL-TIME 60FPS RENDERING LOOP
+    ========================================================================= */
+    function startAnimationLoop() {
+      function render() {
+        drawArcPowerGauge();
+        drawHologramAndEnergyFlow();
+        drawGForceMeter();
+        if (state.camTrigger) {
+          drawCameraGuidelines();
+        }
+        requestAnimationFrame(render);
+      }
+      requestAnimationFrame(render);
+    }
+
+    /* =========================================================================
+       MODULE 15: WELCOME SEQUENCE & POWER MANAGEMENT
+    ========================================================================= */
+    function playWelcomeSequence() {
+      const overlay = document.getElementById("welcomeOverlay");
+      const bar = document.getElementById("welcomeProgress");
+      overlay.classList.add("show");
+      setTimeout(() => { bar.style.width = "100%"; }, 100);
+
+      setTimeout(() => {
+        overlay.classList.remove("show");
+        if (voiceEnabled) speakThai("ยินดีต้อนรับสู่ Toyota Prius TRD Sportivo ระบบไฮบริดพร้อมทำงาน");
+      }, 1500);
+    }
+
+    function toggleIgnition() {
+      state.ignition = !state.ignition;
+      state.ready = state.ignition;
+      const readyPill = document.getElementById("readyPill");
+      if (state.ignition) {
+        readyPill.className = "hud-pill ready";
+        readyPill.innerText = "● READY";
+        playWelcomeSequence();
+      } else {
+        readyPill.className = "hud-pill";
+        readyPill.innerText = "OFF / STANDBY";
+        if (voiceEnabled) speakThai("ดับเครื่องยนต์ บันทึกสถิติทริปเสร็จสิ้น");
+      }
+    }
+
+    /* =========================================================================
+       THEME & CLOCK UTILITIES
+    ========================================================================= */
+    function cycleTheme() {
+      themeIndex = (themeIndex + 1) % themes.length;
+      document.body.className = themes[themeIndex];
+    }
+
+    function initClock() {
+      function update() {
+        const now = new Date();
+        document.getElementById("hudClock").innerText = now.toTimeString().split(" ")[0];
+      }
+      setInterval(update, 1000);
+      update();
+    }
+
+    /* =========================================================================
+       INTERACTIVE TESTING HELPERS
+    ========================================================================= */
+    function setManualGear(gear) {
+      handleGearChange(gear);
+      // If WebSocket connected, inform backend as well
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        // fetch backend API
+        fetch(`/api/control?gear=${gear}`).catch(() => {});
+      }
+    }
+
+    function toggleDoorFL() {
+      state.doors.fl = !state.doors.fl;
+      updateDOMFields();
+      if (state.doors.fl && voiceEnabled) {
+        speakThai("ประตูด้านหน้าซ้ายเปิดอยู่");
+      }
+    }
+  </script>
+</body>
+</html>
