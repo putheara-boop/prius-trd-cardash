@@ -216,6 +216,7 @@
 @end
 
 @interface TRDMini2CockpitController ()
+- (void)openYouTube;
 - (void)openIPadSystemSettings;
 - (void)buildTopBar;
 - (void)buildLeftZone;
@@ -300,6 +301,18 @@
 }
 
 #pragma mark - Official iOS Settings Opener (Works on non-jailbroken iOS 11.3!)
+
+- (void)openYouTube {
+    NSURL *url = [NSURL URLWithString:@"https://m.youtube.com"];
+    UIApplication *app = [UIApplication sharedApplication];
+    if (url && [app canOpenURL:url]) {
+        if ([app respondsToSelector:@selector(openURL:options:completionHandler:)]) {
+            [app openURL:url options:@{} completionHandler:nil];
+        } else {
+            [app openURL:url];
+        }
+    }
+}
 
 - (void)openIPadSystemSettings {
     if (&UIApplicationOpenSettingsURLString != NULL) {
@@ -738,19 +751,19 @@
 
     NSArray *dockTitles = @[
         @"⚡ EV COCKPIT",
+        @"▶️ YOUTUBE",
         @"🎵 OFFLINE MUSIC",
         @"📡 OBD-II BLE",
         @"🔊 THAI COACH",
-        @"⚙️ SETTINGS (ตั้งค่า)",
-        @"🕒 FULL CLOCK"
+        @"⚙️ SETTINGS"
     ];
     SEL dockSels[6] = {
         @selector(showMainCockpit),
+        @selector(openYouTube),
         @selector(openOfflineMusicPicker),
         @selector(tapOBDMode),
         @selector(tapSpeakSummary),
-        @selector(openSettingsSheet),
-        @selector(showFullClock)
+        @selector(openSettingsSheet)
     };
     CGFloat btnW = (996.0 - 14.0 * 7) / 6.0;
     for (int i = 0; i < 6; i++) {
