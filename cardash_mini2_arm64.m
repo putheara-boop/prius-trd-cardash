@@ -438,25 +438,26 @@
 }
 
 - (void)buildLeftZone {
-    self.leftZone = [self makePanelWithFrame:CGRectMake(14, 68, 260, 612)];
+    self.leftZone = [self makePanelWithFrame:CGRectMake(14, 68, 272, 612)];
     [self.view addSubview:self.leftZone];
 
-    UILabel *hdr = [self makeLabel:CGRectMake(16, 12, 228, 18)
+    UILabel *hdr = [self makeLabel:CGRectMake(16, 12, 240, 18)
                               font:[UIFont boldSystemFontOfSize:11]
                              color:[UIColor colorWithWhite:0.55 alpha:1.0]
                              align:NSTextAlignmentLeft
-                              text:@"SHIFT POSITION  •  PRIUS GEN 3"];
+                              text:@"VEHICLE DYNAMICS • 11.3 CAN"];
     [self.leftZone addSubview:hdr];
 
-    // Gear selector pills P / R / N / D / B
+    // Gear selector pills P / R / N / D / B (Symmetrical 5 equal pills)
     self.gearButtons = [NSMutableArray array];
     NSArray *gears = @[@"P", @"R", @"N", @"D", @"B"];
+    CGFloat gpW = (272.0 - 32.0 - 16.0) / 5.0; // 44.8 pt each
     for (int i = 0; i < 5; i++) {
         UIButton *gb = [UIButton buttonWithType:UIButtonTypeCustom];
-        gb.frame = CGRectMake(16 + i * 46, 34, 42, 42);
+        gb.frame = CGRectMake(16 + i * (gpW + 4), 36, gpW, 40);
         gb.layer.cornerRadius = 10.0;
         gb.layer.borderWidth = 1.4;
-        gb.titleLabel.font = [UIFont boldSystemFontOfSize:20];
+        gb.titleLabel.font = [UIFont boldSystemFontOfSize:18];
         [gb setTitle:gears[i] forState:UIControlStateNormal];
         gb.tag = 500 + i;
         [gb addTarget:self action:@selector(tapGearButton:) forControlEvents:UIControlEventTouchUpInside];
@@ -464,23 +465,23 @@
         [self.gearButtons addObject:gb];
     }
 
-    // Giant Digital Speedometer
-    self.speedValueLabel = [self makeLabel:CGRectMake(12, 88, 236, 118)
-                                      font:[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:108] ?: [UIFont boldSystemFontOfSize:104]
+    // Giant Digital Speedometer Centerpiece
+    self.speedValueLabel = [self makeLabel:CGRectMake(12, 88, 248, 114)
+                                      font:[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:104] ?: [UIFont boldSystemFontOfSize:98]
                                      color:[UIColor whiteColor]
                                      align:NSTextAlignmentCenter
                                       text:@"0"];
     [self.leftZone addSubview:self.speedValueLabel];
 
-    self.speedSourceLabel = [self makeLabel:CGRectMake(16, 204, 228, 22)
-                                       font:[UIFont boldSystemFontOfSize:13]
+    self.speedSourceLabel = [self makeLabel:CGRectMake(16, 202, 240, 22)
+                                       font:[UIFont boldSystemFontOfSize:12]
                                       color:[UIColor colorWithRed:0.0 green:0.82 blue:1.0 alpha:1.0]
                                       align:NSTextAlignmentCenter
-                                       text:@"km/h  •  OBD2 / GPS HYBRID"];
+                                       text:@"km/h  •  DYNAMICS LIVE"];
     [self.leftZone addSubview:self.speedSourceLabel];
 
     // EV Power Gauge Bar
-    self.evPowerLabel = [self makeLabel:CGRectMake(16, 238, 228, 20)
+    self.evPowerLabel = [self makeLabel:CGRectMake(16, 236, 240, 20)
                                    font:[UIFont boldSystemFontOfSize:12]
                                   color:[UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0]
                                   align:NSTextAlignmentLeft
@@ -488,32 +489,32 @@
     [self.leftZone addSubview:self.evPowerLabel];
 
     self.evPowerBar = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
-    self.evPowerBar.frame = CGRectMake(16, 264, 228, 10);
+    self.evPowerBar.frame = CGRectMake(16, 262, 240, 10);
     self.evPowerBar.trackTintColor = [UIColor colorWithWhite:0.16 alpha:1.0];
     self.evPowerBar.progressTintColor = [UIColor colorWithRed:0.0 green:0.84 blue:1.0 alpha:1.0];
     self.evPowerBar.progress = 0.35;
     [self.leftZone addSubview:self.evPowerBar];
 
-    // 4 Thermal & Voltage Cards in Left Zone
-    NSArray *tTitles = @[@"🌡️ COOLANT (น้ำหล่อเย็น)", @"⚡ INVERTER TEMP", @"❄️ CABIN / AMBIENT", @"🔋 12V AUX GUARDIAN"];
-    UILabel * __strong *targets[4] = {&_coolantVal, &_inverterVal, &_cabinVal, &_aux12Val};
-    for (int i = 0; i < 4; i++) {
-        UIView *card = [[UIView alloc] initWithFrame:CGRectMake(14, 286 + i * 78, 232, 68)];
+    // EXACT 3 THERMAL CARDS (Height 96pt each, perfectly matching Right Zone 3 Cards!)
+    NSArray *tTitles = @[@"🌡️ น้ำหล่อเย็น (Coolant)", @"⚡ อินเวอร์เตอร์ (Inverter)", @"🔋 แบต 12V (Auxiliary)"];
+    UILabel * __strong *targets[3] = {&_coolantVal, &_inverterVal, &_aux12Val};
+    for (int i = 0; i < 3; i++) {
+        UIView *card = [[UIView alloc] initWithFrame:CGRectMake(14, 288 + i * 104, 244, 94)];
         card.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.95];
-        card.layer.cornerRadius = 10.0;
+        card.layer.cornerRadius = 12.0;
         card.layer.borderWidth = 1.0;
         card.layer.borderColor = [UIColor colorWithWhite:0.18 alpha:1.0].CGColor;
         [self.leftZone addSubview:card];
 
-        UILabel *tl = [self makeLabel:CGRectMake(12, 8, 208, 16)
-                                 font:[UIFont boldSystemFontOfSize:10]
+        UILabel *tl = [self makeLabel:CGRectMake(14, 12, 216, 18)
+                                 font:[UIFont boldSystemFontOfSize:11]
                                 color:[UIColor colorWithWhite:0.55 alpha:1.0]
                                 align:NSTextAlignmentLeft
                                  text:tTitles[i]];
         [card addSubview:tl];
 
-        UILabel *vl = [self makeLabel:CGRectMake(12, 26, 208, 34)
-                                 font:[UIFont boldSystemFontOfSize:24]
+        UILabel *vl = [self makeLabel:CGRectMake(14, 38, 216, 44)
+                                 font:[UIFont boldSystemFontOfSize:26]
                                 color:[UIColor whiteColor]
                                 align:NSTextAlignmentLeft
                                  text:@"--"];
@@ -523,7 +524,7 @@
 }
 
 - (void)buildCenterZone {
-    self.centerZone = [self makePanelWithFrame:CGRectMake(286, 68, 452, 612)];
+    self.centerZone = [self makePanelWithFrame:CGRectMake(300, 68, 424, 612)];
     [self.view addSubview:self.centerZone];
 
     self.flowStateBadge = [self makeLabel:CGRectMake(16, 12, 420, 26)
@@ -657,82 +658,89 @@
 }
 
 - (void)buildRightZone {
-    self.rightZone = [self makePanelWithFrame:CGRectMake(750, 68, 260, 612)];
+    self.rightZone = [self makePanelWithFrame:CGRectMake(738, 68, 272, 612)];
     [self.view addSubview:self.rightZone];
 
-    UILabel *hdr = [self makeLabel:CGRectMake(14, 12, 232, 18)
+    UILabel *hdr = [self makeLabel:CGRectMake(16, 12, 240, 18)
                               font:[UIFont boldSystemFontOfSize:11]
                              color:[UIColor colorWithWhite:0.55 alpha:1.0]
                              align:NSTextAlignmentLeft
-                              text:@"HV BATTERY PACK  •  ECU 7E3"];
+                              text:@"POWERTRAIN & HV • 7E3 ECU"];
     [self.rightZone addSubview:hdr];
 
-    self.hvSocLabel = [self makeLabel:CGRectMake(14, 32, 130, 54)
-                                 font:[UIFont boldSystemFontOfSize:44]
+    self.hvSocLabel = [self makeLabel:CGRectMake(16, 34, 130, 44)
+                                 font:[UIFont boldSystemFontOfSize:36]
                                 color:[UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0]
                                 align:NSTextAlignmentLeft
                                  text:@"64.5%"];
     [self.rightZone addSubview:self.hvSocLabel];
 
-    self.hvPackVLabel = [self makeLabel:CGRectMake(144, 34, 102, 24)
-                                   font:[UIFont boldSystemFontOfSize:16]
+    self.hvPackVLabel = [self makeLabel:CGRectMake(146, 34, 110, 22)
+                                   font:[UIFont boldSystemFontOfSize:15]
                                   color:[UIColor whiteColor]
                                   align:NSTextAlignmentRight
                                    text:@"227.4 V"];
     [self.rightZone addSubview:self.hvPackVLabel];
 
-    self.hvCurrentLabel = [self makeLabel:CGRectMake(144, 58, 102, 22)
-                                     font:[UIFont boldSystemFontOfSize:14]
+    self.hvCurrentLabel = [self makeLabel:CGRectMake(146, 56, 110, 20)
+                                     font:[UIFont boldSystemFontOfSize:13]
                                     color:[UIColor colorWithRed:0.0 green:0.82 blue:1.0 alpha:1.0]
                                     align:NSTextAlignmentRight
                                      text:@"+12.4 A"];
     [self.rightZone addSubview:self.hvCurrentLabel];
 
-    // 14-Block Voltage Bar Graph
-    UILabel *blkTitle = [self makeLabel:CGRectMake(14, 92, 232, 16)
+    // 14-Block Voltage Bar Graph Container
+    UIView *blkBox = [[UIView alloc] initWithFrame:CGRectMake(14, 88, 244, 184)];
+    blkBox.backgroundColor = [UIColor colorWithWhite:0.06 alpha:0.95];
+    blkBox.layer.cornerRadius = 12.0;
+    blkBox.layer.borderWidth = 1.0;
+    blkBox.layer.borderColor = [UIColor colorWithWhite:0.18 alpha:1.0].CGColor;
+    [self.rightZone addSubview:blkBox];
+
+    UILabel *blkTitle = [self makeLabel:CGRectMake(12, 8, 220, 16)
                                    font:[UIFont boldSystemFontOfSize:10]
                                   color:[UIColor colorWithWhite:0.60 alpha:1.0]
                                   align:NSTextAlignmentLeft
-                                   text:@"14-BLOCK VOLTAGES (28 NiMH MODULES)"];
-    [self.rightZone addSubview:blkTitle];
+                                   text:@"14 BLOCKS (28 NiMH MODULES)"];
+    [blkBox addSubview:blkTitle];
 
-    self.blockGraphView = [[TRDHVBlockGraphView alloc] initWithFrame:CGRectMake(14, 112, 232, 165)];
-    [self.rightZone addSubview:self.blockGraphView];
+    self.blockGraphView = [[TRDHVBlockGraphView alloc] initWithFrame:CGRectMake(12, 28, 220, 100)];
+    [blkBox addSubview:self.blockGraphView];
 
-    self.hvDeltaLabel = [self makeLabel:CGRectMake(14, 284, 232, 22)
-                                   font:[UIFont boldSystemFontOfSize:13]
+    self.hvDeltaLabel = [self makeLabel:CGRectMake(12, 134, 220, 20)
+                                   font:[UIFont boldSystemFontOfSize:12]
                                   color:[UIColor whiteColor]
                                   align:NSTextAlignmentLeft
                                    text:@"ΔV: 0.04 V (Min 16.20 / Max 16.24)"];
-    [self.rightZone addSubview:self.hvDeltaLabel];
+    [blkBox addSubview:self.hvDeltaLabel];
 
-    self.hvHealthLabel = [self makeLabel:CGRectMake(14, 308, 232, 22)
-                                    font:[UIFont boldSystemFontOfSize:13]
+    self.hvHealthLabel = [self makeLabel:CGRectMake(12, 156, 220, 20)
+                                    font:[UIFont boldSystemFontOfSize:12]
                                    color:[UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0]
                                    align:NSTextAlignmentLeft
                                     text:@"HEALTH (EST.): 96% • BALANCED"];
-    [self.rightZone addSubview:self.hvHealthLabel];
+    [blkBox addSubview:self.hvHealthLabel];
 
-    // MG1 / MG2 / HV Temp Cards
-    NSArray *rTitles = @[@"⚙️ MG2 TRACTION MOTOR", @"⚡ MG1 GENERATOR", @"🌡️ HV BATTERY MAX TEMP"];
+    // EXACT 3 MOTOR CARDS (Height 94pt each, perfectly matching Left Zone 3 Cards!)
+    NSArray *rTitles = @[@"⚙️ มอเตอร์ MG2 (ขับเคลื่อน)", @"⚡ เจนเนอเรเตอร์ MG1", @"🌡️ อุณหภูมิแบตเตอรี่ HV"];
     UILabel * __strong *rTargets[3] = {&_mg2Val, &_mg1Val, &_hvTempVal};
     for (int i = 0; i < 3; i++) {
-        UIView *card = [[UIView alloc] initWithFrame:CGRectMake(14, 342 + i * 84, 232, 74)];
+        UIView *card = [[UIView alloc] initWithFrame:CGRectMake(14, 288 + i * 104, 244, 94)];
         card.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.95];
-        card.layer.cornerRadius = 10.0;
+        card.layer.cornerRadius = 12.0;
         card.layer.borderWidth = 1.0;
         card.layer.borderColor = [UIColor colorWithWhite:0.18 alpha:1.0].CGColor;
         [self.rightZone addSubview:card];
 
-        UILabel *tl = [self makeLabel:CGRectMake(12, 10, 208, 16)
-                                 font:[UIFont boldSystemFontOfSize:10]
+        UILabel *tl = [self makeLabel:CGRectMake(14, 12, 216, 18)
+                                 font:[UIFont boldSystemFontOfSize:11]
                                 color:[UIColor colorWithWhite:0.55 alpha:1.0]
                                 align:NSTextAlignmentLeft
                                  text:rTitles[i]];
         [card addSubview:tl];
 
-        UILabel *vl = [self makeLabel:CGRectMake(12, 30, 208, 34)
-                                 font:[UIFont boldSystemFontOfSize:22]
+        UILabel *vl = [self makeLabel:CGRectMake(14, 38, 216, 44)
+                                 font:[UIFont boldSystemFontOfSize:26]
                                 color:[UIColor whiteColor]
                                 align:NSTextAlignmentLeft
                                  text:@"--"];
@@ -1145,10 +1153,9 @@
         ? [UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0]
         : [UIColor colorWithRed:0.0 green:0.82 blue:1.0 alpha:1.0];
 
-    // Left Zone Temperatures & 12V
+    // Left Zone Temperatures & 12V (Symmetrical 3 cards matching Right Zone)
     self.coolantVal.text  = [NSString stringWithFormat:@"%.0f °C", t.coolantTempC];
     self.inverterVal.text = [NSString stringWithFormat:@"%.0f °C  (MG %.0f°C)", t.inverterTempC, t.mg2TempC];
-    self.cabinVal.text    = [NSString stringWithFormat:@"%.1f °C  /  Out %.0f°C", t.cabinTempC, t.ambientTempC];
     self.aux12Val.text    = [NSString stringWithFormat:@"%.2f V  %@", t.aux12Voltage, (t.aux12Voltage >= 12.2 ? @"• OK" : @"• LOW!")];
 
     // Center Zone Energy Flow & Eco Coach
