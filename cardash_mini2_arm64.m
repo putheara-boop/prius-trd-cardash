@@ -315,7 +315,7 @@
 }
 
 - (void)openIPadSystemSettings {
-    if (&UIApplicationOpenSettingsURLString != NULL) {
+    if (UIApplicationOpenSettingsURLString != nil) {
         NSURL *url = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
         UIApplication *app = [UIApplication sharedApplication];
         if (url && [app canOpenURL:url]) {
