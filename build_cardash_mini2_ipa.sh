@@ -23,10 +23,13 @@ echo "[1/4] Preparing clean Payload directory..."
 rm -rf "$BUILD_DIR" "$IPA_OUT"
 mkdir -p "$APP_DIR"
 
-echo "[2/4] Compiling cardash_mini2_arm64.m for arm64 (iOS 11.0+)..."
+echo "[2/4] Compiling cardash_mini2_arm64.m for arm64..."
 SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
+echo "Using SDK: $SDK_PATH"
 
-xcrun -sdk iphoneos clang \
+FRAMEWORKS="-framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore -framework AVFoundation -framework MediaPlayer -framework AudioToolbox -framework CoreLocation -framework CoreBluetooth"
+
+if xcrun -sdk iphoneos clang \
   -arch arm64 \
   -isysroot "$SDK_PATH" \
   -miphoneos-version-min=11.0 \
@@ -34,17 +37,25 @@ xcrun -sdk iphoneos clang \
   -fblocks \
   -O2 \
   -Wno-deprecated-declarations \
-  -framework UIKit \
-  -framework Foundation \
-  -framework CoreGraphics \
-  -framework QuartzCore \
-  -framework AVFoundation \
-  -framework MediaPlayer \
-  -framework AudioToolbox \
-  -framework CoreLocation \
-  -framework CoreBluetooth \
+  $FRAMEWORKS \
   "$SCRIPT_DIR/cardash_mini2_arm64.m" \
-  -o "$APP_DIR/CarDash"
+  -o "$APP_DIR/CarDash"; then
+  echo "Compilation succeeded with iOS 11.0 deployment target."
+else
+  echo "Retrying compilation with iOS 12.0 deployment target..."
+  xcrun -sdk iphoneos clang \
+    -arch arm64 \
+    -isysroot "$SDK_PATH" \
+    -miphoneos-version-min=12.0 \
+    -fobjc-arc \
+    -fblocks \
+    -O2 \
+    -Wno-deprecated-declarations \
+    $FRAMEWORKS \
+    "$SCRIPT_DIR/cardash_mini2_arm64.m" \
+    -o "$APP_DIR/CarDash"
+  echo "Compilation succeeded with iOS 12.0 deployment target."
+fi
 
 chmod 755 "$APP_DIR/CarDash"
 
