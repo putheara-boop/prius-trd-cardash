@@ -689,6 +689,10 @@ static NSArray<NSNumber *> *TRDHexBytesFromLine(NSString *raw) {
     self.telemetry.coolantTempC = 86.0 + 1.5 * sin(t * 0.03);
     self.telemetry.inverterTempC = 43.0 + 2.0 * fabs(sin(t * 0.04));
     self.telemetry.aux12Voltage = 14.15 + 0.05 * cos(t * 0.2);
+    self.telemetry.cabinTempC = 24.5;
+    self.telemetry.acSetTempC = 25.0;
+    self.telemetry.doorsLocked = YES;
+    self.telemetry.doorOpen = NO;
     [self updateDerivedMetrics];
 }
 

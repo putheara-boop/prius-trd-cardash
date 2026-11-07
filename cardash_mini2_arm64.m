@@ -193,7 +193,7 @@
 // Center Zone
 @property (nonatomic, strong) UIImageView *priusHeroImage;
 @property (nonatomic, strong) TRDEnergyFlowView *energyFlowView;
-@property (nonatomic, strong) UILabel *flowStateBadge;
+@property (nonatomic, strong) UILabel *flowStateBadge, *doorStatusLabel;
 @property (nonatomic, strong) UILabel *ecoScoreVal, *regenVal, *ecoTipLabel;
 @property (nonatomic, strong) UILabel *tripDistVal, *tripTimeVal, *tripMaxVal, *tripRangeVal;
 @property (nonatomic, strong) UILabel *nowPlayingLabel, *audioRouteLabel;
@@ -228,6 +228,7 @@
 - (void)buildBottomDock;
 - (void)buildFullClockOverlay;
 - (void)openSettingsSheet;
+- (void)openDoorsAndClimateSheet;
 - (void)configureAudioAndRemoteControls;
 - (void)scanOfflineMusicFolder;
 - (void)openOfflineMusicPicker;
@@ -510,7 +511,7 @@
     [self.leftZone addSubview:self.evPowerBar];
 
     // EXACT 3 THERMAL CARDS (Height 96pt each, perfectly matching Right Zone 3 Cards!)
-    NSArray *tTitles = @[@"🌡️ น้ำหล่อเย็น (Coolant)", @"⚡ อินเวอร์เตอร์ (Inverter)", @"🔋 แบต 12V (Auxiliary)"];
+    NSArray *tTitles = @[@"🌡️ น้ำหล่อเย็น (Coolant)", @"❄️ แอร์ & อินเวอร์เตอร์ (A/C)", @"🔋 แบต 12V (Auxiliary)"];
     UILabel * __strong *targets[3] = {&_coolantVal, &_inverterVal, &_aux12Val};
     for (int i = 0; i < 3; i++) {
         UIView *card = [[UIView alloc] initWithFrame:CGRectMake(14, 288 + i * 104, 244, 94)];
@@ -553,13 +554,21 @@
 
     // Prius Gen 3 TRD Visual
     UIImage *carImg = [UIImage imageNamed:@"PriusGS.png"] ?: [UIImage imageNamed:@"TRDRealPrius.png"];
-    self.priusHeroImage = [[UIImageView alloc] initWithFrame:CGRectMake(36, 42, 380, 145)];
+    self.priusHeroImage = [[UIImageView alloc] initWithFrame:CGRectMake(36, 40, 380, 136)];
     self.priusHeroImage.image = carImg;
     self.priusHeroImage.contentMode = UIViewContentModeScaleAspectFit;
     [self.centerZone addSubview:self.priusHeroImage];
 
+    // Dedicated Doors & Locks Live Bar
+    self.doorStatusLabel = [self makeLabel:CGRectMake(14, 176, 396, 20)
+                                      font:[UIFont boldSystemFontOfSize:11]
+                                     color:[UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0]
+                                     align:NSTextAlignmentCenter
+                                      text:@"🚪 ประตู 5 บาน: ปิดสนิท  •  🔒 เซ็นทรัลล็อก: ล็อกอยู่"];
+    [self.centerZone addSubview:self.doorStatusLabel];
+
     // Animated Hybrid Energy Flow Diagram
-    self.energyFlowView = [[TRDEnergyFlowView alloc] initWithFrame:CGRectMake(12, 186, 428, 72)];
+    self.energyFlowView = [[TRDEnergyFlowView alloc] initWithFrame:CGRectMake(12, 198, 428, 62)];
     [self.centerZone addSubview:self.energyFlowView];
 
     // AI Eco Coach & Regenerative Braking Card
@@ -773,18 +782,18 @@
 
     NSArray *dockTitles = @[
         @"⚡ EV COCKPIT",
+        @"🚪 ประตู & แอร์",
         @"▶️ YOUTUBE",
         @"🎵 OFFLINE MUSIC",
         @"📡 OBD-II BLE",
-        @"🔊 THAI COACH",
         @"⚙️ SETTINGS"
     ];
     SEL dockSels[6] = {
         @selector(showMainCockpit),
+        @selector(openDoorsAndClimateSheet),
         @selector(openYouTube),
         @selector(openOfflineMusicPicker),
         @selector(tapOBDMode),
-        @selector(tapSpeakSummary),
         @selector(openSettingsSheet)
     };
     CGFloat btnW = (996.0 - 14.0 * 7) / 6.0;
@@ -832,6 +841,38 @@
 
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(hideFullClock)];
     [self.fullClockOverlay addGestureRecognizer:tap];
+}
+
+#pragma mark - Doors & Climate Control Details Sheet
+
+- (void)openDoorsAndClimateSheet {
+    [self.settingsSheet dismiss];
+    TRDPriusTelemetry *t = self.obd.telemetry;
+    NSString *lockStr = t.doorsLocked ? @"🔒 ประตูทุกล็อกอยู่ (Locked)" : @"🔓 ประตูไม่ได้ล็อก (Unlocked)";
+    double cabT = (t.cabinTempC > 10.0 && t.cabinTempC < 50.0) ? t.cabinTempC : 24.5;
+    double setT = (t.acSetTempC >= 16.0 && t.acSetTempC <= 32.0) ? t.acSetTempC : 25.0;
+    NSString *msg = [NSString stringWithFormat:@"สถานะตัวถัง ประตู 5 บาน และระบบแอร์ของ Prius Gen 3\n%@ • อุณหภูมิแอร์ %.1f°C (ตั้งไว้ %.0f°C)", lockStr, cabT, setT];
+
+    TRDSettingsMenu *m = [TRDSettingsMenu alertControllerWithTitle:@"PRIUS TRD — ประตู & ระบบแอร์" message:msg];
+
+    [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🚪 ประตูหน้าขวา (ฝั่งคนขับ): %@", t.driverDoorOpen ? @"⚠️ เปิดอยู่" : @"✅ ปิดสนิท"] style:0 handler:nil]];
+    [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🚪 ประตูหน้าซ้าย (ฝั่งคนนั่ง): %@", t.passengerDoorOpen ? @"⚠️ เปิดอยู่" : @"✅ ปิดสนิท"] style:0 handler:nil]];
+    [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🚪 ประตูห้องโดยสารตอนหลัง: %@", (t.doorOpen && !t.driverDoorOpen && !t.passengerDoorOpen) ? @"⚠️ เปิดอยู่" : @"✅ ปิดสนิท"] style:0 handler:nil]];
+    [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"📦 ฝากระโปรงท้าย (Back Door): %@", t.backDoorOpen ? @"⚠️ เปิดอยู่" : @"✅ ปิดสนิท"] style:0 handler:nil]];
+    [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🔐 สถานะเซ็นทรัลล็อก: %@", lockStr] style:0 handler:nil]];
+
+    [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"❄️ อุณหภูมิห้องโดยสารจริง (Cabin Sensor): %.1f °C", cabT] style:0 handler:nil]];
+    [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🌡️ อุณหภูมิแอร์ที่ตั้งไว้ (Set Temp): %.0f °C", setT] style:0 handler:nil]];
+    [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"☀️ อุณหภูมิภายนอกรถ (Ambient Temp): %.0f °C", t.ambientTempC] style:0 handler:nil]];
+    [m addAction:[TRDSettingAction actionWithTitle:@"🔊 สรุปเสียงพูดภาษาไทย: ตรวจเช็กประตูและแอร์" style:0 handler:^(TRDSettingAction *a) {
+        NSString *s = [NSString stringWithFormat:@"ประตูทุกบานปิดสนิท %@ อุณหภูมิในห้องโดยสาร %.0f องศาเซลเซียส",
+                       (t.doorsLocked ? @"ระบบเซ็นทรัลล็อกทำงานแล้ว" : @"แต่ประตูด้านนอกยังไม่ได้ล็อก"), cabT];
+        [self.obd speakThai:s];
+    }]];
+
+    m.frame = self.view.bounds;
+    self.settingsSheet = m;
+    [self.view addSubview:m];
 }
 
 #pragma mark - Settings Sheet (TRD Settings + iPad System Settings)
@@ -1240,21 +1281,21 @@
 
     // Left Zone Temperatures & 12V (Symmetrical 3 cards matching Right Zone)
     self.coolantVal.text  = [NSString stringWithFormat:@"%.0f °C", t.coolantTempC];
-    if (t.cabinTempC > 10.0 && t.cabinTempC < 50.0) {
-        self.inverterVal.text = [NSString stringWithFormat:@"%.0f °C  (แอร์ %.1f°C)", t.inverterTempC, t.cabinTempC];
-    } else {
-        self.inverterVal.text = [NSString stringWithFormat:@"%.0f °C  (MG %.0f°C)", t.inverterTempC, t.mg2TempC];
-    }
+    double cabT = (t.cabinTempC > 10.0 && t.cabinTempC < 50.0) ? t.cabinTempC : 24.5;
+    double setT = (t.acSetTempC >= 16.0 && t.acSetTempC <= 32.0) ? t.acSetTempC : 25.0;
+    self.inverterVal.text = [NSString stringWithFormat:@"%.1f °C  (ตั้งไว้ %.0f°C)", cabT, setT];
     self.aux12Val.text    = [NSString stringWithFormat:@"%.2f V  %@", t.aux12Voltage, (t.aux12Voltage >= 12.2 ? @"• OK" : @"• LOW!")];
 
     // Center Zone Energy Flow, Door Guardian & Eco Coach
     if (t.doorOpen) {
-        self.flowStateBadge.text = [NSString stringWithFormat:@"⚠️ ประตูเปิดอยู่  •  %@", (t.doorsLocked ? @"🔒 ล็อก" : @"🔓 ไม่ได้ล็อก")];
-        self.flowStateBadge.textColor = [UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:1.0];
+        self.doorStatusLabel.textColor = [UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:1.0];
+        self.doorStatusLabel.text = [NSString stringWithFormat:@"⚠️ ประตูเปิดอยู่  •  %@", (t.doorsLocked ? @"🔒 เซ็นทรัลล็อก: ล็อก" : @"🔓 ปลดล็อก")];
     } else {
-        self.flowStateBadge.text = t.energyFlowState;
-        self.flowStateBadge.textColor = [UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0];
+        self.doorStatusLabel.textColor = [UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0];
+        self.doorStatusLabel.text = [NSString stringWithFormat:@"🚪 ประตู 5 บาน: ปิดสนิท  •  %@", (t.doorsLocked ? @"🔒 เซ็นทรัลล็อก: ล็อกอยู่" : @"🔓 ปลดล็อก")];
     }
+    self.flowStateBadge.text = t.energyFlowState;
+    self.flowStateBadge.textColor = [UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0];
     self.energyFlowView.telemetry = t;
     [self.energyFlowView setNeedsDisplay];
 
