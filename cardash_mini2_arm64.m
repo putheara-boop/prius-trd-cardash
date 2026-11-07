@@ -1240,11 +1240,21 @@
 
     // Left Zone Temperatures & 12V (Symmetrical 3 cards matching Right Zone)
     self.coolantVal.text  = [NSString stringWithFormat:@"%.0f °C", t.coolantTempC];
-    self.inverterVal.text = [NSString stringWithFormat:@"%.0f °C  (MG %.0f°C)", t.inverterTempC, t.mg2TempC];
+    if (t.cabinTempC > 10.0 && t.cabinTempC < 50.0) {
+        self.inverterVal.text = [NSString stringWithFormat:@"%.0f °C  (แอร์ %.1f°C)", t.inverterTempC, t.cabinTempC];
+    } else {
+        self.inverterVal.text = [NSString stringWithFormat:@"%.0f °C  (MG %.0f°C)", t.inverterTempC, t.mg2TempC];
+    }
     self.aux12Val.text    = [NSString stringWithFormat:@"%.2f V  %@", t.aux12Voltage, (t.aux12Voltage >= 12.2 ? @"• OK" : @"• LOW!")];
 
-    // Center Zone Energy Flow & Eco Coach
-    self.flowStateBadge.text = t.energyFlowState;
+    // Center Zone Energy Flow, Door Guardian & Eco Coach
+    if (t.doorOpen) {
+        self.flowStateBadge.text = [NSString stringWithFormat:@"⚠️ ประตูเปิดอยู่  •  %@", (t.doorsLocked ? @"🔒 ล็อก" : @"🔓 ไม่ได้ล็อก")];
+        self.flowStateBadge.textColor = [UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:1.0];
+    } else {
+        self.flowStateBadge.text = t.energyFlowState;
+        self.flowStateBadge.textColor = [UIColor colorWithRed:0.0 green:0.92 blue:0.55 alpha:1.0];
+    }
     self.energyFlowView.telemetry = t;
     [self.energyFlowView setNeedsDisplay];
 

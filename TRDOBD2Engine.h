@@ -58,6 +58,11 @@ typedef NS_ENUM(NSInteger, TRDOBDConnectionState) {
 @property (nonatomic, assign) double regenRecoveredWh;  // Cumulative Wh recovered this trip
 @property (nonatomic, copy)   NSString *ecoCoachTip;
 @property (nonatomic, assign) BOOL doorOpen;
+@property (nonatomic, assign) BOOL driverDoorOpen;
+@property (nonatomic, assign) BOOL passengerDoorOpen;
+@property (nonatomic, assign) BOOL backDoorOpen;
+@property (nonatomic, assign) BOOL doorsLocked;
+@property (nonatomic, assign) double acSetTempC;
 @property (nonatomic, assign) BOOL seatbeltUnfastened;
 @property (nonatomic, assign) BOOL isLiveOBD;           // YES = Real BLE OBD2, NO = Demo/GPS
 @property (nonatomic, assign) BOOL isOverSpeed;
@@ -187,6 +192,7 @@ typedef NS_ENUM(NSInteger, TRDOBDConnectionState) {
     NSDate *_lastSpeedAlertDate;
     NSDate *_lastDeltaAlertDate;
     NSDate *_lastTempAlertDate;
+    NSDate *_lastDoorAlertDate;
     BOOL _wasInReverse;
 }
 
@@ -505,6 +511,31 @@ static NSArray<NSNumber *> *TRDHexBytesFromLine(NSString *raw) {
             [self.telemetry recalculateBlockStats];
             self.telemetry.evPowerKw = (self.telemetry.hvPackVoltage * self.telemetry.hvPackCurrentA) / 1000.0;
         }
+        // A/C Amplifier ECU 7C0: 2101 (Cabin Temperature, Set Temp)
+        else if (pid == 0x01 && [_currentHeader isEqualToString:@"7C0"] && b.count >= 3) {
+            double cTemp = [b[2] intValue] * 0.5 - 40.0;
+            if (cTemp >= 5.0 && cTemp <= 55.0) {
+                self.telemetry.cabinTempC = cTemp;
+            }
+            if (b.count >= 5) {
+                double sTemp = [b[4] intValue] * 0.5;
+                if (sTemp >= 16.0 && sTemp <= 32.0) {
+                    self.telemetry.acSetTempC = sTemp;
+                }
+            }
+        }
+        // Main Body ECU 750: 2101 / 2140 (Door Courtesy Switches & Central Locks)
+        else if ([_currentHeader isEqualToString:@"750"] && b.count >= 3) {
+            int dFlags = [b[2] intValue];
+            self.telemetry.driverDoorOpen = (dFlags & 0x01) != 0;
+            self.telemetry.passengerDoorOpen = (dFlags & 0x02) != 0;
+            self.telemetry.backDoorOpen = (dFlags & 0x10) != 0;
+            self.telemetry.doorOpen = (self.telemetry.driverDoorOpen || self.telemetry.passengerDoorOpen || self.telemetry.backDoorOpen);
+            if (b.count >= 4) {
+                int lFlags = [b[3] intValue];
+                self.telemetry.doorsLocked = (lFlags & 0x01) != 0;
+            }
+        }
     }
     [self updateDerivedMetrics];
 }
@@ -571,6 +602,14 @@ static NSArray<NSNumber *> *TRDHexBytesFromLine(NSString *raw) {
             self.telemetry.isHighTempWarn = NO;
         }
     }
+
+    // Moving with door open warning
+    if (self.telemetry.doorOpen && self.telemetry.speedKmh > 5.0) {
+        if (!_lastDoorAlertDate || -[_lastDoorAlertDate timeIntervalSinceNow] > 20.0) {
+            _lastDoorAlertDate = [NSDate date];
+            [self speakThai:@"คำเตือน ประตูรถปิดไม่สนิท กรุณาตรวจสอบ"];
+        }
+    }
 }
 
 #pragma mark - Periodic Polling & Realistic Demo Simulation
@@ -599,6 +638,11 @@ static NSArray<NSNumber *> *TRDHexBytesFromLine(NSString *raw) {
             [self enqueuePID:@"0105" header:@"7DF"];
             [self enqueuePID:@"0146" header:@"7DF"];
             [_cmdQueue addObject:@"ATRV"];
+        }
+        // Extended Comfort & Body poll (every 4.0s): A/C Temp (7C0) + Doors/Locks (750)
+        if (_tickCount % 20 == 0) {
+            [self enqueuePID:@"2101" header:@"7C0"];
+            [self enqueuePID:@"2101" header:@"750"];
         }
         if ([self.delegate respondsToSelector:@selector(obdEngineDidUpdateTelemetry:)]) {
             [self.delegate obdEngineDidUpdateTelemetry:self.telemetry];
