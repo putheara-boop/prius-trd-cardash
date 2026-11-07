@@ -62,6 +62,7 @@ cp "$SCRIPT_DIR/Info_mini2.plist" "$APP_DIR/Info.plist"
 WEB_ASSETS=(
   "cardash_trd_preview.html"
   "dashboard.html"
+  "cockpit_compiled.css"
   "tailwindcss.min.js"
   "leaflet.js"
   "leaflet.css"

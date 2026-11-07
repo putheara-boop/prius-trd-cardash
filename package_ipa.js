@@ -41,6 +41,7 @@ const extraFiles = [
   'PriusGS.png',
   'dashboard.html',
   'cardash_trd_preview.html',
+  'cockpit_compiled.css',
   'tailwindcss.min.js',
   'leaflet.js',
   'leaflet.css',
