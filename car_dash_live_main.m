@@ -1359,37 +1359,38 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
 -(void)openFuelPriceSettings{
  TRDOBDClient *obd=[TRDOBDClient sharedClient];
- NSString *msg=[NSString stringWithFormat:@"Current: %.2f ฿/L • OBD2: %@",obd.fuelPricePerLiter,obd.connectionStatus];
- TRDSettingsMenu *m=[self settingsMenu:@"⛽ FUEL & OBD2 SETTINGS" message:msg];
- [m addAction:[TRDSettingAction actionWithTitle:@"⛽ Gasohol 95 (36.80 ฿/L)" style:0 handler:^(TRDSettingAction *a){
-  [obd setCustomFuelPrice:36.80];
+ NSString *msg=[NSString stringWithFormat:@"น้ำมัน: %@ (%.2f ฿/L)\nที่มา: %@ · %@",obd.selectedFuelTypeName?:@"แก๊สโซฮอล์ 95",obd.fuelPricePerLiter,obd.oilPriceSource?:@"ปตท.",obd.oilPriceDate?:@"วันนี้"];
+ TRDSettingsMenu *m=[self settingsMenu:@"⛽ ราคาน้ำมันสดจากปั๊ม (LIVE PUMP PRICE)" message:msg];
+ NSArray *names=@[@"แก๊สโซฮอล์ 95",@"แก๊สโซฮอล์ 91",@"แก๊สโซฮอล์ E20",@"พรีเมียม 95"];
+ for(int i=0;i<4;i++){
+  NSNumber *p=obd.cachedPrices[@(i)];
+  double price=p?[p doubleValue]:0;
+  NSString *check=(i==obd.selectedFuelTypeIndex)?@"✓  ":@"    ";
+  NSString *title=[NSString stringWithFormat:@"%@⛽ %@ (%.2f ฿/L)",check,names[i],price];
+  [m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){
+   [obd selectFuelTypeIndex:i];
+   [self openFuelPriceSettings];
+  }]];
+ }
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔄 ดึงราคาล่าสุดจากปั๊ม ปตท. ออนไลน์" style:0 handler:^(TRDSettingAction *a){
+  [obd fetchLiveOilPrices];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   [self openFuelPriceSettings];
+  });
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➕ ปรับราคาเอง +0.50 ฿ (%.2f ฿)",obd.fuelPricePerLiter+0.5] style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:obd.fuelPricePerLiter+0.5];
   [self openFuelPriceSettings];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"⛽ Gasohol 91 (35.50 ฿/L)" style:0 handler:^(TRDSettingAction *a){
-  [obd setCustomFuelPrice:35.50];
-  [self openFuelPriceSettings];
- }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"⛽ Gasohol E20 (34.20 ฿/L)" style:0 handler:^(TRDSettingAction *a){
-  [obd setCustomFuelPrice:34.20];
-  [self openFuelPriceSettings];
- }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"⛽ Premium 95 (42.00 ฿/L)" style:0 handler:^(TRDSettingAction *a){
-  [obd setCustomFuelPrice:42.00];
-  [self openFuelPriceSettings];
- }]];
- [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➕ เพิ่มราคา +1.00 ฿ (%.2f ฿)",obd.fuelPricePerLiter+1.0] style:0 handler:^(TRDSettingAction *a){
-  [obd setCustomFuelPrice:obd.fuelPricePerLiter+1.0];
-  [self openFuelPriceSettings];
- }]];
- [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➖ ลดราคา -1.00 ฿ (%.2f ฿)",obd.fuelPricePerLiter-1.0] style:0 handler:^(TRDSettingAction *a){
-  [obd setCustomFuelPrice:obd.fuelPricePerLiter-1.0];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➖ ปรับราคาเอง -0.50 ฿ (%.2f ฿)",obd.fuelPricePerLiter-0.5] style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:obd.fuelPricePerLiter-0.5];
   [self openFuelPriceSettings];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🔄 Reset Trip Fuel Counter" style:0 handler:^(TRDSettingAction *a){
   [obd resetTripFuel];
   [self openFuelPriceSettings];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🔍 Re-scan for vLinker MC+" style:0 handler:^(TRDSettingAction *a){
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🔌 OBD2: %@",obd.connectionStatus] style:0 handler:^(TRDSettingAction *a){
   [obd startScanning];
   [self openFuelPriceSettings];
  }]];
@@ -1468,7 +1469,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  [UIApplication sharedApplication].idleTimerDisabled=NO;
  [v captureLifecycle];
 }
--(void)applicationDidBecomeActive:(UIApplication *)app{notify_post("com.codex.trd.network.internet");Dashboard *v=(Dashboard *)self.window.rootViewController;[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;if(!v.timer)v.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:v selector:@selector(update) userInfo:nil repeats:YES];v.timer.tolerance=.1;[v startGPS];[v update];[v captureLifecycle];}
+-(void)applicationDidBecomeActive:(UIApplication *)app{notify_post("com.codex.trd.network.internet");[[TRDOBDClient sharedClient] fetchLiveOilPrices];Dashboard *v=(Dashboard *)self.window.rootViewController;[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;if(!v.timer)v.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:v selector:@selector(update) userInfo:nil repeats:YES];v.timer.tolerance=.1;[v startGPS];[v update];[v captureLifecycle];}
 
 @end
 int main(int argc,char **argv){@autoreleasepool{return UIApplicationMain(argc,argv,nil,NSStringFromClass([CarApp class]));}}

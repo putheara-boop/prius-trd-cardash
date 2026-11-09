@@ -30,11 +30,17 @@ extern NSString * const TRDOBDConnectionStateChangedNotification;
 // Fuel & Trip Cost Metrics
 @property (nonatomic, assign, readonly) CGFloat fuelLevelPercent;     // 0% - 100%
 @property (nonatomic, assign, readonly) CGFloat fuelRemainingLiters;  // Liters left in 45L tank
-@property (nonatomic, assign, readonly) CGFloat fuelPricePerLiter;    // Baht / Liter (e.g. 36.50)
+@property (nonatomic, assign, readonly) CGFloat fuelPricePerLiter;    // Baht / Liter (e.g. 39.84)
 @property (nonatomic, assign, readonly) CGFloat tripFuelUsedLiters;   // Liters burned this trip
 @property (nonatomic, assign, readonly) CGFloat tripFuelCostTHB;      // Baht spent this trip
 @property (nonatomic, assign, readonly) CGFloat tripAverageKmPerL;    // km / L for this trip
 @property (nonatomic, assign, readonly) CGFloat tripEVDistancePercent;// % driven in EV (0 RPM)
+@property (nonatomic, assign, readonly) NSInteger selectedFuelTypeIndex; // 0=G95, 1=G91, 2=E20, 3=Prem95
+@property (nonatomic, copy, readonly) NSString *selectedFuelTypeName;  // @"แก๊สโซฮอล์ 95"
+@property (nonatomic, copy, readonly) NSString *oilPriceSource;        // @"ปตท. (PTT Station)"
+@property (nonatomic, copy, readonly) NSString *oilPriceDate;          // Date of price
+@property (nonatomic, assign, readonly) BOOL isLiveOilPriceActive;
+@property (nonatomic, strong, readonly) NSDictionary *cachedPrices;
 
 // Body & Door Sensors (Tesla/EV Style)
 @property (nonatomic, copy, readonly) NSString *currentGear;          // @"P", @"R", @"N", @"D", @"B"
@@ -50,6 +56,8 @@ extern NSString * const TRDOBDConnectionStateChangedNotification;
 - (void)startScanning;
 - (void)stopScanning;
 - (void)setCustomFuelPrice:(CGFloat)price;
+- (void)selectFuelTypeIndex:(NSInteger)index;
+- (void)fetchLiveOilPrices;
 - (void)resetTripFuel;
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt;
 

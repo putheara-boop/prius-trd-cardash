@@ -54,6 +54,13 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
 @property (nonatomic, assign) CGFloat cabinTempC;
 @property (nonatomic, assign) CGFloat exteriorTempC;
 
+@property (nonatomic, assign) NSInteger selectedFuelTypeIndex;
+@property (nonatomic, copy) NSString *selectedFuelTypeName;
+@property (nonatomic, copy) NSString *oilPriceSource;
+@property (nonatomic, copy) NSString *oilPriceDate;
+@property (nonatomic, assign) BOOL isLiveOilPriceActive;
+@property (nonatomic, strong) NSDictionary *cachedPrices;
+
 @property (nonatomic, strong) NSMutableString *rxBuffer;
 @property (nonatomic, strong) NSMutableArray *commandQueue;
 @property (nonatomic, strong) NSTimer *pollingTimer;
@@ -92,11 +99,25 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
         _rxBuffer = [NSMutableString new];
         _commandQueue = [NSMutableArray new];
         
-        // Restore user's fuel price or default to 36.50 THB/L (Gasohol 95 / E20 rate)
+        // Fuel type and pump price setup
         NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
+        _selectedFuelTypeIndex = [prefs integerForKey:@"TRDSelectedFuelTypeIndex"];
+        if (_selectedFuelTypeIndex < 0 || _selectedFuelTypeIndex > 3) _selectedFuelTypeIndex = 0;
+        
+        NSArray *names = @[@"แก๊สโซฮอล์ 95", @"แก๊สโซฮอล์ 91", @"แก๊สโซฮอล์ E20", @"พรีเมียม 95"];
+        _selectedFuelTypeName = names[_selectedFuelTypeIndex];
+        _oilPriceSource = @"ปตท. (PTT Station)";
+        _oilPriceDate = @"กำลังโหลดจากปั๊ม...";
+        _cachedPrices = @{
+            @(0): @(39.84),
+            @(1): @(39.47),
+            @(2): @(31.80),
+            @(3): @(49.05)
+        };
+        
         double savedPrice = [prefs doubleForKey:@"TRDFuelPricePerLiter"];
         if (savedPrice < 10.0 || savedPrice > 100.0) {
-            savedPrice = 36.50;
+            savedPrice = [_cachedPrices[@(_selectedFuelTypeIndex)] doubleValue];
             [prefs setDouble:savedPrice forKey:@"TRDFuelPricePerLiter"];
             [prefs synchronize];
         }
@@ -104,6 +125,7 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
         
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self initBluetooth];
+            [self fetchLiveOilPrices];
         });
     }
     return self;
@@ -145,6 +167,63 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
     [[NSUserDefaults standardUserDefaults] synchronize];
     _tripFuelCostTHB = _tripFuelUsedLiters * _fuelPricePerLiter;
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+}
+
+- (void)selectFuelTypeIndex:(NSInteger)index {
+    if (index < 0 || index > 3) index = 0;
+    _selectedFuelTypeIndex = index;
+    NSArray *names = @[@"แก๊สโซฮอล์ 95", @"แก๊สโซฮอล์ 91", @"แก๊สโซฮอล์ E20", @"พรีเมียม 95"];
+    _selectedFuelTypeName = names[index];
+    [[NSUserDefaults standardUserDefaults] setInteger:index forKey:@"TRDSelectedFuelTypeIndex"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    NSNumber *p = self.cachedPrices[@(index)];
+    if (p) {
+        [self setCustomFuelPrice:[p doubleValue]];
+    }
+}
+
+- (void)fetchLiveOilPrices {
+    NSURL *url = [NSURL URLWithString:@"https://api.chnwt.dev/thai-oil-api/latest"];
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    [req setTimeoutInterval:8.0];
+    [req setValue:@"CarDash/1.6 (Prius TRD; iOS 9.3.6)" forHTTPHeaderField:@"User-Agent"];
+    
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (data && !error) {
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            if (json && [json[@"status"] isEqualToString:@"success"]) {
+                NSDictionary *resp = json[@"response"];
+                NSDictionary *stations = resp[@"stations"];
+                NSDictionary *ptt = stations[@"ptt"] ?: stations[@"bcp"];
+                NSString *dateStr = resp[@"date"] ?: @"วันนี้";
+                
+                if (ptt) {
+                    double g95 = [ptt[@"gasohol_95"][@"price"] doubleValue];
+                    double g91 = [ptt[@"gasohol_91"][@"price"] doubleValue];
+                    double e20 = [ptt[@"gasohol_e20"][@"price"] doubleValue];
+                    double p95 = [ptt[@"superpower_gasohol_95"][@"price"] doubleValue] ?: [ptt[@"gasoline_95"][@"price"] doubleValue];
+                    
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        self.cachedPrices = @{
+                            @(0): @(g95 > 10.0 ? g95 : 39.84),
+                            @(1): @(g91 > 10.0 ? g91 : 39.47),
+                            @(2): @(e20 > 10.0 ? e20 : 31.80),
+                            @(3): @(p95 > 10.0 ? p95 : 49.05)
+                        };
+                        self.oilPriceSource = @"ปตท. (PTT Station)";
+                        self.oilPriceDate = dateStr;
+                        self.isLiveOilPriceActive = YES;
+                        
+                        NSNumber *curP = self.cachedPrices[@(self.selectedFuelTypeIndex)];
+                        if (curP) {
+                            [self setCustomFuelPrice:[curP doubleValue]];
+                        }
+                    });
+                }
+            }
+        }
+    }] resume];
 }
 
 - (void)resetTripFuel {
