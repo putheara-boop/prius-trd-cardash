@@ -72,9 +72,9 @@ static BOOL gTRDWelcomeSpoken;
     langCode=@"th-TH";
     rate=AVSpeechUtteranceDefaultSpeechRate*0.90f;
    }else{
-    phrase=@"Welcome, PeePut. System ready. Enjoy your drive and travel safe.";
+    phrase=@"Welcome, PeePut... System ready... Enjoy your drive, and travel safe.";
     langCode=@"en-US";
-    rate=AVSpeechUtteranceDefaultSpeechRate*0.95f;
+    rate=0.38f;
    }
    AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:phrase];
    AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
@@ -85,7 +85,7 @@ static BOOL gTRDWelcomeSpoken;
   } @catch(NSException *e){}
   if(self.welcome){
    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];
-   [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:4.2];
+   [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:7.5];
   }
  });
 }
@@ -110,9 +110,9 @@ static BOOL gTRDWelcomeSpoken;
     langCode=@"th-TH";
     rate=AVSpeechUtteranceDefaultSpeechRate*0.90f;
    }else{
-    phrase=@"Trip completed. Goodbye, PeePut. Have a nice day.";
+    phrase=@"Trip completed... Goodbye, PeePut... Have a nice day.";
     langCode=@"en-US";
-    rate=AVSpeechUtteranceDefaultSpeechRate*0.95f;
+    rate=0.38f;
    }
    AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:phrase];
    AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
