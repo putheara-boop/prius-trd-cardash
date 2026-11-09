@@ -1191,6 +1191,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
    [self.tripSummaryCard removeFromSuperview];
    self.tripSummaryCard=nil;
   }
+  self.trip=[TRDTrip new];
+  [self saveTrip];
+  [[TRDOBDClient sharedClient] resetTripFuel];
   [self restoreDisplayBrightness];
   [self showWelcome];
  }
