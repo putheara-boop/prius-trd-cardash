@@ -1,7 +1,9 @@
 # คู่มือระบบการทำงาน PRIUS TRD CarDash (รอบด้าน 100%) 🚗💨
 
-> **เจ้าของรถ:** พี่พุธ (`PEEPUT’S DRIVE`)  
-> **รถยนต์:** Toyota Prius Gen 3 TRD (ZVW30)  
+> 📅 **วันที่อัปเดตล่าสุด (Last Updated):** 10 พฤศจิกายน 2026 (10 November 2026)  
+> 🛡️ **สถานะระบบ:** ติดตั้งและทดสอบจริงบนรถแล้ว 100% (Verified Live on iPad Mini 1)  
+> 👤 **เจ้าของรถ:** พี่พุธ (`PEEPUT’S DRIVE`)  
+> 🚘 **รถยนต์:** Toyota Prius Gen 3 TRD (ZVW30)  
 > **อุปกรณ์เรือนไมล์:** iPad Mini 1 (`iPad2,7`), iOS 9.3.6 Jailbroken, RAM 512 MB  
 > **อุปกรณ์อ่านข้อมูลรถ:** Vgate vLinker MC+ (Bluetooth 4.0 BLE, STN, CAN-Bus 500kbps)  
 > **กล้องถอยหลัง:** Wi-Fi Camera (`H109Y-37802895`, IP: `192.168.169.x`)  

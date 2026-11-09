@@ -1,6 +1,7 @@
 # Prius TRD CarDash - Screen Gallery 📸
 
-คลังรวมภาพหน้าจอจริงจากการรันบน **iPad Mini 1 (iOS 9.3.6 Jailbreak)** ในรถยนต์ **Toyota Prius Gen 3 TRD**:
+> 📅 **วันที่บันทึกภาพล่าสุด:** 10 พฤศจิกายน 2026 (10 November 2026)  
+> 🚘 **คลังรวมภาพหน้าจอจริงจากการรันบน iPad Mini 1 (iOS 9.3.6 Jailbreak) ในรถยนต์ Toyota Prius Gen 3 TRD:**
 
 | ภาพตัวอย่าง | ชื่อฟังก์ชัน | คำอธิบาย |
 | :--- | :--- | :--- |

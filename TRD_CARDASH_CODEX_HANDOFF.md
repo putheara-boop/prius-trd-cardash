@@ -7,7 +7,7 @@
 > **Local Workspace:** `d:\Projcet\my_web\`  
 > **iPad Build Directory:** `/var/mobile/h109-build/`  
 > **CarDash Installation:** `/Applications/CarDash.app/CarDash`  
-> **Date:** November 2026
+> **Date:** 10 November 2026 (Updated: OBD2 + Reverse Camera + Brake Diagnostics)
 
 ---
 

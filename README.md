@@ -1,7 +1,9 @@
 # Toyota Prius TRD (ZVW30) — Smart Cockpit CarDash 🏎️💨
 
-> **Owner:** พี่พุธ (`PEEPUT’S DRIVE`)  
-> **Platform:** Apple iPad Mini 1 (`iPad2,7`), iOS 9.3.6 Jailbreak, 512 MB RAM, ARMv7  
+> 📅 **วันที่อัปเดตล่าสุด (Last Updated):** 10 พฤศจิกายน 2026 (10 November 2026)  
+> 🛡️ **สถานะเวอร์ชัน:** V3.6 (ระบบเบรก ABS + กล้องถอยหลัง + ค่าน้ำมันสดจากปั๊ม ปตท.)  
+> 👤 **Owner:** พี่พุธ (`PEEPUT’S DRIVE`)  
+> 🚘 **Vehicle:** Toyota Prius Gen 3 TRD (ZVW30)  
 > **Telemetry:** Vgate vLinker MC+ (Bluetooth 4.0 BLE, STN, CAN-Bus 500kbps)  
 > **Reverse Camera:** Wi-Fi Camera (`H109Y-37802895`) with Automated Network Broker  
 > **Sound & Audio:** Bluetooth In-Car Audio (`CAR MULTIMEDIA`)  
