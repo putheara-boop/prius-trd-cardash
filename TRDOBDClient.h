@@ -52,6 +52,12 @@ extern NSString * const TRDOBDConnectionStateChangedNotification;
 @property (nonatomic, assign, readonly) CGFloat cabinTempC;          // A/C Inside Temp °C
 @property (nonatomic, assign, readonly) CGFloat exteriorTempC;       // Outside Ambient Temp °C
 
+// Brake & ABS Metrics (Prius ECB System)
+@property (nonatomic, assign, readonly) BOOL brakeFluidNormal;
+@property (nonatomic, assign, readonly) BOOL absSystemNormal;
+@property (nonatomic, assign, readonly) CGFloat brakeAccumulatorPressureMPa;
+@property (nonatomic, assign, readonly) CGFloat regenBrakingPowerKW;
+
 // Controls
 - (void)startScanning;
 - (void)stopScanning;
@@ -59,6 +65,7 @@ extern NSString * const TRDOBDConnectionStateChangedNotification;
 - (void)selectFuelTypeIndex:(NSInteger)index;
 - (void)fetchLiveOilPrices;
 - (void)resetTripFuel;
+- (void)toggleTestBrakeWarning;
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt;
 
 @end

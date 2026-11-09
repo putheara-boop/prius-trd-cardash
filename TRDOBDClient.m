@@ -54,6 +54,11 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
 @property (nonatomic, assign) CGFloat cabinTempC;
 @property (nonatomic, assign) CGFloat exteriorTempC;
 
+@property (nonatomic, assign) BOOL brakeFluidNormal;
+@property (nonatomic, assign) BOOL absSystemNormal;
+@property (nonatomic, assign) CGFloat brakeAccumulatorPressureMPa;
+@property (nonatomic, assign) CGFloat regenBrakingPowerKW;
+
 @property (nonatomic, assign) NSInteger selectedFuelTypeIndex;
 @property (nonatomic, copy) NSString *selectedFuelTypeName;
 @property (nonatomic, copy) NSString *oilPriceSource;
@@ -96,6 +101,10 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
         _fuelRemainingLiters = 22.5; // 50% of 45L tank
         _cabinTempC = 25.0;
         _exteriorTempC = 32.0;
+        _brakeFluidNormal = YES;
+        _absSystemNormal = YES;
+        _brakeAccumulatorPressureMPa = 18.5;
+        _regenBrakingPowerKW = 0.0;
         _rxBuffer = [NSMutableString new];
         _commandQueue = [NSMutableArray new];
         
@@ -234,6 +243,11 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
     _totalTripMeters = 0.0;
     _evTripMeters = 0.0;
     _lastFuelCalcTime = [NSDate date];
+    [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+}
+
+- (void)toggleTestBrakeWarning {
+    _brakeFluidNormal = !_brakeFluidNormal;
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
 }
 
