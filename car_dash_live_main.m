@@ -516,7 +516,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.hint=[self label:15 color:[UIColor grayColor]];self.hint.textAlignment=NSTextAlignmentCenter;self.hint.text=@"Tap anywhere to return";self.hint.hidden=YES;
  self.clockHud=[[UIView alloc]init];self.clockHud.backgroundColor=[UIColor colorWithRed:.05 green:.05 blue:.06 alpha:.94];self.clockHud.layer.cornerRadius=8;self.clockHud.layer.borderWidth=1;self.clockHud.layer.borderColor=[blue colorWithAlphaComponent:.38].CGColor;self.clockHud.userInteractionEnabled=NO;self.clockHud.hidden=YES;[self.view addSubview:self.clockHud];UIView *hudAccent=[[UIView alloc]initWithFrame:CGRectMake(0,16,4,76)];hudAccent.tag=401;hudAccent.backgroundColor=blue;[self.clockHud addSubview:hudAccent];UILabel *hudSpeed=[[UILabel alloc]initWithFrame:CGRectMake(16,8,168,70)];hudSpeed.tag=402;hudSpeed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:72]?:[UIFont boldSystemFontOfSize:72];hudSpeed.textColor=[UIColor whiteColor];hudSpeed.textAlignment=NSTextAlignmentCenter;hudSpeed.adjustsFontSizeToFitWidth=YES;hudSpeed.text=@"--";[self.clockHud addSubview:hudSpeed];UILabel *hudUnit=[[UILabel alloc]initWithFrame:CGRectMake(16,76,168,22)];hudUnit.tag=403;hudUnit.font=[UIFont boldSystemFontOfSize:13];hudUnit.textColor=blue;hudUnit.textAlignment=NSTextAlignmentCenter;hudUnit.text=@"km/h  •  GPS HUD";[self.clockHud addSubview:hudUnit];UIView *hudDiv=[[UIView alloc]initWithFrame:CGRectMake(196,18,1,72)];hudDiv.tag=404;hudDiv.backgroundColor=[UIColor colorWithWhite:.18 alpha:1];[self.clockHud addSubview:hudDiv];UILabel *hudGps=[[UILabel alloc]initWithFrame:CGRectMake(214,16,230,22)];hudGps.tag=405;hudGps.font=[UIFont boldSystemFontOfSize:13];hudGps.textColor=[UIColor colorWithWhite:.76 alpha:1];hudGps.adjustsFontSizeToFitWidth=YES;hudGps.text=@"WAITING FOR GPS";[self.clockHud addSubview:hudGps];UILabel *hudAcc=[[UILabel alloc]initWithFrame:CGRectMake(214,43,230,20)];hudAcc.tag=406;hudAcc.font=[UIFont systemFontOfSize:12];hudAcc.textColor=[UIColor colorWithWhite:.55 alpha:1];hudAcc.adjustsFontSizeToFitWidth=YES;hudAcc.text=@"SIGNAL  •  SEARCHING SATELLITES";[self.clockHud addSubview:hudAcc];UILabel *hudTrip=[[UILabel alloc]initWithFrame:CGRectMake(214,68,230,22)];hudTrip.tag=407;hudTrip.font=[UIFont boldSystemFontOfSize:12];hudTrip.textColor=blue;hudTrip.adjustsFontSizeToFitWidth=YES;hudTrip.text=@"TRIP  AUTO  •  WAITING FOR MOVEMENT";[self.clockHud addSubview:hudTrip];
  self.clockFormat=[NSDateFormatter new];self.clockFormat.locale=[[NSLocale alloc]initWithLocaleIdentifier:@"en_US_POSIX"];self.clockFormat.dateFormat=@"HH:mm";self.dateFormat=[NSDateFormatter new];self.dateFormat.locale=[[NSLocale alloc]initWithLocaleIdentifier:@"en_US_POSIX"];self.dateFormat.dateFormat=@"EEEE, d MMMM yyyy";
- self.cards=[NSMutableArray array];NSArray *names=@[@"YouTube",@"Music",@"Maps",@"Camera",@"Settings",@"Full Clock"];
+ self.cards=[NSMutableArray array];NSArray *names=@[@"YouTube",@"audioNINJA",@"Maps",@"Camera",@"Settings",@"Full Clock"];
  for(int i=0;i<6;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeCustom];b.tag=i+1;b.backgroundColor=[UIColor colorWithRed:.065 green:.065 blue:.075 alpha:1];b.layer.cornerRadius=7;b.layer.borderWidth=1;b.layer.borderColor=[UIColor colorWithRed:.25 green:.12 blue:.14 alpha:1].CGColor;UILabel *title=[UILabel new];title.tag=100;title.text=names[i];title.font=[UIFont boldSystemFontOfSize:24];title.textColor=i==0?blue:[UIColor whiteColor];[b addSubview:title];DashIcon *icon=[[DashIcon alloc]init];icon.kind=i+1;icon.tag=104;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];b.accessibilityLabel=names[i];UIView *accent=[[UIView alloc]init];accent.tag=102;accent.backgroundColor=blue;accent.userInteractionEnabled=NO;[b addSubview:accent];title.userInteractionEnabled=NO;[b addTarget:self action:@selector(card:) forControlEvents:UIControlEventTouchUpInside];[self.cards addObject:b];[self.view addSubview:b];}
  self.controls=[UIView new];[self.view addSubview:self.controls];NSArray *commands=@[@"Previous",@"Play / Pause",@"Next",@"Equalizer"];for(int i=0;i<4;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];b.tag=20+i;b.backgroundColor=[UIColor colorWithRed:.11 green:.055 blue:.065 alpha:1];b.layer.cornerRadius=7;b.layer.borderWidth=1;b.layer.borderColor=[UIColor colorWithRed:.35 green:.10 blue:.13 alpha:1].CGColor;b.accessibilityLabel=commands[i];if(i<3){DashIcon *icon=[[DashIcon alloc]init];icon.kind=7+i;icon.tag=105;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];}else [b setTitle:commands[i] forState:UIControlStateNormal];[b setTitleColor:blue forState:UIControlStateNormal];b.titleLabel.font=[UIFont boldSystemFontOfSize:22];[b addTarget:self action:@selector(media:) forControlEvents:UIControlEventTouchUpInside];[self.controls addSubview:b];}
  self.navigation=[UIView new];self.navigation.backgroundColor=[UIColor colorWithWhite:.035 alpha:1];self.navigation.layer.borderWidth=1;self.navigation.layer.borderColor=[UIColor colorWithWhite:.16 alpha:1].CGColor;[self.view addSubview:self.navigation];NSMutableArray *nav=[NSMutableArray array];NSArray *navNames=@[@"HOME",@"CARPLAY",@"MUSIC",@"MAPS",@"CAMERA",@"SOUND"];NSInteger kinds[]={10,15,2,3,4,11};NSInteger tags[]={60,66,61,62,65,63};for(int i=0;i<6;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeCustom];b.tag=tags[i];b.accessibilityLabel=navNames[i];b.layer.cornerRadius=8;DashIcon *icon=[DashIcon new];icon.kind=kinds[i];icon.tag=201;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];UILabel *text=[UILabel new];text.tag=202;text.text=navNames[i];text.textColor=[UIColor lightGrayColor];text.font=[UIFont boldSystemFontOfSize:15];text.userInteractionEnabled=NO;[b addSubview:text];UIView *line=[UIView new];line.tag=203;line.backgroundColor=blue;line.userInteractionEnabled=NO;[b addSubview:line];[b addTarget:self action:@selector(navigate:) forControlEvents:UIControlEventTouchUpInside];[self.navigation addSubview:b];[nav addObject:b];}self.navButtons=nav;
@@ -780,155 +780,206 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  if(landscape&&!focus&&!self.driveMode&&!self.musicMode&&!self.tripMode&&!self.mapMode&&!self.carplayMode){
   self.arc.hidden=YES;self.progress.hidden=YES;self.panel.clockOnly=YES;[self.panel setNeedsDisplay];
   
-  // 1. LEFT POD (Gauges & Vehicle Health) - Clean X: 24..232 (Width: 208)
-  CGFloat leftW=208;
-  self.speedLimitBtn.frame=CGRectMake(24,80,38,38);
-  self.speedLimitBtn.layer.cornerRadius=19;
-  self.gpsStatus.frame=CGRectMake(68,88,leftW-44,22);
-  self.gpsStatus.font=[UIFont boldSystemFontOfSize:11];
-  self.gpsStatus.textAlignment=NSTextAlignmentLeft;
-  self.gpsStatus.adjustsFontSizeToFitWidth=YES;
-  
-  self.speed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:98]?:[UIFont boldSystemFontOfSize:98];
-  self.speed.frame=CGRectMake(24,120,leftW,94);
-  self.speed.textAlignment=NSTextAlignmentCenter;
-  
-  self.unit.frame=CGRectMake(24,214,leftW,22);
-  self.unit.font=[UIFont boldSystemFontOfSize:14];
-  self.unit.textAlignment=NSTextAlignmentCenter;
-  
-  self.brakeStatusCard.frame=CGRectMake(24,244,leftW,44);
-  UILabel *b1=(UILabel *)[self.brakeStatusCard viewWithTag:501];b1.frame=CGRectMake(8,4,leftW-16,16);
-  UILabel *b2=(UILabel *)[self.brakeStatusCard viewWithTag:502];b2.frame=CGRectMake(8,22,leftW-16,16);
-  
-  self.hybridSocCard.frame=CGRectMake(24,296,leftW,44);
-  UILabel *h1=(UILabel *)[self.hybridSocCard viewWithTag:601];h1.frame=CGRectMake(8,4,leftW-16,16);
-  UILabel *h2=(UILabel *)[self.hybridSocCard viewWithTag:602];h2.frame=CGRectMake(8,22,leftW-16,16);
+   // =========================================================================
+   // 1. TOP COCKPIT INSTRUMENT LAYER (Y: 74 .. 336)
+   // Total usable width: w - 48 = 976 px (X: 24 to 1000)
+   // =========================================================================
 
-  // 2. RIGHT POD (Clock & Travel Shortcuts) - Clean X: 792..1000 (Width: 208)
-  CGFloat rightX=w-24-leftW;
-  self.clock.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:72]?:[UIFont boldSystemFontOfSize:72];
-  self.clock.textAlignment=NSTextAlignmentCenter;
-  self.clock.frame=CGRectMake(rightX,80,leftW,72);
-  
-  self.date.frame=CGRectMake(rightX,154,leftW,20);
-  self.date.font=[UIFont boldSystemFontOfSize:13];
-  self.date.textAlignment=NSTextAlignmentCenter;
-  
-  self.carStatus.frame=CGRectMake(rightX,176,leftW,18);
-  self.carStatus.font=[UIFont boldSystemFontOfSize:10.5];
-  self.carStatus.textAlignment=NSTextAlignmentCenter;
-  self.carStatus.adjustsFontSizeToFitWidth=YES;
-  
-  // 2x2 Action Buttons in Right Pod
-  CGFloat btnW=(leftW-8)/2;
-  self.tripButton.frame=CGRectMake(rightX,202,btnW,38);
-  self.tripButton.titleLabel.font=[UIFont boldSystemFontOfSize:12];
-  self.tripButton.layer.cornerRadius=8;
-  
-  self.radioButton.frame=CGRectMake(rightX+btnW+8,202,btnW,38);
-  self.radioButton.titleLabel.font=[UIFont boldSystemFontOfSize:12];
-  self.radioButton.layer.cornerRadius=8;
-  
-  self.offlineMusicBtn.hidden=NO;
-  self.offlineMusicBtn.frame=CGRectMake(rightX,246,btnW,38);
-  self.offlineMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:12];
-  self.offlineMusicBtn.layer.cornerRadius=8;
-  
-  self.searchMusicBtn.hidden=NO;
-  self.searchMusicBtn.frame=CGRectMake(rightX+btnW+8,246,btnW,38);
-  self.searchMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:12];
-  self.searchMusicBtn.layer.cornerRadius=8;
+   // --- LEFT POD: Speedometer & Telemetry (X: 24 .. 234, Width: 210) ---
+   CGFloat leftW=210;
+   self.speedLimitBtn.frame=CGRectMake(24,76,36,36);
+   self.speedLimitBtn.layer.cornerRadius=18;
+   
+   self.gpsStatus.frame=CGRectMake(68,82,leftW-44,22);
+   self.gpsStatus.font=[UIFont boldSystemFontOfSize:11];
+   self.gpsStatus.textAlignment=NSTextAlignmentLeft;
+   self.gpsStatus.adjustsFontSizeToFitWidth=YES;
+   
+   self.speed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:94]?:[UIFont boldSystemFontOfSize:94];
+   self.speed.frame=CGRectMake(24,114,leftW,88);
+   self.speed.textAlignment=NSTextAlignmentCenter;
+   
+   self.unit.frame=CGRectMake(24,202,leftW,20);
+   self.unit.font=[UIFont boldSystemFontOfSize:13.5];
+   self.unit.textAlignment=NSTextAlignmentCenter;
+   
+   self.brakeStatusCard.frame=CGRectMake(24,230,leftW,46);
+   self.brakeStatusCard.layer.cornerRadius=9;
+   self.brakeStatusCard.layer.borderWidth=1;
+   self.brakeStatusCard.layer.borderColor=[UIColor colorWithWhite:.20 alpha:1].CGColor;
+   self.brakeStatusCard.backgroundColor=[UIColor colorWithWhite:.07 alpha:.95];
+   UILabel *b1=(UILabel *)[self.brakeStatusCard viewWithTag:501];b1.frame=CGRectMake(8,4,leftW-16,18);b1.font=[UIFont boldSystemFontOfSize:11];
+   UILabel *b2=(UILabel *)[self.brakeStatusCard viewWithTag:502];b2.frame=CGRectMake(8,23,leftW-16,18);b2.font=[UIFont boldSystemFontOfSize:10];
+   
+   self.hybridSocCard.frame=CGRectMake(24,284,leftW,46);
+   self.hybridSocCard.layer.cornerRadius=9;
+   self.hybridSocCard.layer.borderWidth=1;
+   self.hybridSocCard.layer.borderColor=[UIColor colorWithWhite:.20 alpha:1].CGColor;
+   self.hybridSocCard.backgroundColor=[UIColor colorWithWhite:.07 alpha:.95];
+   UILabel *h1=(UILabel *)[self.hybridSocCard viewWithTag:601];h1.frame=CGRectMake(8,4,leftW-16,18);h1.font=[UIFont boldSystemFontOfSize:11];
+   UILabel *h2=(UILabel *)[self.hybridSocCard viewWithTag:602];h2.frame=CGRectMake(8,23,leftW-16,18);h2.font=[UIFont boldSystemFontOfSize:10];
+   // Left Pod ends at Y: 284 + 46 = 330!
 
-  // 3. CENTER ZONE (Prius Car + Floating Media Console) - Clean X: 248..776 (Width: 528)
-  CGFloat centerX=248, centerW=w-496;
-  self.carImage.frame=CGRectMake(centerX,70,centerW,246);
-  self.carGlow.hidden=YES;
-  
-  CGFloat musicY=324, musicH=136;
-  self.nowPanel.frame=CGRectMake(centerX,musicY,centerW,musicH);
-  self.nowPanel.layer.cornerRadius=14;
-  self.nowPanel.layer.borderWidth=1.2;
-  self.nowPanel.layer.borderColor=[UIColor colorWithWhite:.18 alpha:1].CGColor;
-  self.nowPanel.backgroundColor=[UIColor colorWithWhite:.055 alpha:.95];
-  
-  // Album Art inside center console
-  CGFloat artSize=104;
-  self.artwork.frame=CGRectMake(centerX+16,musicY+16,artSize,artSize);
-  self.artwork.layer.cornerRadius=10;
-  self.artPlaceholder.frame=self.artwork.frame;
-  
-  // Song metadata in center
-  CGFloat metaX=centerX+16+artSize+14;
-  CGFloat metaW=centerW-(16+artSize+14)-136;
-  self.sourceBadge.frame=CGRectMake(metaX,musicY+16,72,20);
-  self.sourceBadge.font=[UIFont boldSystemFontOfSize:10];
-  
-  self.song.font=[UIFont boldSystemFontOfSize:18];
-  self.song.textAlignment=NSTextAlignmentLeft;
-  self.song.frame=CGRectMake(metaX,musicY+40,metaW,24);
-  self.song.adjustsFontSizeToFitWidth=YES;
-  self.song.minimumScaleFactor=0.75;
-  
-  self.artist.font=[UIFont systemFontOfSize:13];
-  self.artist.textAlignment=NSTextAlignmentLeft;
-  self.artist.frame=CGRectMake(metaX,musicY+66,metaW,18);
-  self.artist.adjustsFontSizeToFitWidth=YES;
-  
-  self.trackProgress.frame=CGRectMake(metaX,musicY+94,metaW,4);
-  self.trackTime.font=[UIFont systemFontOfSize:10.5];
-  self.trackTime.textAlignment=NSTextAlignmentRight;
-  self.trackTime.frame=CGRectMake(metaX,musicY+102,metaW,16);
-  
-  // Playback controls on the right of the center console
-  CGFloat ctrlX=centerX+centerW-132, ctrlW=120;
-  self.controls.frame=CGRectMake(ctrlX,musicY+36,ctrlW,64);
-  self.controls.backgroundColor=[UIColor clearColor];
-  [self.controls viewWithTag:23].hidden=YES;
-  
-  CGFloat pbw=(ctrlW-12)/3;
-  for(int i=0;i<3;i++){
-   UIView *b=[self.controls viewWithTag:20+i];
-   b.frame=CGRectMake(i*(pbw+6),i==1?0:6,pbw,i==1?56:44);
-   b.layer.cornerRadius=i==1?12:8;
-   if(i==1){
-    b.backgroundColor=[TRDAccent() colorWithAlphaComponent:.18];
-    b.layer.borderColor=[TRDAccent() colorWithAlphaComponent:.65].CGColor;
-    [b viewWithTag:105].frame=CGRectMake((pbw-32)/2,12,32,32);
-   }else{
-    b.backgroundColor=[UIColor colorWithWhite:.08 alpha:1];
-    b.layer.borderColor=[UIColor colorWithWhite:.20 alpha:1].CGColor;
-    [b viewWithTag:105].frame=CGRectMake((pbw-24)/2,10,24,24);
+   // --- CENTER ZONE: Toyota Prius Gen 3 TRD Silhouette (X: 244 .. 780, Width: 536) ---
+   CGFloat centerX=244, centerW=w-488;
+   self.carImage.frame=CGRectMake(centerX,72,centerW,262);
+   self.carGlow.hidden=YES;
+   // Center Zone ends at Y: 72 + 262 = 334!
+
+   // --- RIGHT POD: Clock & In-Dash Shortcuts (X: 790 .. 1000, Width: 210) ---
+   CGFloat rightX=w-24-leftW;
+   self.clock.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:68]?:[UIFont boldSystemFontOfSize:68];
+   self.clock.textAlignment=NSTextAlignmentCenter;
+   self.clock.frame=CGRectMake(rightX,76,leftW,68);
+   
+   self.date.frame=CGRectMake(rightX,144,leftW,20);
+   self.date.font=[UIFont boldSystemFontOfSize:12.5];
+   self.date.textAlignment=NSTextAlignmentCenter;
+   
+   self.carStatus.frame=CGRectMake(rightX,166,leftW,18);
+   self.carStatus.font=[UIFont boldSystemFontOfSize:10.5];
+   self.carStatus.textAlignment=NSTextAlignmentCenter;
+   self.carStatus.adjustsFontSizeToFitWidth=YES;
+   
+   // 2x2 Quick Buttons
+   CGFloat btnW=(leftW-8)/2;
+   self.tripButton.frame=CGRectMake(rightX,192,btnW,42);
+   self.tripButton.titleLabel.font=[UIFont boldSystemFontOfSize:11.5];
+   self.tripButton.layer.cornerRadius=8;
+   self.tripButton.backgroundColor=[UIColor colorWithWhite:.08 alpha:1];
+   self.tripButton.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;
+   
+   self.radioButton.frame=CGRectMake(rightX+btnW+8,192,btnW,42);
+   self.radioButton.titleLabel.font=[UIFont boldSystemFontOfSize:11.5];
+   self.radioButton.layer.cornerRadius=8;
+   self.radioButton.backgroundColor=[UIColor colorWithWhite:.08 alpha:1];
+   self.radioButton.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;
+   
+   self.offlineMusicBtn.hidden=NO;
+   self.offlineMusicBtn.frame=CGRectMake(rightX,240,btnW,42);
+   self.offlineMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:11.5];
+   self.offlineMusicBtn.layer.cornerRadius=8;
+   self.offlineMusicBtn.backgroundColor=[UIColor colorWithWhite:.08 alpha:1];
+   self.offlineMusicBtn.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;
+   
+   self.searchMusicBtn.hidden=NO;
+   self.searchMusicBtn.frame=CGRectMake(rightX+btnW+8,240,btnW,42);
+   self.searchMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:11.5];
+   self.searchMusicBtn.layer.cornerRadius=8;
+   self.searchMusicBtn.backgroundColor=[UIColor colorWithWhite:.08 alpha:1];
+   self.searchMusicBtn.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;
+   // Right Pod ends at Y: 240 + 42 = 282!
+
+   // =========================================================================
+   // 2. MIDDLE MEDIA LAYER: FULL-WIDTH NOW PLAYING CONSOLE (Y: 352 .. 478)
+   // Total width: w - 48 = 976 px (X: 24 to 1000)
+   // =========================================================================
+   CGFloat musicY=352, musicH=126;
+   self.nowPanel.frame=CGRectMake(24,musicY,w-48,musicH);
+   self.nowPanel.layer.cornerRadius=14;
+   self.nowPanel.layer.borderWidth=1.2;
+   self.nowPanel.layer.borderColor=[UIColor colorWithWhite:.20 alpha:1].CGColor;
+   self.nowPanel.backgroundColor=[UIColor colorWithWhite:.065 alpha:.96];
+   
+   // Album Art
+   CGFloat artSize=102;
+   self.artwork.frame=CGRectMake(40,musicY+12,artSize,artSize);
+   self.artwork.layer.cornerRadius=12;
+   self.artwork.layer.borderWidth=1;
+   self.artwork.layer.borderColor=[UIColor colorWithWhite:.24 alpha:1].CGColor;
+   self.artPlaceholder.frame=self.artwork.frame;
+   self.artPlaceholder.font=[UIFont systemFontOfSize:44];
+   
+   // Song Metadata & Progress Bar
+   CGFloat metaX=156, metaW=w-48-156-350;
+   self.sourceBadge.frame=CGRectMake(metaX-24,14,84,22);
+   self.sourceBadge.font=[UIFont boldSystemFontOfSize:10.5];
+   self.sourceBadge.layer.cornerRadius=5;
+   
+   self.song.font=[UIFont boldSystemFontOfSize:22];
+   self.song.textColor=[UIColor colorWithWhite:self.nightMode?.80:.96 alpha:1];
+   self.song.textAlignment=NSTextAlignmentLeft;
+   self.song.frame=CGRectMake(metaX,musicY+40,metaW,28);
+   self.song.adjustsFontSizeToFitWidth=YES;
+   self.song.minimumScaleFactor=0.75;
+   
+   self.artist.font=[UIFont systemFontOfSize:15];
+   self.artist.textColor=[UIColor colorWithWhite:.72 alpha:1];
+   self.artist.textAlignment=NSTextAlignmentLeft;
+   self.artist.frame=CGRectMake(metaX,musicY+69,metaW,20);
+   self.artist.adjustsFontSizeToFitWidth=YES;
+   
+   self.trackProgress.frame=CGRectMake(metaX,musicY+96,metaW,4);
+   self.trackTime.font=[UIFont systemFontOfSize:11.5];
+   self.trackTime.textColor=[UIColor colorWithWhite:.60 alpha:1];
+   self.trackTime.textAlignment=NSTextAlignmentRight;
+   self.trackTime.frame=CGRectMake(metaX,musicY+102,metaW,18);
+   
+   // Large Ergonomic Playback Controls
+   CGFloat ctrlX=w-24-330, ctrlW=310;
+   self.controls.frame=CGRectMake(ctrlX,musicY+20,ctrlW,86);
+   self.controls.backgroundColor=[UIColor clearColor];
+   [self.controls viewWithTag:23].hidden=YES;
+   
+   CGFloat pbw=(ctrlW-16)/3;
+   for(int i=0;i<3;i++){
+    UIView *b=[self.controls viewWithTag:20+i];
+    b.frame=CGRectMake(i*(pbw+8),i==1?0:8,pbw,i==1?86:70);
+    b.layer.cornerRadius=i==1?14:10;
+    if(i==1){
+     b.backgroundColor=[TRDAccent() colorWithAlphaComponent:.18];
+     b.layer.borderColor=[TRDAccent() colorWithAlphaComponent:.65].CGColor;
+     [b viewWithTag:105].frame=CGRectMake((pbw-44)/2,21,44,44);
+    }else{
+     b.backgroundColor=[UIColor colorWithWhite:.08 alpha:1];
+     b.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;
+     [b viewWithTag:105].frame=CGRectMake((pbw-36)/2,17,36,36);
+    }
    }
-  }
-  self.audioBars.hidden=YES;
+   self.audioBars.hidden=YES;
 
-  // 4. LOWER ZONE: 6 App Cards across the width - Y: 480, H: 86
-  CGFloat cg=10, cardW=(w-48-5*cg)/6, cardY=480, cardH=86;
-  NSInteger favorites[]={0,1,2,3,4,5};
-  for(int i=0;i<6;i++)((UIButton *)self.cards[i]).hidden=YES;
-  for(int j=0;j<6;j++){
-   UIButton *b=self.cards[favorites[j]];
-   b.hidden=NO;
-   b.frame=CGRectMake(24+j*(cardW+cg),cardY,cardW,cardH);
-   b.layer.cornerRadius=10;
-   b.layer.borderWidth=1.0;
-   b.layer.borderColor=[UIColor colorWithWhite:.20 alpha:1].CGColor;
-   b.backgroundColor=[UIColor colorWithWhite:.065 alpha:.95];
-   
-   UILabel *t=(UILabel *)[b viewWithTag:100];
-   t.font=[UIFont boldSystemFontOfSize:14];
-   t.textColor=[UIColor colorWithWhite:.92 alpha:1];
-   t.textAlignment=NSTextAlignmentLeft;
-   t.adjustsFontSizeToFitWidth=YES;
-   t.minimumScaleFactor=0.75;
-   t.frame=CGRectMake(52,26,cardW-56,32);
-   
-   [b viewWithTag:104].frame=CGRectMake(10,24,36,36);
-   [b viewWithTag:102].frame=CGRectMake(0,16,3,cardH-32);
-   [b viewWithTag:102].alpha=.7;
-  }
-  self.song.textColor=[UIColor colorWithWhite:self.nightMode?.78:.95 alpha:1];
+   // =========================================================================
+   // 3. LOWER LAYER: 6 EXECUTIVE APP CARDS (Y: 498 .. 670)
+   // Total width: w - 48 = 976 px (X: 24 to 1000), Height = 172 px!
+   // =========================================================================
+   CGFloat cg=12, cardW=(w-48-5*cg)/6, cardY=498, cardH=172;
+   NSInteger favorites[]={0,1,2,3,4,5};
+   for(int i=0;i<6;i++)((UIButton *)self.cards[i]).hidden=YES;
+   for(int j=0;j<6;j++){
+    UIButton *b=self.cards[favorites[j]];
+    b.hidden=NO;
+    b.frame=CGRectMake(24+j*(cardW+cg),cardY,cardW,cardH);
+    b.layer.cornerRadius=14;
+    b.layer.borderWidth=1.2;
+    b.layer.borderColor=[UIColor colorWithWhite:.20 alpha:1].CGColor;
+    b.backgroundColor=[UIColor colorWithWhite:.065 alpha:.96];
+    
+    // Large Centered Vector Icon (Tag 104)
+    UIView *ic=[b viewWithTag:104];
+    ic.frame=CGRectMake((cardW-52)/2,26,52,52);
+    
+    // Bold Title (Tag 100)
+    UILabel *t=(UILabel *)[b viewWithTag:100];
+    if(j==1)t.text=@"audioNINJA";
+    t.font=[UIFont boldSystemFontOfSize:17];
+    t.textColor=[UIColor colorWithWhite:.94 alpha:1];
+    t.textAlignment=NSTextAlignmentCenter;
+    t.adjustsFontSizeToFitWidth=YES;
+    t.minimumScaleFactor=0.75;
+    t.frame=CGRectMake(6,94,cardW-12,26);
+    
+    // Left Accent Strip (Tag 102)
+    UIView *acc=[b viewWithTag:102];
+    acc.frame=CGRectMake(0,24,3,cardH-48);
+    acc.layer.cornerRadius=1.5;
+    if(j==0)acc.backgroundColor=[UIColor colorWithRed:1.0 green:.22 blue:.22 alpha:.9];
+    else if(j==1)acc.backgroundColor=[UIColor colorWithRed:.22 green:.65 blue:1.0 alpha:.9];
+    else if(j==2)acc.backgroundColor=[UIColor colorWithRed:.25 green:.85 blue:.45 alpha:.9];
+    else if(j==3)acc.backgroundColor=[UIColor colorWithRed:1.0 green:.75 blue:.20 alpha:.9];
+    else if(j==4)acc.backgroundColor=[UIColor colorWithWhite:.75 alpha:.9];
+    else acc.backgroundColor=[UIColor colorWithRed:.70 green:.40 blue:1.0 alpha:.9];
+   }
+   self.song.textColor=[UIColor colorWithWhite:self.nightMode?.78:.95 alpha:1];
  }
  self.driveTripButton.hidden=!self.driveMode;self.driveCameraButton.hidden=!self.driveMode;
  self.tripView.hidden=!self.tripMode;if(self.tripMode){self.tripView.frame=CGRectMake(28,86,w-56,h-230);self.arc.hidden=YES;self.progress.hidden=YES;for(UIView *v in @[self.carImage,self.driveCar,self.driveEQ,self.speed,self.unit,self.gpsStatus,self.clock,self.date,self.nowPanel,self.artwork,self.artPlaceholder,self.song,self.artist,self.carStatus,self.audioBars,self.trackTime,self.trackProgress,self.controls,self.musicHeading,self.browseMusic,self.offlineMusicBtn,self.searchMusicBtn])v.hidden=YES;for(UIView *v in self.cards)v.hidden=YES;}
@@ -1060,7 +1111,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)refreshTransportState{
  UIButton *button=(UIButton *)[self.controls viewWithTag:21];
  DashIcon *icon=(DashIcon *)[button viewWithTag:105];
- NSInteger targetKind=8;
+ NSInteger targetKind=13;
  NSString *targetLabel=@"Play or pause";
  if(self.radioPlayer){
   targetKind=(self.radioPlayer.rate>0)?14:13;
