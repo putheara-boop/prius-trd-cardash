@@ -299,6 +299,17 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)speakGoodbyeMessage;
 -(void)voiceLanguageSettings;
 -(void)openFuelPriceSettings;
+@property float currentTemperature;
+@property NSInteger currentWeatherCode;
+@property float currentRainMm;
+@property BOOL rainDetected;
+@property BOOL hasFetchedWeather;
+@property BOOL hotCarSaverEnabled;
+@property double serviceIntervalKm;
+-(void)fetchWeatherForCoordinate:(CLLocationCoordinate2D)coord;
+-(void)trackOdometerUpdates;
+-(void)serviceSettings;
+-(void)weatherSettings;
 @end
 @implementation Dashboard
 #import "CarExtrasMethods.h"
@@ -307,7 +318,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)viewDidLoad{
  [super viewDidLoad];[[TRDOBDClient sharedClient] startScanning];self.trip=[TRDTrip new];[self.trip restore:[[NSUserDefaults standardUserDefaults]dictionaryForKey:@"TRDTripSummary"]];TRDTheme=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDTheme"]));self.displayMode=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDDisplayMode"]));self.panel=[[SportPanel alloc]initWithFrame:self.view.bounds];self.panel.userInteractionEnabled=NO;self.panel.opaque=YES;[self.view addSubview:self.panel];self.view.backgroundColor=[UIColor colorWithRed:.025 green:.025 blue:.03 alpha:1];UIColor *blue=TRDAccent();self.heading=[self label:18 color:blue];self.heading.text=[NSString stringWithFormat:@"PRIUS  TRD  /  %@",TRDDriveModeName(TRDTheme)];self.heading.font=[UIFont boldSystemFontOfSize:18];self.owner=[self label:10 color:[UIColor colorWithWhite:.55 alpha:1]];self.owner.text=@"PEEPUT’S DRIVE";self.owner.font=[UIFont boldSystemFontOfSize:10];
  NSUserDefaults *wheelPrefs=[NSUserDefaults standardUserDefaults];if(![wheelPrefs boolForKey:@"TRDOptimizedWheelEnabledV1"]){[wheelPrefs setBool:NO forKey:@"TRDCalmDrive"];[wheelPrefs setBool:YES forKey:@"TRDOptimizedWheelEnabledV1"];[wheelPrefs synchronize];}self.calmDrive=[wheelPrefs boolForKey:@"TRDCalmDrive"];self.nightMode=[[NSUserDefaults standardUserDefaults]boolForKey:@"nightMode"];TRDLowLight=self.nightMode;self.dayBrightness=[[NSUserDefaults standardUserDefaults]objectForKey:@"dayBrightness"]?[[NSUserDefaults standardUserDefaults]doubleForKey:@"dayBrightness"]:.6;if(self.dayBrightness<.15)self.dayBrightness=.6;
- self.nightButton=[UIButton buttonWithType:UIButtonTypeSystem];self.nightButton.backgroundColor=[UIColor colorWithRed:.13 green:.045 blue:.06 alpha:1];self.nightButton.layer.cornerRadius=6;self.nightButton.layer.borderWidth=1;self.nightButton.layer.borderColor=blue.CGColor;[self.nightButton setTitleColor:blue forState:UIControlStateNormal];self.nightButton.titleLabel.font=[UIFont boldSystemFontOfSize:14];[self.nightButton setTitle:self.nightMode?@"DAY MODE":@"NIGHT MODE" forState:UIControlStateNormal];[self.nightButton addTarget:self action:@selector(carSettings) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.nightButton];
+ NSUserDefaults *p=[NSUserDefaults standardUserDefaults];
+  self.hotCarSaverEnabled=[p objectForKey:@"TRDHotCarSaver"]?[p boolForKey:@"TRDHotCarSaver"]:YES;
+  self.serviceIntervalKm=[p doubleForKey:@"TRDServiceInterval"]?:10000.0;
+  self.nightButton=[UIButton buttonWithType:UIButtonTypeSystem];self.nightButton.backgroundColor=[UIColor colorWithRed:.13 green:.045 blue:.06 alpha:1];self.nightButton.layer.cornerRadius=6;self.nightButton.layer.borderWidth=1;self.nightButton.layer.borderColor=blue.CGColor;[self.nightButton setTitleColor:blue forState:UIControlStateNormal];self.nightButton.titleLabel.font=[UIFont boldSystemFontOfSize:14];[self.nightButton setTitle:self.nightMode?@"DAY MODE":@"NIGHT MODE" forState:UIControlStateNormal];[self.nightButton addTarget:self action:@selector(carSettings) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.nightButton];
  self.modeButton=[UIButton buttonWithType:UIButtonTypeSystem];self.modeButton.backgroundColor=[UIColor colorWithWhite:.10 alpha:1];self.modeButton.layer.cornerRadius=6;self.modeButton.layer.borderWidth=1;self.modeButton.layer.borderColor=blue.CGColor;[self.modeButton setTitle:[NSString stringWithFormat:@"[ %@ ]",TRDDriveModeName(TRDTheme)] forState:UIControlStateNormal];[self.modeButton setTitleColor:blue forState:UIControlStateNormal];self.modeButton.titleLabel.font=[UIFont boldSystemFontOfSize:12];[self.modeButton addTarget:self action:@selector(cycleDriveMode) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.modeButton];
  self.driveButton=[UIButton buttonWithType:UIButtonTypeSystem];self.driveButton.backgroundColor=[UIColor colorWithWhite:.10 alpha:1];self.driveButton.layer.cornerRadius=6;self.driveButton.layer.borderWidth=1;self.driveButton.layer.borderColor=[UIColor colorWithWhite:.30 alpha:1].CGColor;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.driveButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];self.driveButton.titleLabel.font=[UIFont boldSystemFontOfSize:12];[self.driveButton addTarget:self action:@selector(toggleDrive) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveButton];
  self.driveEQ=[UIButton buttonWithType:UIButtonTypeSystem];[self.driveEQ setTitle:@"EQ  /  SOUND" forState:UIControlStateNormal];[self.driveEQ setTitleColor:blue forState:UIControlStateNormal];self.driveEQ.titleLabel.font=[UIFont boldSystemFontOfSize:16];self.driveEQ.backgroundColor=[UIColor colorWithRed:.12 green:.04 blue:.06 alpha:1];self.driveEQ.layer.cornerRadius=6;self.driveEQ.layer.borderWidth=1;self.driveEQ.layer.borderColor=[UIColor colorWithRed:.35 green:.10 blue:.13 alpha:1].CGColor;self.driveEQ.accessibilityLabel=@"Open Equalizer";[self.driveEQ addTarget:self action:@selector(openDriveEQ) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveEQ];
@@ -683,7 +697,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }
  self.ticks++;if(self.ticks%60==1)[self applyDisplaySchedule];if(self.ticks%30==0)[self saveTrip];[self refreshSpeed];[self refreshTrackProgress];if(self.mapMode)[self updateMapCar];
  if(self.ticks%5==1){NSDictionary *net=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));float level=[UIDevice currentDevice].batteryLevel;UIDeviceBatteryState power=currentPower;NSString *battery=level<0?@"—":[NSString stringWithFormat:@"%.0f%%",level*100];BOOL bt=[self.bluetooth respondsToSelector:@selector(enabled)]?[self.bluetooth enabled]:NO;
-  NSString *newNet=[NSString stringWithFormat:@"%@ • BT %@ • %@%@",net[@"SSID"]?:@"No Wi-Fi",bt?@"ON":@"OFF",battery,(power==UIDeviceBatteryStateCharging||power==UIDeviceBatteryStateFull)?@" +":@""];
+  NSString *weatherStr=self.currentTemperature>0?[NSString stringWithFormat:@" • %.0f°C%@",self.currentTemperature,self.rainDetected?@" 🌧️":@" ☀️"]:@"";
+  NSString *newNet=[NSString stringWithFormat:@"%@ • BT %@ • %@%@%@",net[@"SSID"]?:@"No Wi-Fi",bt?@"ON":@"OFF",battery,(power==UIDeviceBatteryStateCharging||power==UIDeviceBatteryStateFull)?@" +":@"",weatherStr];
   if(![self.network.text isEqualToString:newNet])self.network.text=newNet;
   self.statusWiFi=net[@"SSID"]?:@"NO NETWORK";
  if(self.carplayMode){
@@ -1161,7 +1176,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self speakGoodbyeMessage];
  
  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
- [self performSelector:@selector(hideTripSummary) withObject:nil afterDelay:10.0];
+ NSTimeInterval hideDelay=self.hotCarSaverEnabled?7.0:10.0;
+  [self performSelector:@selector(hideTripSummary) withObject:nil afterDelay:hideDelay];
 }
 -(void)hideTripSummary{
  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
@@ -1198,7 +1214,47 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self showWelcome];
  }
 }
--(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations{self.gpsUpdates++;self.gpsError=nil;self.fix=[locations lastObject];BOOL wasRunning=self.trip.running;for(CLLocation *fix in locations)[self.trip accept:fix now:[NSDate date]];if(wasRunning!=self.trip.running||!self.lastTripSavedAt||-[self.lastTripSavedAt timeIntervalSinceNow]>=5)[self saveTrip];double spd=(self.fix.speed>=0)?(self.fix.speed*3.6):0;[[TRDOBDClient sharedClient] integrateFallbackFuelForDistanceKm:(self.trip.meters/1000.0) speedKmh:spd dtSeconds:1.0];if([UIApplication sharedApplication].applicationState!=UIApplicationStateBackground){[self refreshSpeed];[self refreshTrip];[self updateMapCar];}}
+-(void)trackOdometerUpdates{
+ NSUserDefaults *p=[NSUserDefaults standardUserDefaults];
+ double curTripMeters=self.trip.meters;
+ double lastTracked=[p doubleForKey:@"TRDLastTrackedTripMeters"];
+ if(curTripMeters>lastTracked){
+  double deltaKm=(curTripMeters-lastTracked)/1000.0;
+  double total=[p doubleForKey:@"TRDTotalOdometer"]+deltaKm;
+  [p setDouble:total forKey:@"TRDTotalOdometer"];
+  [p setDouble:curTripMeters forKey:@"TRDLastTrackedTripMeters"];
+ }else if(curTripMeters<lastTracked){
+  [p setDouble:curTripMeters forKey:@"TRDLastTrackedTripMeters"];
+ }
+}
+
+-(void)fetchWeatherForCoordinate:(CLLocationCoordinate2D)coord{
+ if(fabs(coord.latitude)<0.001 && fabs(coord.longitude)<0.001)return;
+ NSString *urlStr=[NSString stringWithFormat:@"https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code,rain",coord.latitude,coord.longitude];
+ NSURL *url=[NSURL URLWithString:urlStr];
+ if(!url)return;
+ NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:4.0];
+ [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+  if(!data || error)return;
+  NSDictionary *json=[NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  NSDictionary *cur=json[@"current"];
+  if(cur){
+   dispatch_async(dispatch_get_main_queue(), ^{
+    self.currentTemperature=[cur[@"temperature_2m"] floatValue];
+    self.currentRainMm=[cur[@"rain"] floatValue];
+    self.currentWeatherCode=[cur[@"weather_code"] integerValue];
+    self.rainDetected=(self.currentRainMm>0.0f || (self.currentWeatherCode>=51 && self.currentWeatherCode<=99));
+   });
+  }
+ }] resume];
+}
+
+-(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations{self.gpsUpdates++;self.gpsError=nil;self.fix=[locations lastObject];BOOL wasRunning=self.trip.running;for(CLLocation *fix in locations)[self.trip accept:fix now:[NSDate date]];if(wasRunning!=self.trip.running||!self.lastTripSavedAt||-[self.lastTripSavedAt timeIntervalSinceNow]>=5)[self saveTrip];double spd=(self.fix.speed>=0)?(self.fix.speed*3.6):0;[[TRDOBDClient sharedClient] integrateFallbackFuelForDistanceKm:(self.trip.meters/1000.0) speedKmh:spd dtSeconds:1.0];
+ [self trackOdometerUpdates];
+ if(!self.hasFetchedWeather && self.fix && self.fix.horizontalAccuracy>0 && self.fix.horizontalAccuracy<=1000){
+  self.hasFetchedWeather=YES;
+  [self fetchWeatherForCoordinate:self.fix.coordinate];
+ }if([UIApplication sharedApplication].applicationState!=UIApplicationStateBackground){[self refreshSpeed];[self refreshTrip];[self updateMapCar];}}
 -(void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error{self.gpsError=error.description;self.fix=nil;[self.trip breakSegment];[self saveTrip];[self refreshSpeed];[self refreshTrip];}
 -(BOOL)launchBundleApp:(NSString *)identifier{
  if(!identifier.length)return NO;

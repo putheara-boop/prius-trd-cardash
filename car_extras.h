@@ -24,11 +24,16 @@ static void TRDProfileChanged(void){CFNotificationCenterPostNotification(CFNotif
  self.name=[UILabel new];self.name.attributedText=[[NSAttributedString alloc]initWithString:@"WELCOME, PEEPUT" attributes:@{NSKernAttributeName:@3.0}];self.name.font=[UIFont fontWithName:@"HelveticaNeue-Light" size:42]?:[UIFont systemFontOfSize:42];self.name.textColor=[UIColor whiteColor];self.name.textAlignment=NSTextAlignmentCenter;self.name.adjustsFontSizeToFitWidth=YES;self.name.minimumScaleFactor=.65;[self addSubview:self.name];
  self.tagline=[UILabel new];
  NSInteger voiceLang=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];
+ NSInteger hour=[[NSCalendar currentCalendar] component:NSCalendarUnitHour fromDate:[NSDate date]];
  if(voiceLang==1){
-  self.tagline.text=@"ยินดีต้อนรับ... ขอให้ขับรถอย่างสนุก... และเดินทางปลอดภัยนะครับ";
+  if(hour>=5 && hour<12) self.tagline.text=@"อรุณสวัสดิ์... ขอให้เป็นวันที่ดี และขับขี่ปลอดภัยนะครับ";
+  else if(hour>=12 && hour<18) self.tagline.text=@"ยินดีต้อนรับ... ขอให้ขับรถอย่างสนุก และเดินทางปลอดภัยนะครับ";
+  else self.tagline.text=@"สวัสดีตอนค่ำ... ขอให้เดินทางปลอดภัยในค่ำคืนนี้นะครับ";
   self.tagline.font=[UIFont systemFontOfSize:15];
  }else{
-  self.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"SYSTEM READY  •  HAVE A SAFE DRIVE" attributes:@{NSKernAttributeName:@2.5}];
+  if(hour>=5 && hour<12) self.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"GOOD MORNING  •  HAVE A PRODUCTIVE DAY" attributes:@{NSKernAttributeName:@2.5}];
+  else if(hour>=12 && hour<18) self.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"SYSTEM READY  •  ENJOY YOUR DRIVE" attributes:@{NSKernAttributeName:@2.5}];
+  else self.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"GOOD EVENING  •  HAVE A SAFE DRIVE" attributes:@{NSKernAttributeName:@2.5}];
   self.tagline.font=[UIFont systemFontOfSize:13];
  }
  self.tagline.textColor=[UIColor colorWithWhite:.65 alpha:1];

@@ -1,9 +1,14 @@
 #import "TRDWelcomeGate.h"
 -(TRDSettingsMenu *)settingsMenu:(NSString *)title message:(NSString *)message{TRDSettingsMenu *m=[TRDSettingsMenu alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleActionSheet];return m;}
 -(void)presentSettingsMenu:(TRDSettingsMenu *)m{[self.settingsSheet dismiss];self.settingsSheet=m;m.frame=self.view.bounds;__weak Dashboard *weak=self;m.miniPlayer=self.miniPlayer;self.miniPlayer.hidden=NO;[m.panel addSubview:self.miniPlayer];m.onDismiss=^{Dashboard *v=weak;v.settingsSheet=nil;[v.view addSubview:v.miniPlayer];[v.view setNeedsLayout];};[self.view addSubview:m];[self refreshMini];[m setNeedsLayout];}
--(void)carSettings{NSArray *modes=@[@"Auto: day 06:00-18:00",@"Day: manual",@"Night: manual"];TRDSettingsMenu *m=[self settingsMenu:@"CAR SETTINGS" message:modes[self.displayMode]];NSInteger voiceLang=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];NSString *voiceTitle=voiceLang==1?@"Greeting voice: ภาษาไทย":(voiceLang==2?@"Greeting voice: Muted (Off)":@"Greeting voice: English (US)");[m addAction:[TRDSettingAction actionWithTitle:voiceTitle style:0 handler:^(TRDSettingAction *a){[self voiceLanguageSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"⛽ Fuel & OBD2: %.2f ฿/L",[TRDOBDClient sharedClient].fuelPricePerLiter] style:0 handler:^(TRDSettingAction *a){[self openFuelPriceSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Wi-Fi network" style:0 handler:^(TRDSettingAction *a){[self wifiSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Audio output" style:0 handler:^(TRDSettingAction *a){[self audioOutputSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Day / Night" style:0 handler:^(TRDSettingAction *a){[self displaySettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Accent theme" style:0 handler:^(TRDSettingAction *a){[self themeSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Sound profiles by app" style:0 handler:^(TRDSettingAction *a){[self soundProfileSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:TRDAutoEnabled()?@"Autoplay on car Bluetooth: ON":@"Autoplay on car Bluetooth: OFF" style:0 handler:^(TRDSettingAction *a){NSFileManager *fm=[NSFileManager defaultManager];NSString *path=TRDAutoFile(@"autoplay-disabled");if([fm fileExistsAtPath:path])[fm removeItemAtPath:path error:nil];else [@"off"writeToFile:path atomically:YES encoding:4 error:nil];[fm removeItemAtPath:TRDAutoFile(@"autoplay.plist") error:nil];[self carSettings];}]];
+-(void)carSettings{NSArray *modes=@[@"Auto: day 06:00-18:00",@"Day: manual",@"Night: manual"];TRDSettingsMenu *m=[self settingsMenu:@"CAR SETTINGS" message:modes[self.displayMode]];NSInteger voiceLang=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];NSString *voiceTitle=voiceLang==1?@"Greeting voice: ภาษาไทย":(voiceLang==2?@"Greeting voice: Muted (Off)":@"Greeting voice: English (US)");[m addAction:[TRDSettingAction actionWithTitle:voiceTitle style:0 handler:^(TRDSettingAction *a){[self voiceLanguageSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"⛽ Fuel & OBD2: %.2f ฿/L",[TRDOBDClient sharedClient].fuelPricePerLiter] style:0 handler:^(TRDSettingAction *a){[self openFuelPriceSettings];}]];
+ NSUserDefaults *pSet=[NSUserDefaults standardUserDefaults];double totalKm=[pSet doubleForKey:@"TRDTotalOdometer"];double lastService=[pSet doubleForKey:@"TRDLastServiceKm"];double interval=[pSet doubleForKey:@"TRDServiceInterval"]?:10000.0;double remaining=interval-(totalKm-lastService);NSString *serviceTitle=[NSString stringWithFormat:@"🔧 Service: %.0f/%.0f km (%@)",totalKm-lastService,interval,remaining<=0?@"DUE NOW":[NSString stringWithFormat:@"%.0f km left",remaining]];[m addAction:[TRDSettingAction actionWithTitle:serviceTitle style:0 handler:^(TRDSettingAction *a){[self serviceSettings];}]];NSString *wTitle=self.currentTemperature>0?[NSString stringWithFormat:@"🌧️ Weather: %.0f°C (%@)",self.currentTemperature,self.rainDetected?@"Rain Alert":@"Clear"]:@"🌧️ Weather & Road";[m addAction:[TRDSettingAction actionWithTitle:wTitle style:0 handler:^(TRDSettingAction *a){[self weatherSettings];}]];BOOL hotCar=[pSet objectForKey:@"TRDHotCarSaver"]?[pSet boolForKey:@"TRDHotCarSaver"]:YES;[m addAction:[TRDSettingAction actionWithTitle:hotCar?@"☀️ Hot Car Protector: ON":@"☀️ Hot Car Protector: OFF" style:0 handler:^(TRDSettingAction *a){[pSet setBool:!hotCar forKey:@"TRDHotCarSaver"];[pSet synchronize];self.hotCarSaverEnabled=!hotCar;[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Wi-Fi network" style:0 handler:^(TRDSettingAction *a){[self wifiSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Audio output" style:0 handler:^(TRDSettingAction *a){[self audioOutputSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Day / Night" style:0 handler:^(TRDSettingAction *a){[self displaySettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Accent theme" style:0 handler:^(TRDSettingAction *a){[self themeSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Sound profiles by app" style:0 handler:^(TRDSettingAction *a){[self soundProfileSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:TRDAutoEnabled()?@"Autoplay on car Bluetooth: ON":@"Autoplay on car Bluetooth: OFF" style:0 handler:^(TRDSettingAction *a){NSFileManager *fm=[NSFileManager defaultManager];NSString *path=TRDAutoFile(@"autoplay-disabled");if([fm fileExistsAtPath:path])[fm removeItemAtPath:path error:nil];else [@"off"writeToFile:path atomically:YES encoding:4 error:nil];[fm removeItemAtPath:TRDAutoFile(@"autoplay.plist") error:nil];[self carSettings];}]];
 
  [m addAction:[TRDSettingAction actionWithTitle:[TRDAutoSettings()[@"offlineOnly"]boolValue]?@"Autoplay downloaded only: ON":@"Autoplay downloaded only: OFF" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[TRDAutoSettings()mutableCopy];cfg[@"offlineOnly"]=@(![cfg[@"offlineOnly"]boolValue]);[cfg writeToFile:TRDAutoFile(@"autoplay-settings.plist") atomically:YES];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:self.calmDrive?@"Wheel animation: OFF":@"Wheel animation: ON" style:0 handler:^(TRDSettingAction *a){[self toggleCalmDrive];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Screen off - keep audio" style:0 handler:^(TRDSettingAction *a){[self screenOff];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Preview Welcome" style:0 handler:^(TRDSettingAction *a){[self previewWelcome];}]];[m addAction:[TRDSettingAction actionWithTitle:@"iPad Settings" style:0 handler:^(TRDSettingAction *a){[self send:@"com.apple.Preferences"];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Trip / GPS" style:0 handler:^(TRDSettingAction *a){[self openTrip];}]];[m addAction:[TRDSettingAction actionWithTitle:@"GPS status / Restart" style:0 handler:^(TRDSettingAction *a){[self gpsSettings];}]];[self presentSettingsMenu:m];}
+-(void)serviceSettings{
+ NSUserDefaults *p=[NSUserDefaults standardUserDefaults];double totalKm=[p doubleForKey:@"TRDTotalOdometer"];double lastService=[p doubleForKey:@"TRDLastServiceKm"];double interval=[p doubleForKey:@"TRDServiceInterval"]?:10000.0;double distanceDriven=totalKm-lastService;double remaining=interval-distanceDriven;NSString *msg=[NSString stringWithFormat:@"Odometer: %.1f km\nSince last service: %.1f km\nRemaining: %.1f km\nInterval: %.0f km",totalKm,distanceDriven,remaining,interval];TRDSettingsMenu *m=[self settingsMenu:@"OIL & SERVICE TRACKER" message:msg];[m addAction:[TRDSettingAction actionWithTitle:@"🔄 Record Oil Change (Reset)" style:0 handler:^(TRDSettingAction *a){[p setDouble:totalKm forKey:@"TRDLastServiceKm"];[p synchronize];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Set Interval: 10,000 km (Standard)" style:0 handler:^(TRDSettingAction *a){[p setDouble:10000.0 forKey:@"TRDServiceInterval"];[p synchronize];[self serviceSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Set Interval: 7,500 km" style:0 handler:^(TRDSettingAction *a){[p setDouble:7500.0 forKey:@"TRDServiceInterval"];[p synchronize];[self serviceSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Set Interval: 5,000 km (Heavy duty)" style:0 handler:^(TRDSettingAction *a){[p setDouble:5000.0 forKey:@"TRDServiceInterval"];[p synchronize];[self serviceSettings];}]];[self presentSettingsMenu:m];}
+-(void)weatherSettings{
+ NSString *rainStr=self.rainDetected?@"Rain / Wet road detected 🌧️":@"No rain / Dry road ☀️";NSString *msg=[NSString stringWithFormat:@"Temperature: %.1f °C\nRain rate: %.2f mm/h\nStatus: %@\nCode: %ld",self.currentTemperature,self.currentRainMm,rainStr,(long)self.currentWeatherCode];TRDSettingsMenu *m=[self settingsMenu:@"WEATHER & ROAD" message:msg];[m addAction:[TRDSettingAction actionWithTitle:@"🔄 Refresh weather now" style:0 handler:^(TRDSettingAction *a){if(self.fix)[self fetchWeatherForCoordinate:self.fix.coordinate];[self carSettings];}]];[self presentSettingsMenu:m];}
 -(void)voiceLanguageSettings{TRDSettingsMenu *m=[self settingsMenu:@"GREETING VOICE" message:@"Choose startup & trip end voice greeting language."];NSInteger cur=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];NSArray *names=@[@"English (Samantha Enhanced)",@"ภาษาไทย (Thai Kanya)",@"Muted (Off)"];for(NSInteger i=0;i<3;i++){NSString *title=[NSString stringWithFormat:@"%@%@",i==cur?@"✓  ":@"",names[i]];[m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){[[NSUserDefaults standardUserDefaults] setInteger:i forKey:@"TRDVoiceLanguage"];[[NSUserDefaults standardUserDefaults] synchronize];[self previewWelcome];}]];}[self presentSettingsMenu:m];}
 -(void)displaySettings{TRDSettingsMenu *m=[self settingsMenu:@"DAY / NIGHT" message:@"Auto follows the iPad's local time. Manual stays until changed."];NSArray *names=@[@"Auto (06:00-18:00 day)",@"Day",@"Night"];for(NSInteger i=0;i<3;i++)[m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"%@%@",i==self.displayMode?@"✓  ":@"",names[i]] style:0 handler:^(TRDSettingAction *a){[self setDisplayModeNumber:@(i)];}]];[self presentSettingsMenu:m];}
 -(void)setDisplayModeNumber:(NSNumber *)number{self.displayMode=MAX(0,MIN(2,number.integerValue));[[NSUserDefaults standardUserDefaults]setInteger:self.displayMode forKey:@"TRDDisplayMode"];[[NSUserDefaults standardUserDefaults]synchronize];[self applyDisplaySchedule];}
@@ -64,17 +69,49 @@ static BOOL gTRDWelcomeSpoken;
    if([gTRDWelcomeSynth isSpeaking]){
     [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
    }
+   NSInteger hour=[[NSCalendar currentCalendar] component:NSCalendarUnitHour fromDate:[NSDate date]];
    NSString *phrase;
    NSString *langCode;
    float rate;
-   if(voiceLang==1){
-    phrase=@"ยินดีต้อนรับ... ขอให้ขับรถอย่างสนุก... และเดินทางปลอดภัยนะครับ";
+
+   NSUserDefaults *pW=[NSUserDefaults standardUserDefaults];
+   double totalKm=[pW doubleForKey:@"TRDTotalOdometer"];
+   double lastService=[pW doubleForKey:@"TRDLastServiceKm"];
+   double serviceInterval=[pW doubleForKey:@"TRDServiceInterval"]?:10000.0;
+   double dueIn=serviceInterval-(totalKm-lastService);
+   BOOL serviceWarning=(dueIn<=500.0 && totalKm>0);
+   BOOL rain=self.rainDetected;
+
+   if(voiceLang==1){ // Thai
     langCode=@"th-TH";
-    rate=AVSpeechUtteranceDefaultSpeechRate*0.90f;
-   }else{
-    phrase=@"Welcome, PeePut... System ready... Enjoy your drive, and travel safe.";
+    rate=0.42f;
+    if(hour>=5 && hour<12){
+     phrase=@"อรุณสวัสดิ์ครับคุณพีพุท... ระบบพร้อม... ขอให้เป็นวันที่ดี และขับขี่ปลอดภัยนะครับ";
+    }else if(hour>=12 && hour<18){
+     phrase=@"สวัสดีตอนบ่ายครับคุณพีพุท... ระบบพร้อม... ขอให้ขับรถอย่างสนุก และเดินทางปลอดภัยนะครับ";
+    }else{
+     phrase=@"สวัสดีตอนค่ำครับคุณพีพุท... ระบบพร้อม... ขอให้เดินทางปลอดภัยในค่ำคืนนี้นะครับ";
+    }
+    if(rain){
+     phrase=[phrase stringByAppendingString:@"... มีรายงานฝนตกในพื้นที่ โปรดขับขี่ด้วยความระมัดระวังนะครับ"];
+    }else if(serviceWarning){
+     phrase=[phrase stringByAppendingString:@"... แจ้งเตือน: ใกล้ถึงระยะเปลี่ยนถ่ายน้ำมันเครื่องแล้วครับ"];
+    }
+   }else{ // English default
     langCode=@"en-US";
     rate=0.38f;
+    if(hour>=5 && hour<12){
+     phrase=@"Good morning, PeePut... System ready. Have a productive day, and travel safe.";
+    }else if(hour>=12 && hour<18){
+     phrase=@"Good afternoon, PeePut... System ready. Enjoy your drive, and travel safe.";
+    }else{
+     phrase=@"Good evening, PeePut... System ready. Enjoy your drive, and travel safe tonight.";
+    }
+    if(rain){
+     phrase=[phrase stringByAppendingString:@"... Rain detected in your area. Drive carefully on wet roads."];
+    }else if(serviceWarning){
+     phrase=[phrase stringByAppendingString:@"... Maintenance reminder: Engine oil service due soon."];
+    }
    }
    AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:phrase];
    AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
@@ -85,7 +122,7 @@ static BOOL gTRDWelcomeSpoken;
   } @catch(NSException *e){}
   if(self.welcome){
    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];
-   [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:7.5];
+   [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:8.5];
   }
  });
 }
