@@ -5,6 +5,7 @@
 
 | ภาพตัวอย่าง | ชื่อฟังก์ชัน | คำอธิบาย |
 | :--- | :--- | :--- |
+| ![Proportional Luxury Home](screen_home_proportional_verified.png) | **หน้าจอหลักสัดส่วนพรีเมียม (Luxury Dashboard)** | จัดวางสัดส่วน 3 โซนลงตัว ไม่ทับซ้อน เกจ์ซ้าย รถตรงกลาง คอนโซลเพลงลอย นาฬิกาขวา |
 | ![Prius Concept UI](prius_gen3_trd_cockpit_concept.jpg) | **ภาพคอนเซ็ปต์การออกแบบใหม่ (Design Concept)** | แบบจำลองห้องโดยสาร Prius Gen 3 TRD สไตล์สปอร์ตค็อกพิทล้ำสมัย |
 | ![Home Hybrid Telemetry](screen_home_hybrid_verified.png) | **หน้าจอหลัก + การ์ดแบตไฮบริด (Hybrid SOC)** | แสดงระดับแบตเตอรี่ไฮบริด 74% (EV Ready), อุณหภูมิอินเวอร์เตอร์ และ ECT บนจอจริง |
 | ![Hybrid Diagnostics Menu](screen_hybrid_menu_verified.png) | **เมนูวินิจฉัยระบบไฮบริด (Hybrid Diagnostics)** | ตรวจสอบแบตเตอรี่ HV, อุณหภูมิอินเวอร์เตอร์/ECT, สัดส่วน EV % และปุ่มจำลองสถานะ |

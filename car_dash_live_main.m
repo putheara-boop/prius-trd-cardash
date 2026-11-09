@@ -779,14 +779,156 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  if(!self.driveMode){self.radioButton.hidden=self.tripButton.hidden;if(!self.musicMode){self.offlineMusicBtn.hidden=self.tripButton.hidden;self.searchMusicBtn.hidden=self.tripButton.hidden;}self.tripButton.frame=CGRectMake(w*.70,top-90,w*.28-12,25);}
  if(landscape&&!focus&&!self.driveMode&&!self.musicMode&&!self.tripMode&&!self.mapMode&&!self.carplayMode){
   self.arc.hidden=YES;self.progress.hidden=YES;self.panel.clockOnly=YES;[self.panel setNeedsDisplay];
-  self.carImage.frame=CGRectMake(w*.205,82,w*.59,280);self.carGlow.hidden=YES;
-  self.speed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:110]?:[UIFont boldSystemFontOfSize:110];self.speed.frame=CGRectMake(18,95,w*.17,132);self.unit.frame=CGRectMake(18,226,w*.17,30);self.unit.font=[UIFont boldSystemFontOfSize:18];self.gpsStatus.frame=CGRectMake(18,265,w*.19,28);self.gpsStatus.adjustsFontSizeToFitWidth=YES;
-  self.speedLimitBtn.frame=CGRectMake(24,296,32,32);self.speedLimitBtn.layer.cornerRadius=16;self.brakeStatusCard.frame=CGRectMake(18,332,185,38);self.hybridSocCard.frame=CGRectMake(18,374,185,38);
-  self.clock.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:76]?:[UIFont boldSystemFontOfSize:76];self.clock.frame=CGRectMake(w*.80,110,w*.19,92);self.date.frame=CGRectMake(w*.80,203,w*.19,28);CGFloat rw=(w*.19-8)/2;self.tripButton.frame=CGRectMake(w*.80,236,rw,32);self.radioButton.frame=CGRectMake(w*.80+rw+8,236,rw,32);self.offlineMusicBtn.hidden=NO;self.offlineMusicBtn.frame=CGRectMake(w*.80,272,rw,32);[self.offlineMusicBtn setTitle:@"💾 OFFLINE" forState:UIControlStateNormal];self.offlineMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:12];self.searchMusicBtn.hidden=NO;self.searchMusicBtn.frame=CGRectMake(w*.80+rw+8,272,rw,32);[self.searchMusicBtn setTitle:@"🔍 SEARCH" forState:UIControlStateNormal];self.searchMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:12];self.carStatus.frame=CGRectMake(w*.80,308,w*.19,22);self.carStatus.adjustsFontSizeToFitWidth=YES;
-  CGFloat musicY=h-315;self.nowPanel.frame=CGRectMake(28,musicY,w-56,120);self.artwork.frame=CGRectMake(40,musicY+14,90,90);self.artPlaceholder.frame=self.artwork.frame;self.song.font=[UIFont boldSystemFontOfSize:22];self.song.frame=CGRectMake(145,musicY+14,w*.33,30);self.artist.font=[UIFont systemFontOfSize:16];self.artist.frame=CGRectMake(145,musicY+46,w*.37,22);self.trackProgress.frame=CGRectMake(145,musicY+82,w*.37,3);self.trackTime.font=[UIFont systemFontOfSize:12];self.trackTime.frame=CGRectMake(w*.46,musicY+76,w*.11,22);self.sourceBadge.frame=CGRectMake(w*.52-60,14,66,22);
-  self.controls.frame=CGRectMake(w*.63,musicY+26,w*.32,68);CGFloat bw=(w*.32-24)/3;for(int i=0;i<3;i++){UIView *b=[self.controls viewWithTag:20+i];b.frame=CGRectMake(i*(bw+12),0,bw,68);b.backgroundColor=[UIColor colorWithWhite:.075 alpha:1];b.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;[b viewWithTag:105].frame=CGRectMake((bw-36)/2,16,36,36);}[self.controls viewWithTag:23].hidden=YES;
+  
+  // 1. LEFT POD (Gauges & Vehicle Health) - Clean X: 24..232 (Width: 208)
+  CGFloat leftW=208;
+  self.speedLimitBtn.frame=CGRectMake(24,80,38,38);
+  self.speedLimitBtn.layer.cornerRadius=19;
+  self.gpsStatus.frame=CGRectMake(68,88,leftW-44,22);
+  self.gpsStatus.font=[UIFont boldSystemFontOfSize:11];
+  self.gpsStatus.textAlignment=NSTextAlignmentLeft;
+  self.gpsStatus.adjustsFontSizeToFitWidth=YES;
+  
+  self.speed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:98]?:[UIFont boldSystemFontOfSize:98];
+  self.speed.frame=CGRectMake(24,120,leftW,94);
+  self.speed.textAlignment=NSTextAlignmentCenter;
+  
+  self.unit.frame=CGRectMake(24,214,leftW,22);
+  self.unit.font=[UIFont boldSystemFontOfSize:14];
+  self.unit.textAlignment=NSTextAlignmentCenter;
+  
+  self.brakeStatusCard.frame=CGRectMake(24,244,leftW,44);
+  UILabel *b1=(UILabel *)[self.brakeStatusCard viewWithTag:501];b1.frame=CGRectMake(8,4,leftW-16,16);
+  UILabel *b2=(UILabel *)[self.brakeStatusCard viewWithTag:502];b2.frame=CGRectMake(8,22,leftW-16,16);
+  
+  self.hybridSocCard.frame=CGRectMake(24,296,leftW,44);
+  UILabel *h1=(UILabel *)[self.hybridSocCard viewWithTag:601];h1.frame=CGRectMake(8,4,leftW-16,16);
+  UILabel *h2=(UILabel *)[self.hybridSocCard viewWithTag:602];h2.frame=CGRectMake(8,22,leftW-16,16);
+
+  // 2. RIGHT POD (Clock & Travel Shortcuts) - Clean X: 792..1000 (Width: 208)
+  CGFloat rightX=w-24-leftW;
+  self.clock.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:72]?:[UIFont boldSystemFontOfSize:72];
+  self.clock.textAlignment=NSTextAlignmentCenter;
+  self.clock.frame=CGRectMake(rightX,80,leftW,72);
+  
+  self.date.frame=CGRectMake(rightX,154,leftW,20);
+  self.date.font=[UIFont boldSystemFontOfSize:13];
+  self.date.textAlignment=NSTextAlignmentCenter;
+  
+  self.carStatus.frame=CGRectMake(rightX,176,leftW,18);
+  self.carStatus.font=[UIFont boldSystemFontOfSize:10.5];
+  self.carStatus.textAlignment=NSTextAlignmentCenter;
+  self.carStatus.adjustsFontSizeToFitWidth=YES;
+  
+  // 2x2 Action Buttons in Right Pod
+  CGFloat btnW=(leftW-8)/2;
+  self.tripButton.frame=CGRectMake(rightX,202,btnW,38);
+  self.tripButton.titleLabel.font=[UIFont boldSystemFontOfSize:12];
+  self.tripButton.layer.cornerRadius=8;
+  
+  self.radioButton.frame=CGRectMake(rightX+btnW+8,202,btnW,38);
+  self.radioButton.titleLabel.font=[UIFont boldSystemFontOfSize:12];
+  self.radioButton.layer.cornerRadius=8;
+  
+  self.offlineMusicBtn.hidden=NO;
+  self.offlineMusicBtn.frame=CGRectMake(rightX,246,btnW,38);
+  self.offlineMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:12];
+  self.offlineMusicBtn.layer.cornerRadius=8;
+  
+  self.searchMusicBtn.hidden=NO;
+  self.searchMusicBtn.frame=CGRectMake(rightX+btnW+8,246,btnW,38);
+  self.searchMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:12];
+  self.searchMusicBtn.layer.cornerRadius=8;
+
+  // 3. CENTER ZONE (Prius Car + Floating Media Console) - Clean X: 248..776 (Width: 528)
+  CGFloat centerX=248, centerW=w-496;
+  self.carImage.frame=CGRectMake(centerX,70,centerW,246);
+  self.carGlow.hidden=YES;
+  
+  CGFloat musicY=324, musicH=136;
+  self.nowPanel.frame=CGRectMake(centerX,musicY,centerW,musicH);
+  self.nowPanel.layer.cornerRadius=14;
+  self.nowPanel.layer.borderWidth=1.2;
+  self.nowPanel.layer.borderColor=[UIColor colorWithWhite:.18 alpha:1].CGColor;
+  self.nowPanel.backgroundColor=[UIColor colorWithWhite:.055 alpha:.95];
+  
+  // Album Art inside center console
+  CGFloat artSize=104;
+  self.artwork.frame=CGRectMake(centerX+16,musicY+16,artSize,artSize);
+  self.artwork.layer.cornerRadius=10;
+  self.artPlaceholder.frame=self.artwork.frame;
+  
+  // Song metadata in center
+  CGFloat metaX=centerX+16+artSize+14;
+  CGFloat metaW=centerW-(16+artSize+14)-136;
+  self.sourceBadge.frame=CGRectMake(metaX,musicY+16,72,20);
+  self.sourceBadge.font=[UIFont boldSystemFontOfSize:10];
+  
+  self.song.font=[UIFont boldSystemFontOfSize:18];
+  self.song.textAlignment=NSTextAlignmentLeft;
+  self.song.frame=CGRectMake(metaX,musicY+40,metaW,24);
+  self.song.adjustsFontSizeToFitWidth=YES;
+  self.song.minimumScaleFactor=0.75;
+  
+  self.artist.font=[UIFont systemFontOfSize:13];
+  self.artist.textAlignment=NSTextAlignmentLeft;
+  self.artist.frame=CGRectMake(metaX,musicY+66,metaW,18);
+  self.artist.adjustsFontSizeToFitWidth=YES;
+  
+  self.trackProgress.frame=CGRectMake(metaX,musicY+94,metaW,4);
+  self.trackTime.font=[UIFont systemFontOfSize:10.5];
+  self.trackTime.textAlignment=NSTextAlignmentRight;
+  self.trackTime.frame=CGRectMake(metaX,musicY+102,metaW,16);
+  
+  // Playback controls on the right of the center console
+  CGFloat ctrlX=centerX+centerW-132, ctrlW=120;
+  self.controls.frame=CGRectMake(ctrlX,musicY+36,ctrlW,64);
+  self.controls.backgroundColor=[UIColor clearColor];
+  [self.controls viewWithTag:23].hidden=YES;
+  
+  CGFloat pbw=(ctrlW-12)/3;
+  for(int i=0;i<3;i++){
+   UIView *b=[self.controls viewWithTag:20+i];
+   b.frame=CGRectMake(i*(pbw+6),i==1?0:6,pbw,i==1?56:44);
+   b.layer.cornerRadius=i==1?12:8;
+   if(i==1){
+    b.backgroundColor=[TRDAccent() colorWithAlphaComponent:.18];
+    b.layer.borderColor=[TRDAccent() colorWithAlphaComponent:.65].CGColor;
+    [b viewWithTag:105].frame=CGRectMake((pbw-32)/2,12,32,32);
+   }else{
+    b.backgroundColor=[UIColor colorWithWhite:.08 alpha:1];
+    b.layer.borderColor=[UIColor colorWithWhite:.20 alpha:1].CGColor;
+    [b viewWithTag:105].frame=CGRectMake((pbw-24)/2,10,24,24);
+   }
+  }
   self.audioBars.hidden=YES;
-  CGFloat cg=12,cw=(w-56-5*cg)/6,cy=h-162,start=(w-(6*cw+5*cg))/2;NSInteger favorites[]={0,1,2,3,4,5};for(int i=0;i<6;i++)((UIButton *)self.cards[i]).hidden=YES;for(int j=0;j<6;j++){UIButton *b=self.cards[favorites[j]];b.hidden=NO;b.frame=CGRectMake(start+j*(cw+cg),cy,cw,104);b.layer.borderColor=[UIColor colorWithWhite:.24 alpha:1].CGColor;UILabel *t=(UILabel *)[b viewWithTag:100];t.font=[UIFont boldSystemFontOfSize:15];t.textColor=[UIColor colorWithWhite:.92 alpha:1];t.textAlignment=NSTextAlignmentLeft;t.adjustsFontSizeToFitWidth=YES;t.minimumScaleFactor=0.75;t.frame=CGRectMake(54,35,cw-58,34);[b viewWithTag:104].frame=CGRectMake(12,33,38,38);[b viewWithTag:102].frame=CGRectMake(0,22,2,60);[b viewWithTag:102].alpha=.6;}self.song.textColor=[UIColor colorWithWhite:self.nightMode?.78:.95 alpha:1];
+
+  // 4. LOWER ZONE: 6 App Cards across the width - Y: 480, H: 86
+  CGFloat cg=10, cardW=(w-48-5*cg)/6, cardY=480, cardH=86;
+  NSInteger favorites[]={0,1,2,3,4,5};
+  for(int i=0;i<6;i++)((UIButton *)self.cards[i]).hidden=YES;
+  for(int j=0;j<6;j++){
+   UIButton *b=self.cards[favorites[j]];
+   b.hidden=NO;
+   b.frame=CGRectMake(24+j*(cardW+cg),cardY,cardW,cardH);
+   b.layer.cornerRadius=10;
+   b.layer.borderWidth=1.0;
+   b.layer.borderColor=[UIColor colorWithWhite:.20 alpha:1].CGColor;
+   b.backgroundColor=[UIColor colorWithWhite:.065 alpha:.95];
+   
+   UILabel *t=(UILabel *)[b viewWithTag:100];
+   t.font=[UIFont boldSystemFontOfSize:14];
+   t.textColor=[UIColor colorWithWhite:.92 alpha:1];
+   t.textAlignment=NSTextAlignmentLeft;
+   t.adjustsFontSizeToFitWidth=YES;
+   t.minimumScaleFactor=0.75;
+   t.frame=CGRectMake(52,26,cardW-56,32);
+   
+   [b viewWithTag:104].frame=CGRectMake(10,24,36,36);
+   [b viewWithTag:102].frame=CGRectMake(0,16,3,cardH-32);
+   [b viewWithTag:102].alpha=.7;
+  }
+  self.song.textColor=[UIColor colorWithWhite:self.nightMode?.78:.95 alpha:1];
  }
  self.driveTripButton.hidden=!self.driveMode;self.driveCameraButton.hidden=!self.driveMode;
  self.tripView.hidden=!self.tripMode;if(self.tripMode){self.tripView.frame=CGRectMake(28,86,w-56,h-230);self.arc.hidden=YES;self.progress.hidden=YES;for(UIView *v in @[self.carImage,self.driveCar,self.driveEQ,self.speed,self.unit,self.gpsStatus,self.clock,self.date,self.nowPanel,self.artwork,self.artPlaceholder,self.song,self.artist,self.carStatus,self.audioBars,self.trackTime,self.trackProgress,self.controls,self.musicHeading,self.browseMusic,self.offlineMusicBtn,self.searchMusicBtn])v.hidden=YES;for(UIView *v in self.cards)v.hidden=YES;}
@@ -819,6 +961,17 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self.view bringSubviewToFront:self.searchMusicBtn];
   [self.view bringSubviewToFront:self.driveEQ];
   [self.view bringSubviewToFront:self.controls];
+ }else if(!self.musicMode&&!self.mapMode&&!self.tripMode&&!self.carplayMode){
+  [self.view bringSubviewToFront:self.nowPanel];
+  [self.view bringSubviewToFront:self.artwork];
+  [self.view bringSubviewToFront:self.artPlaceholder];
+  [self.view bringSubviewToFront:self.sourceBadge];
+  [self.view bringSubviewToFront:self.song];
+  [self.view bringSubviewToFront:self.artist];
+  [self.view bringSubviewToFront:self.trackProgress];
+  [self.view bringSubviewToFront:self.trackTime];
+  [self.view bringSubviewToFront:self.controls];
+  for(UIButton *b in self.cards){if(!b.hidden)[self.view bringSubviewToFront:b];}
  }
  [self.view bringSubviewToFront:self.heading];[self.view bringSubviewToFront:self.owner];[self.view bringSubviewToFront:self.modeButton];[self.view bringSubviewToFront:self.driveButton];[self.view bringSubviewToFront:self.nightButton];[self.view bringSubviewToFront:self.statusStrip];[self.view bringSubviewToFront:self.brakeStatusCard];[self.view bringSubviewToFront:self.hybridSocCard];if(self.driveMode){[self.view bringSubviewToFront:self.hybridEcoBar];}if(self.musicMode)[self.view bringSubviewToFront:self.audioBars];[self.view bringSubviewToFront:self.navigation];if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}if(self.tripSummaryCard){[self.view bringSubviewToFront:self.tripSummaryCard];}
 
