@@ -1,8 +1,10 @@
+#import "TRDWelcomeGate.h"
 -(TRDSettingsMenu *)settingsMenu:(NSString *)title message:(NSString *)message{TRDSettingsMenu *m=[TRDSettingsMenu alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleActionSheet];return m;}
 -(void)presentSettingsMenu:(TRDSettingsMenu *)m{[self.settingsSheet dismiss];self.settingsSheet=m;m.frame=self.view.bounds;__weak Dashboard *weak=self;m.miniPlayer=self.miniPlayer;self.miniPlayer.hidden=NO;[m.panel addSubview:self.miniPlayer];m.onDismiss=^{Dashboard *v=weak;v.settingsSheet=nil;[v.view addSubview:v.miniPlayer];[v.view setNeedsLayout];};[self.view addSubview:m];[self refreshMini];[m setNeedsLayout];}
--(void)carSettings{NSArray *modes=@[@"Auto: day 06:00-18:00",@"Day: manual",@"Night: manual"];TRDSettingsMenu *m=[self settingsMenu:@"CAR SETTINGS" message:modes[self.displayMode]];[m addAction:[TRDSettingAction actionWithTitle:@"Day / Night" style:0 handler:^(TRDSettingAction *a){[self displaySettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Accent theme" style:0 handler:^(TRDSettingAction *a){[self themeSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Sound profiles by app" style:0 handler:^(TRDSettingAction *a){[self soundProfileSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:TRDAutoEnabled()?@"Autoplay on car Bluetooth: ON":@"Autoplay on car Bluetooth: OFF" style:0 handler:^(TRDSettingAction *a){NSFileManager *fm=[NSFileManager defaultManager];NSString *path=TRDAutoFile(@"autoplay-disabled");if([fm fileExistsAtPath:path])[fm removeItemAtPath:path error:nil];else [@"off"writeToFile:path atomically:YES encoding:4 error:nil];[fm removeItemAtPath:TRDAutoFile(@"autoplay.plist") error:nil];[self carSettings];}]];
+-(void)carSettings{NSArray *modes=@[@"Auto: day 06:00-18:00",@"Day: manual",@"Night: manual"];TRDSettingsMenu *m=[self settingsMenu:@"CAR SETTINGS" message:modes[self.displayMode]];NSInteger voiceLang=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];NSString *voiceTitle=voiceLang==1?@"Greeting voice: ภาษาไทย":(voiceLang==2?@"Greeting voice: Muted (Off)":@"Greeting voice: English (US)");[m addAction:[TRDSettingAction actionWithTitle:voiceTitle style:0 handler:^(TRDSettingAction *a){[self voiceLanguageSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"⛽ Fuel & OBD2: %.2f ฿/L",[TRDOBDClient sharedClient].fuelPricePerLiter] style:0 handler:^(TRDSettingAction *a){[self openFuelPriceSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Wi-Fi network" style:0 handler:^(TRDSettingAction *a){[self wifiSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Audio output" style:0 handler:^(TRDSettingAction *a){[self audioOutputSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Day / Night" style:0 handler:^(TRDSettingAction *a){[self displaySettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Accent theme" style:0 handler:^(TRDSettingAction *a){[self themeSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Sound profiles by app" style:0 handler:^(TRDSettingAction *a){[self soundProfileSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:TRDAutoEnabled()?@"Autoplay on car Bluetooth: ON":@"Autoplay on car Bluetooth: OFF" style:0 handler:^(TRDSettingAction *a){NSFileManager *fm=[NSFileManager defaultManager];NSString *path=TRDAutoFile(@"autoplay-disabled");if([fm fileExistsAtPath:path])[fm removeItemAtPath:path error:nil];else [@"off"writeToFile:path atomically:YES encoding:4 error:nil];[fm removeItemAtPath:TRDAutoFile(@"autoplay.plist") error:nil];[self carSettings];}]];
 
- [m addAction:[TRDSettingAction actionWithTitle:[TRDAutoSettings()[@"offlineOnly"]boolValue]?@"Autoplay downloaded only: ON":@"Autoplay downloaded only: OFF" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[TRDAutoSettings()mutableCopy];cfg[@"offlineOnly"]=@(![cfg[@"offlineOnly"]boolValue]);[cfg writeToFile:TRDAutoFile(@"autoplay-settings.plist") atomically:YES];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:self.calmDrive?@"Drive animation: MINIMAL":@"Drive animation: FULL" style:0 handler:^(TRDSettingAction *a){[self toggleCalmDrive];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Screen off - keep audio" style:0 handler:^(TRDSettingAction *a){[self screenOff];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Preview Welcome" style:0 handler:^(TRDSettingAction *a){[self showWelcome];}]];[m addAction:[TRDSettingAction actionWithTitle:@"iPad Settings" style:0 handler:^(TRDSettingAction *a){[self send:@"com.apple.Preferences"];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Trip / GPS" style:0 handler:^(TRDSettingAction *a){[self openTrip];}]];[m addAction:[TRDSettingAction actionWithTitle:@"GPS status / Restart" style:0 handler:^(TRDSettingAction *a){[self gpsSettings];}]];[self presentSettingsMenu:m];}
+ [m addAction:[TRDSettingAction actionWithTitle:[TRDAutoSettings()[@"offlineOnly"]boolValue]?@"Autoplay downloaded only: ON":@"Autoplay downloaded only: OFF" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[TRDAutoSettings()mutableCopy];cfg[@"offlineOnly"]=@(![cfg[@"offlineOnly"]boolValue]);[cfg writeToFile:TRDAutoFile(@"autoplay-settings.plist") atomically:YES];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:self.calmDrive?@"Wheel animation: OFF":@"Wheel animation: ON" style:0 handler:^(TRDSettingAction *a){[self toggleCalmDrive];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Screen off - keep audio" style:0 handler:^(TRDSettingAction *a){[self screenOff];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Preview Welcome" style:0 handler:^(TRDSettingAction *a){[self previewWelcome];}]];[m addAction:[TRDSettingAction actionWithTitle:@"iPad Settings" style:0 handler:^(TRDSettingAction *a){[self send:@"com.apple.Preferences"];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Trip / GPS" style:0 handler:^(TRDSettingAction *a){[self openTrip];}]];[m addAction:[TRDSettingAction actionWithTitle:@"GPS status / Restart" style:0 handler:^(TRDSettingAction *a){[self gpsSettings];}]];[self presentSettingsMenu:m];}
+-(void)voiceLanguageSettings{TRDSettingsMenu *m=[self settingsMenu:@"GREETING VOICE" message:@"Choose startup & trip end voice greeting language."];NSInteger cur=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];NSArray *names=@[@"English (Samantha Enhanced)",@"ภาษาไทย (Thai Kanya)",@"Muted (Off)"];for(NSInteger i=0;i<3;i++){NSString *title=[NSString stringWithFormat:@"%@%@",i==cur?@"✓  ":@"",names[i]];[m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){[[NSUserDefaults standardUserDefaults] setInteger:i forKey:@"TRDVoiceLanguage"];[[NSUserDefaults standardUserDefaults] synchronize];[self previewWelcome];}]];}[self presentSettingsMenu:m];}
 -(void)displaySettings{TRDSettingsMenu *m=[self settingsMenu:@"DAY / NIGHT" message:@"Auto follows the iPad's local time. Manual stays until changed."];NSArray *names=@[@"Auto (06:00-18:00 day)",@"Day",@"Night"];for(NSInteger i=0;i<3;i++)[m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"%@%@",i==self.displayMode?@"✓  ":@"",names[i]] style:0 handler:^(TRDSettingAction *a){[self setDisplayModeNumber:@(i)];}]];[self presentSettingsMenu:m];}
 -(void)setDisplayModeNumber:(NSNumber *)number{self.displayMode=MAX(0,MIN(2,number.integerValue));[[NSUserDefaults standardUserDefaults]setInteger:self.displayMode forKey:@"TRDDisplayMode"];[[NSUserDefaults standardUserDefaults]synchronize];[self applyDisplaySchedule];}
 -(void)applyDisplaySchedule{NSInteger hour=[[NSCalendar currentCalendar]component:NSCalendarUnitHour fromDate:[NSDate date]];[self applyHour:@(hour)];}
@@ -22,8 +24,228 @@
  [self saveTrip];
  notify_post("com.codex.trd.sleep");
 }
--(void)showWelcome{[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];[self.welcome removeFromSuperview];self.welcome=[CarWelcome new];self.welcome.frame=self.view.bounds;self.welcome.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[self.welcome addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(hideWelcome)]];[self.view addSubview:self.welcome];[self performSelector:@selector(hideWelcome) withObject:nil afterDelay:2.0];}
--(void)hideWelcome{[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];CarWelcome *view=self.welcome;self.welcome=nil;[UIView animateWithDuration:.25 animations:^{view.alpha=0;} completion:^(BOOL done){[view removeFromSuperview];}];}
+static AVSpeechSynthesizer *gTRDWelcomeSynth;
+static NSTimer *gTRDWelcomeBTTimer;
+static NSDate *gTRDWelcomeWaitStart;
+static BOOL gTRDWelcomeSpoken;
+
+-(BOOL)isCarBluetoothReady{
+ AVAudioSession *session=[AVAudioSession sharedInstance];
+ for(AVAudioSessionPortDescription *port in session.currentRoute.outputs){
+  NSString *type=port.portType;
+  if([type isEqual:AVAudioSessionPortBluetoothA2DP]||[type isEqual:AVAudioSessionPortBluetoothHFP]||[type isEqual:AVAudioSessionPortBluetoothLE]){
+   return YES;
+  }
+ }
+ return NO;
+}
+
+-(void)speakWelcomeMessage{
+ dispatch_async(dispatch_get_main_queue(), ^{
+  if(gTRDWelcomeSpoken) return;
+  gTRDWelcomeSpoken=YES;
+  if(gTRDWelcomeBTTimer){
+   [gTRDWelcomeBTTimer invalidate];
+   gTRDWelcomeBTTimer=nil;
+  }
+  NSInteger voiceLang=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];
+  if(voiceLang==2){
+   if(self.welcome){
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];
+    [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:3.2];
+   }
+   return;
+  }
+  @try {
+   AVAudioSession *session=[AVAudioSession sharedInstance];
+   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+   [session setActive:YES error:nil];
+   if(!gTRDWelcomeSynth) gTRDWelcomeSynth=[[AVSpeechSynthesizer alloc]init];
+   if([gTRDWelcomeSynth isSpeaking]){
+    [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
+   }
+   NSString *phrase;
+   NSString *langCode;
+   float rate;
+   if(voiceLang==1){
+    phrase=@"ยินดีต้อนรับ... ขอให้ขับรถอย่างสนุก... และเดินทางปลอดภัยนะครับ";
+    langCode=@"th-TH";
+    rate=AVSpeechUtteranceDefaultSpeechRate*0.90f;
+   }else{
+    phrase=@"Welcome, PeePut. System ready. Enjoy your drive and travel safe.";
+    langCode=@"en-US";
+    rate=AVSpeechUtteranceDefaultSpeechRate*0.95f;
+   }
+   AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:phrase];
+   AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
+   if(v) utt.voice=v;
+   utt.rate=rate;
+   utt.volume=1.0f;
+   [gTRDWelcomeSynth speakUtterance:utt];
+  } @catch(NSException *e){}
+  if(self.welcome){
+   [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];
+   [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:4.2];
+  }
+ });
+}
+
+-(void)speakGoodbyeMessage{
+ dispatch_async(dispatch_get_main_queue(), ^{
+  NSInteger voiceLang=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];
+  if(voiceLang==2) return;
+  @try {
+   AVAudioSession *session=[AVAudioSession sharedInstance];
+   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+   [session setActive:YES error:nil];
+   if(!gTRDWelcomeSynth) gTRDWelcomeSynth=[[AVSpeechSynthesizer alloc]init];
+   if([gTRDWelcomeSynth isSpeaking]){
+    [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
+   }
+   NSString *phrase;
+   NSString *langCode;
+   float rate;
+   if(voiceLang==1){
+    phrase=@"สิ้นสุดการเดินทาง... ขอบคุณครับคุณพีพุท... ขอให้เป็นวันที่ดีนะครับ";
+    langCode=@"th-TH";
+    rate=AVSpeechUtteranceDefaultSpeechRate*0.90f;
+   }else{
+    phrase=@"Trip completed. Goodbye, PeePut. Have a nice day.";
+    langCode=@"en-US";
+    rate=AVSpeechUtteranceDefaultSpeechRate*0.95f;
+   }
+   AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:phrase];
+   AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
+   if(v) utt.voice=v;
+   utt.rate=rate;
+   utt.volume=1.0f;
+   [gTRDWelcomeSynth speakUtterance:utt];
+  } @catch(NSException *e){}
+ });
+}
+
+-(void)checkWelcomeBluetoothReady{
+ if(!self.welcome || gTRDWelcomeSpoken){
+  [gTRDWelcomeBTTimer invalidate];
+  gTRDWelcomeBTTimer=nil;
+  return;
+ }
+ BOOL btReady=[self isCarBluetoothReady];
+ NSTimeInterval elapsed=gTRDWelcomeWaitStart?[[NSDate date] timeIntervalSinceDate:gTRDWelcomeWaitStart]:0;
+ NSInteger voiceLang=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];
+ if(btReady){
+  [gTRDWelcomeBTTimer invalidate];
+  gTRDWelcomeBTTimer=nil;
+  if(self.welcome.tagline){
+   if(voiceLang==1){
+    self.welcome.tagline.text=@"เชื่อมต่อ PRIUS AUDIO สำเร็จ  •  ระบบพร้อม";
+    self.welcome.tagline.font=[UIFont systemFontOfSize:15];
+   }else{
+    self.welcome.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"CONNECTED TO PRIUS  •  SYSTEM READY" attributes:@{NSKernAttributeName:@2.5}];
+    self.welcome.tagline.font=[UIFont systemFontOfSize:13];
+   }
+  }
+  [self performSelector:@selector(speakWelcomeMessage) withObject:nil afterDelay:0.35];
+ }else if(elapsed>=5.0){
+  [gTRDWelcomeBTTimer invalidate];
+  gTRDWelcomeBTTimer=nil;
+  if(self.welcome.tagline){
+   if(voiceLang==1){
+    self.welcome.tagline.text=@"ยินดีต้อนรับ... ขอให้ขับรถอย่างสนุก... และเดินทางปลอดภัยนะครับ";
+    self.welcome.tagline.font=[UIFont systemFontOfSize:15];
+   }else{
+    self.welcome.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"SYSTEM READY  •  HAVE A SAFE DRIVE" attributes:@{NSKernAttributeName:@2.5}];
+    self.welcome.tagline.font=[UIFont systemFontOfSize:13];
+   }
+  }
+  [self speakWelcomeMessage];
+ }
+}
+
+-(void)showAutomaticWelcome{
+ NSUserDefaults *p=[NSUserDefaults standardUserDefaults];
+ NSMutableDictionary *state=[[p dictionaryForKey:@"TRDWelcomePowerState"]mutableCopy]?:[NSMutableDictionary dictionary];
+ if(!TRDWelcomeTake(state))return;
+ [p setObject:state forKey:@"TRDWelcomePowerState"];
+ [p synchronize];
+ [self showWelcome];
+}
+
+-(void)showWelcomeWaitingForCar:(BOOL)waitForCar{
+ [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];
+ [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(speakWelcomeMessage) object:nil];
+ if(gTRDWelcomeBTTimer){
+  [gTRDWelcomeBTTimer invalidate];
+  gTRDWelcomeBTTimer=nil;
+ }
+ [self.welcome removeFromSuperview];
+ self.welcome=[CarWelcome new];
+ self.welcome.frame=self.view.bounds;
+ self.welcome.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+ [self.welcome addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(hideWelcome)]];
+ [self.view addSubview:self.welcome];
+ CarWelcome *welcome=self.welcome;
+ welcome.alpha=0;
+ welcome.name.alpha=0;
+ welcome.tagline.alpha=0;
+ [UIView animateWithDuration:.65 animations:^{welcome.alpha=1;}];
+ [UIView animateWithDuration:.65 delay:.25 options:UIViewAnimationOptionCurveEaseOut animations:^{welcome.name.alpha=1;welcome.tagline.alpha=1;} completion:nil];
+ 
+ gTRDWelcomeSpoken=NO;
+ gTRDWelcomeWaitStart=[NSDate date];
+ NSInteger voiceLang=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];
+ 
+ if([self isCarBluetoothReady] || !waitForCar){
+  if([self isCarBluetoothReady]){
+   if(voiceLang==1){
+    welcome.tagline.text=@"เชื่อมต่อ PRIUS AUDIO สำเร็จ  •  ระบบพร้อม";
+    welcome.tagline.font=[UIFont systemFontOfSize:15];
+   }else{
+    welcome.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"CONNECTED TO PRIUS  •  SYSTEM READY" attributes:@{NSKernAttributeName:@2.5}];
+    welcome.tagline.font=[UIFont systemFontOfSize:13];
+   }
+  }else{
+   if(voiceLang==1){
+    welcome.tagline.text=@"ยินดีต้อนรับ... ขอให้ขับรถอย่างสนุก... และเดินทางปลอดภัยนะครับ";
+    welcome.tagline.font=[UIFont systemFontOfSize:15];
+   }else{
+    welcome.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"SYSTEM READY  •  HAVE A SAFE DRIVE" attributes:@{NSKernAttributeName:@2.5}];
+    welcome.tagline.font=[UIFont systemFontOfSize:13];
+   }
+  }
+  [self performSelector:@selector(speakWelcomeMessage) withObject:nil afterDelay:0.4];
+ }else{
+  if(voiceLang==1){
+   welcome.tagline.text=@"กำลังเชื่อมต่อ PRIUS AUDIO...";
+   welcome.tagline.font=[UIFont systemFontOfSize:15];
+  }else{
+   welcome.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"CONNECTING TO PRIUS AUDIO..." attributes:@{NSKernAttributeName:@2.0}];
+   welcome.tagline.font=[UIFont systemFontOfSize:13];
+  }
+  [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:10.0];
+  gTRDWelcomeBTTimer=[NSTimer scheduledTimerWithTimeInterval:0.2 target:self selector:@selector(checkWelcomeBluetoothReady) userInfo:nil repeats:YES];
+ }
+}
+
+-(void)showWelcome{
+ [self showWelcomeWaitingForCar:YES];
+}
+
+-(void)previewWelcome{
+ [self showWelcomeWaitingForCar:NO];
+}
+
+-(void)hideWelcome{
+ [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];
+ [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(speakWelcomeMessage) object:nil];
+ if(gTRDWelcomeBTTimer){
+  [gTRDWelcomeBTTimer invalidate];
+  gTRDWelcomeBTTimer=nil;
+ }
+ CarWelcome *view=self.welcome;
+ self.welcome=nil;
+ [UIView animateWithDuration:.25 animations:^{view.alpha=0;} completion:^(BOOL done){[view removeFromSuperview];}];
+}
 -(void)previewWelcomeCapture{[self showWelcome];[self.welcome layoutIfNeeded];[self capture];}
 -(void)soundProfileSettings{NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];BOOL enabled=[cfg[@"enabled"]boolValue];TRDSettingsMenu *m=[self settingsMenu:@"SOUND PROFILES" message:@"Presets follow the app playing audio. Choosing a preset in EQE also remembers it for that app."];[m addAction:[TRDSettingAction actionWithTitle:enabled?@"Automatic sound: ON (tap to turn off)":@"Automatic sound: OFF (tap to turn on)" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *next=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];next[@"enabled"]=@(!enabled);[next writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();}]];NSArray *names=@[@"Music / audioNINJA",@"YouTube"],*ids=@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine"];for(NSInteger i=0;i<names.count;i++){NSString *bundle=ids[i],*label=names[i];NSString *title=[NSString stringWithFormat:@"%@: %@",label,cfg[@"profiles"][bundle]?:@"Flat"];[m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){[self chooseProfile:bundle title:label];}]];}[self presentSettingsMenu:m];}
 -(void)chooseProfile:(NSString *)bundle title:(NSString *)title{TRDSettingsMenu *m=[self settingsMenu:title message:@"Used automatically when this app becomes the audio source."];for(NSString *name in TRDProfileNames())[m addAction:[TRDSettingAction actionWithTitle:name style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];NSMutableDictionary *profiles=[cfg[@"profiles"]mutableCopy];profiles[bundle]=name;cfg[@"profiles"]=profiles;[cfg writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();}]];[self presentSettingsMenu:m];}
@@ -73,7 +295,7 @@
   NSString *value=values[i];
   if(i==0){
    if([value isEqual:@"DISCONNECTED"])value=@"NO LINK";
-   else if([value isEqual:@"CONNECTED"])value=@"LINKED";
+   else if([value isEqual:@"CONNECTED"])value=@"CONNECTED";
    else if([value isEqual:@"NOT PAIRED"])value=@"UNPAIRED";
   }
   if(![label.text isEqualToString:value])label.text=value;

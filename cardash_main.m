@@ -4,6 +4,8 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import "TRDAutoplayModel.h"
 #import "TRDDriveStatus.h"
+#import "TRDOBDClient.h"
+#import "TRDWelcomeGate.h"
 #import <CoreLocation/CoreLocation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <SystemConfiguration/CaptiveNetwork.h>
@@ -183,6 +185,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property CarWelcome *welcome;
 @property BOOL didShowWelcome;
 -(void)showWelcome;
+-(void)previewWelcome;
+-(void)showWelcomeWaitingForCar:(BOOL)waitForCar;
 -(void)hideWelcome;
 -(void)applyDisplaySchedule;
 -(void)applyTheme;
@@ -292,13 +296,16 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)promptCustomCall;
 -(void)callNumber:(NSString *)num;
 -(void)showPhoneContinuityGuide;
+-(void)speakGoodbyeMessage;
+-(void)voiceLanguageSettings;
+-(void)openFuelPriceSettings;
 @end
 @implementation Dashboard
 #import "CarExtrasMethods.h"
 #import "TRDTripMethods.h"
 -(UILabel *)label:(CGFloat)size color:(UIColor *)color{UILabel *l=[UILabel new];l.font=[UIFont systemFontOfSize:size];l.textColor=color;[self.view addSubview:l];return l;}
 -(void)viewDidLoad{
- [super viewDidLoad];self.trip=[TRDTrip new];[self.trip restore:[[NSUserDefaults standardUserDefaults]dictionaryForKey:@"TRDTripSummary"]];TRDTheme=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDTheme"]));self.displayMode=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDDisplayMode"]));self.panel=[[SportPanel alloc]initWithFrame:self.view.bounds];self.panel.userInteractionEnabled=NO;self.panel.opaque=YES;[self.view addSubview:self.panel];self.view.backgroundColor=[UIColor colorWithRed:.025 green:.025 blue:.03 alpha:1];UIColor *blue=TRDAccent();self.heading=[self label:18 color:blue];self.heading.text=[NSString stringWithFormat:@"PRIUS  TRD  /  %@",TRDDriveModeName(TRDTheme)];self.heading.font=[UIFont boldSystemFontOfSize:18];self.owner=[self label:10 color:[UIColor colorWithWhite:.55 alpha:1]];self.owner.text=@"PEEPUT’S DRIVE";self.owner.font=[UIFont boldSystemFontOfSize:10];
+ [super viewDidLoad];[[TRDOBDClient sharedClient] startScanning];self.trip=[TRDTrip new];[self.trip restore:[[NSUserDefaults standardUserDefaults]dictionaryForKey:@"TRDTripSummary"]];TRDTheme=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDTheme"]));self.displayMode=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDDisplayMode"]));self.panel=[[SportPanel alloc]initWithFrame:self.view.bounds];self.panel.userInteractionEnabled=NO;self.panel.opaque=YES;[self.view addSubview:self.panel];self.view.backgroundColor=[UIColor colorWithRed:.025 green:.025 blue:.03 alpha:1];UIColor *blue=TRDAccent();self.heading=[self label:18 color:blue];self.heading.text=[NSString stringWithFormat:@"PRIUS  TRD  /  %@",TRDDriveModeName(TRDTheme)];self.heading.font=[UIFont boldSystemFontOfSize:18];self.owner=[self label:10 color:[UIColor colorWithWhite:.55 alpha:1]];self.owner.text=@"PEEPUT’S DRIVE";self.owner.font=[UIFont boldSystemFontOfSize:10];
  NSUserDefaults *wheelPrefs=[NSUserDefaults standardUserDefaults];if(![wheelPrefs boolForKey:@"TRDOptimizedWheelEnabledV1"]){[wheelPrefs setBool:NO forKey:@"TRDCalmDrive"];[wheelPrefs setBool:YES forKey:@"TRDOptimizedWheelEnabledV1"];[wheelPrefs synchronize];}self.calmDrive=[wheelPrefs boolForKey:@"TRDCalmDrive"];self.nightMode=[[NSUserDefaults standardUserDefaults]boolForKey:@"nightMode"];TRDLowLight=self.nightMode;self.dayBrightness=[[NSUserDefaults standardUserDefaults]objectForKey:@"dayBrightness"]?[[NSUserDefaults standardUserDefaults]doubleForKey:@"dayBrightness"]:.6;if(self.dayBrightness<.15)self.dayBrightness=.6;
  self.nightButton=[UIButton buttonWithType:UIButtonTypeSystem];self.nightButton.backgroundColor=[UIColor colorWithRed:.13 green:.045 blue:.06 alpha:1];self.nightButton.layer.cornerRadius=6;self.nightButton.layer.borderWidth=1;self.nightButton.layer.borderColor=blue.CGColor;[self.nightButton setTitleColor:blue forState:UIControlStateNormal];self.nightButton.titleLabel.font=[UIFont boldSystemFontOfSize:14];[self.nightButton setTitle:self.nightMode?@"DAY MODE":@"NIGHT MODE" forState:UIControlStateNormal];[self.nightButton addTarget:self action:@selector(carSettings) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.nightButton];
  self.modeButton=[UIButton buttonWithType:UIButtonTypeSystem];self.modeButton.backgroundColor=[UIColor colorWithWhite:.10 alpha:1];self.modeButton.layer.cornerRadius=6;self.modeButton.layer.borderWidth=1;self.modeButton.layer.borderColor=blue.CGColor;[self.modeButton setTitle:[NSString stringWithFormat:@"[ %@ ]",TRDDriveModeName(TRDTheme)] forState:UIControlStateNormal];[self.modeButton setTitleColor:blue forState:UIControlStateNormal];self.modeButton.titleLabel.font=[UIFont boldSystemFontOfSize:12];[self.modeButton addTarget:self action:@selector(cycleDriveMode) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.modeButton];
@@ -1074,7 +1081,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  CGFloat w=self.view.bounds.size.width;
  CGFloat h=self.view.bounds.size.height;
  CGFloat cardW=MIN(460,w-40);
- CGFloat cardH=250;
+ CGFloat cardH=295;
  UIView *card=[[UIView alloc]initWithFrame:CGRectMake((w-cardW)/2,(h-cardH)/2-10,cardW,cardH)];
  card.backgroundColor=[UIColor colorWithRed:0.05 green:0.06 blue:0.08 alpha:0.97];
  card.layer.cornerRadius=14;
@@ -1082,14 +1089,14 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  card.layer.borderColor=TRDAccent().CGColor;
  card.clipsToBounds=YES;
  
- UILabel *title=[[UILabel alloc]initWithFrame:CGRectMake(20,16,cardW-40,28)];
- title.font=[UIFont boldSystemFontOfSize:18];
+ UILabel *title=[[UILabel alloc]initWithFrame:CGRectMake(20,14,cardW-40,26)];
+ title.font=[UIFont boldSystemFontOfSize:17];
  title.textColor=TRDAccent();
  title.textAlignment=NSTextAlignmentCenter;
  title.text=@"TRIP SUMMARY · PRIUS TRD";
  [card addSubview:title];
  
- UIView *div=[[UIView alloc]initWithFrame:CGRectMake(20,48,cardW-40,1)];
+ UIView *div=[[UIView alloc]initWithFrame:CGRectMake(20,44,cardW-40,1)];
  div.backgroundColor=[UIColor colorWithWhite:0.2 alpha:1];
  [card addSubview:div];
  
@@ -1098,37 +1105,51 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  double avg=(self.trip.seconds>0)?(self.trip.meters/self.trip.seconds*3.6):0;
  double top=self.trip.maximum;
  
- NSArray *labels=@[@"DISTANCE",@"DURATION",@"AVG SPEED",@"TOP SPEED"];
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ double fuelL=obd.tripFuelUsedLiters;
+ double fuelCost=obd.tripFuelCostTHB;
+ if(fuelL<=0.0&&km>0.0){
+  fuelL=km/21.5;
+  fuelCost=fuelL*obd.fuelPricePerLiter;
+ }
+ 
+ NSArray *labels=@[@"DISTANCE",@"DURATION",@"FUEL CONSUMED",@"TRIP COST",@"AVG SPEED",@"TOP SPEED"];
  NSArray *vals=@[
   [NSString stringWithFormat:@"%.1f km",km],
   [NSString stringWithFormat:@"%ld min",min],
+  [NSString stringWithFormat:@"%.2f L",fuelL],
+  [NSString stringWithFormat:@"%.1f ฿",fuelCost],
   [NSString stringWithFormat:@"%.0f km/h",avg],
   [NSString stringWithFormat:@"%.0f km/h",top]
  ];
  
  CGFloat colW=(cardW-40)/2;
- CGFloat rowH=60;
- for(int i=0;i<4;i++){
+ CGFloat rowH=56;
+ for(int i=0;i<6;i++){
   CGFloat col=(i%2)*colW+20;
-  CGFloat row=56+(i/2)*rowH;
-  UILabel *lbl=[[UILabel alloc]initWithFrame:CGRectMake(col,row,colW,18)];
-  lbl.font=[UIFont boldSystemFontOfSize:11];
+  CGFloat row=50+(i/2)*rowH;
+  UILabel *lbl=[[UILabel alloc]initWithFrame:CGRectMake(col,row,colW,16)];
+  lbl.font=[UIFont boldSystemFontOfSize:10];
   lbl.textColor=[UIColor colorWithWhite:0.55 alpha:1];
   lbl.text=labels[i];
   [card addSubview:lbl];
   
-  UILabel *val=[[UILabel alloc]initWithFrame:CGRectMake(col,row+20,colW,32)];
-  val.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:26]?:[UIFont boldSystemFontOfSize:26];
-  val.textColor=[UIColor whiteColor];
+  UILabel *val=[[UILabel alloc]initWithFrame:CGRectMake(col,row+16,colW,30)];
+  val.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:24]?:[UIFont boldSystemFontOfSize:24];
+  if(i==2||i==3){
+   val.textColor=[UIColor colorWithRed:0.35 green:0.85 blue:0.45 alpha:1];
+  }else{
+   val.textColor=[UIColor whiteColor];
+  }
   val.text=vals[i];
   [card addSubview:val];
  }
  
- UILabel *sub=[[UILabel alloc]initWithFrame:CGRectMake(20,cardH-32,cardW-40,20)];
+ UILabel *sub=[[UILabel alloc]initWithFrame:CGRectMake(20,cardH-30,cardW-40,20)];
  sub.font=[UIFont systemFontOfSize:11];
- sub.textColor=[UIColor colorWithWhite:0.4 alpha:1];
+ sub.textColor=[UIColor colorWithWhite:0.45 alpha:1];
  sub.textAlignment=NSTextAlignmentCenter;
- sub.text=@"Engine stopped • Tap to dismiss • Sleep in 10s";
+ sub.text=[NSString stringWithFormat:@"Engine stopped • Fuel @ %.2f ฿/L • Sleep in 10s",obd.fuelPricePerLiter];
  [card addSubview:sub];
  
  UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(hideTripSummary)];
@@ -1137,6 +1158,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.tripSummaryCard=card;
  [self.view addSubview:card];
  [self.view bringSubviewToFront:card];
+  [self speakGoodbyeMessage];
  
  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
  [self performSelector:@selector(hideTripSummary) withObject:nil afterDelay:10.0];
@@ -1173,7 +1195,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self showWelcome];
  }
 }
--(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations{self.gpsUpdates++;self.gpsError=nil;self.fix=[locations lastObject];BOOL wasRunning=self.trip.running;for(CLLocation *fix in locations)[self.trip accept:fix now:[NSDate date]];if(wasRunning!=self.trip.running||!self.lastTripSavedAt||-[self.lastTripSavedAt timeIntervalSinceNow]>=5)[self saveTrip];if([UIApplication sharedApplication].applicationState!=UIApplicationStateBackground){[self refreshSpeed];[self refreshTrip];[self updateMapCar];}}
+-(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations{self.gpsUpdates++;self.gpsError=nil;self.fix=[locations lastObject];BOOL wasRunning=self.trip.running;for(CLLocation *fix in locations)[self.trip accept:fix now:[NSDate date]];if(wasRunning!=self.trip.running||!self.lastTripSavedAt||-[self.lastTripSavedAt timeIntervalSinceNow]>=5)[self saveTrip];double spd=(self.fix.speed>=0)?(self.fix.speed*3.6):0;[[TRDOBDClient sharedClient] integrateFallbackFuelForDistanceKm:(self.trip.meters/1000.0) speedKmh:spd dtSeconds:1.0];if([UIApplication sharedApplication].applicationState!=UIApplicationStateBackground){[self refreshSpeed];[self refreshTrip];[self updateMapCar];}}
 -(void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error{self.gpsError=error.description;self.fix=nil;[self.trip breakSegment];[self saveTrip];[self refreshSpeed];[self refreshTrip];}
 -(BOOL)launchBundleApp:(NSString *)identifier{
  if(!identifier.length)return NO;
@@ -1335,6 +1357,45 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }
 }
 
+-(void)openFuelPriceSettings{
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ NSString *msg=[NSString stringWithFormat:@"Current: %.2f ฿/L • OBD2: %@",obd.fuelPricePerLiter,obd.connectionStatus];
+ TRDSettingsMenu *m=[self settingsMenu:@"⛽ FUEL & OBD2 SETTINGS" message:msg];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⛽ Gasohol 95 (36.80 ฿/L)" style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:36.80];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⛽ Gasohol 91 (35.50 ฿/L)" style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:35.50];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⛽ Gasohol E20 (34.20 ฿/L)" style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:34.20];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⛽ Premium 95 (42.00 ฿/L)" style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:42.00];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➕ เพิ่มราคา +1.00 ฿ (%.2f ฿)",obd.fuelPricePerLiter+1.0] style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:obd.fuelPricePerLiter+1.0];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➖ ลดราคา -1.00 ฿ (%.2f ฿)",obd.fuelPricePerLiter-1.0] style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:obd.fuelPricePerLiter-1.0];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔄 Reset Trip Fuel Counter" style:0 handler:^(TRDSettingAction *a){
+  [obd resetTripFuel];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔍 Re-scan for vLinker MC+" style:0 handler:^(TRDSettingAction *a){
+  [obd startScanning];
+  [self openFuelPriceSettings];
+ }]];
+ [self presentSettingsMenu:m];
+}
+
 @end
 @interface CarApp:UIResponder<UIApplicationDelegate>
 @property(nonatomic,strong) UIWindow *window;
@@ -1384,6 +1445,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   else [v openRadioStationsMenu];
  }
  if([url.host isEqualToString:@"tripsummary"])[v showTripSummary];
+ if([url.host isEqualToString:@"fuel"])[v openFuelPriceSettings];
+ if([url.host isEqualToString:@"obd"])[v openFuelPriceSettings];
  if([url.host isEqualToString:@"welcome"])[v showWelcome];
  if([url.host isEqualToString:@"capture"])[v capture];
  return YES;

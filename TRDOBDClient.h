@@ -1,0 +1,56 @@
+//
+// TRDOBDClient.h - CarDash OBD2 / CAN-Bus Integration Module for Toyota Prius TRD
+// Compatible with vLinker MC+ (Bluetooth 4.0 Low Energy / iOS 9 CoreBluetooth)
+//
+
+#import <Foundation/Foundation.h>
+#import <CoreGraphics/CoreGraphics.h>
+#import <CoreBluetooth/CoreBluetooth.h>
+
+extern NSString * const TRDOBDDataDidUpdateNotification;
+extern NSString * const TRDOBDConnectionStateChangedNotification;
+
+@interface TRDOBDClient : NSObject <CBCentralManagerDelegate, CBPeripheralDelegate>
+
++ (instancetype)sharedClient;
+
+// Connection Status
+@property (nonatomic, readonly) BOOL isConnected;
+@property (nonatomic, copy, readonly) NSString *connectionStatus;
+@property (nonatomic, copy, readonly) NSString *connectedDeviceName;
+
+// Live Powertrain Metrics
+@property (nonatomic, assign, readonly) NSInteger engineRPM;         // 0 - 5500 RPM
+@property (nonatomic, assign, readonly) CGFloat coolantTempC;        // Engine Coolant °C
+@property (nonatomic, assign, readonly) CGFloat hybridBatterySOC;    // 0.0% - 100.0%
+@property (nonatomic, assign, readonly) CGFloat inverterTempC;       // Inverter Coolant °C
+@property (nonatomic, assign, readonly) CGFloat auxBatteryVoltage;    // 12V Battery Volts
+@property (nonatomic, assign, readonly) CGFloat currentSpeedKmh;     // Speed from Wheel Sensors
+
+// Fuel & Trip Cost Metrics
+@property (nonatomic, assign, readonly) CGFloat fuelLevelPercent;     // 0% - 100%
+@property (nonatomic, assign, readonly) CGFloat fuelRemainingLiters;  // Liters left in 45L tank
+@property (nonatomic, assign, readonly) CGFloat fuelPricePerLiter;    // Baht / Liter (e.g. 36.50)
+@property (nonatomic, assign, readonly) CGFloat tripFuelUsedLiters;   // Liters burned this trip
+@property (nonatomic, assign, readonly) CGFloat tripFuelCostTHB;      // Baht spent this trip
+@property (nonatomic, assign, readonly) CGFloat tripAverageKmPerL;    // km / L for this trip
+@property (nonatomic, assign, readonly) CGFloat tripEVDistancePercent;// % driven in EV (0 RPM)
+
+// Body & Door Sensors (Tesla/EV Style)
+@property (nonatomic, copy, readonly) NSString *currentGear;          // @"P", @"R", @"N", @"D", @"B"
+@property (nonatomic, assign, readonly) BOOL doorFrontLeftOpen;      // Driver Door
+@property (nonatomic, assign, readonly) BOOL doorFrontRightOpen;     // Passenger Door
+@property (nonatomic, assign, readonly) BOOL doorRearLeftOpen;       // Rear Left Door
+@property (nonatomic, assign, readonly) BOOL doorRearRightOpen;      // Rear Right Door
+@property (nonatomic, assign, readonly) BOOL trunkOpen;              // Hatch / Trunk
+@property (nonatomic, assign, readonly) CGFloat cabinTempC;          // A/C Inside Temp °C
+@property (nonatomic, assign, readonly) CGFloat exteriorTempC;       // Outside Ambient Temp °C
+
+// Controls
+- (void)startScanning;
+- (void)stopScanning;
+- (void)setCustomFuelPrice:(CGFloat)price;
+- (void)resetTripFuel;
+- (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt;
+
+@end
