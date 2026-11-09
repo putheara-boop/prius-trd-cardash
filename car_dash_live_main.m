@@ -18,6 +18,7 @@
 #include <mach/mach_time.h>
 extern char **environ;
 #import "CarExtras.h"
+#import "TRDWelcomeGate.h"
 #import "TRDSettingsMenu.h"
 #import "TRDTrip.h"
 #import <ImageIO/ImageIO.h>
@@ -236,7 +237,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property UISwipeGestureRecognizer *swL,*swR;
 @property UIScreenEdgePanGestureRecognizer *edgeR;
 -(void)openYouTubeSource;
-@property NSDate *movingSince,*stationarySince;
+@property NSDate *movingSince,*stationarySince,*parkedSince;
 @property UIButton *driveButton;
 @property UIButton *modeButton;
 @property UILabel *compassLabel;
@@ -637,7 +638,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self.view bringSubviewToFront:self.driveEQ];
   [self.view bringSubviewToFront:self.controls];
  }
- [self.view bringSubviewToFront:self.heading];[self.view bringSubviewToFront:self.owner];[self.view bringSubviewToFront:self.modeButton];[self.view bringSubviewToFront:self.driveButton];[self.view bringSubviewToFront:self.nightButton];[self.view bringSubviewToFront:self.statusStrip];if(self.musicMode)[self.view bringSubviewToFront:self.audioBars];[self.view bringSubviewToFront:self.navigation];if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}
+ [self.view bringSubviewToFront:self.heading];[self.view bringSubviewToFront:self.owner];[self.view bringSubviewToFront:self.modeButton];[self.view bringSubviewToFront:self.driveButton];[self.view bringSubviewToFront:self.nightButton];[self.view bringSubviewToFront:self.statusStrip];if(self.musicMode)[self.view bringSubviewToFront:self.audioBars];[self.view bringSubviewToFront:self.navigation];if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}if(self.tripSummaryCard){[self.view bringSubviewToFront:self.tripSummaryCard];}
 
 }
 -(void)update{
@@ -749,6 +750,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   lastCarConnected=YES;
   id delegate=[UIApplication sharedApplication].delegate;if([delegate respondsToSelector:@selector(carStartAutoplay)])[delegate performSelector:@selector(carStartAutoplay)];
  }else if(!connected){
+  if(lastCarConnected&&[UIDevice currentDevice].batteryState==UIDeviceBatteryStateUnplugged&&!self.tripSummaryCard){
+   [self showTripSummary];
+  }
   lastCarConnected=NO;
  }
  [self refreshAudioRoute];
@@ -873,6 +877,23 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  double kmh=valid?self.fix.speed*3.6:0;BOOL reliable=valid&&self.fix.horizontalAccuracy<=25;
  if(reliable&&kmh<=1){if(!self.stationarySince)self.stationarySince=[NSDate date];if(-[self.stationarySince timeIntervalSinceNow]>=10)self.autoDriveSuppressed=NO;}else self.stationarySince=nil;
  if([UIApplication sharedApplication].applicationState==UIApplicationStateActive&&!self.driveMode&&!self.musicMode&&!self.tripMode&&!self.mapMode&&!self.focused&&!self.autoDriveSuppressed&&reliable&&kmh>=10){if(!self.movingSince)self.movingSince=[NSDate date];if(-[self.movingSince timeIntervalSinceNow]>=5){self.movingSince=nil;[self toggleDrive];}}else self.movingSince=nil;
+ if(self.driveMode){
+  BOOL isStopped=(!valid)||(reliable&&kmh<=1.0);
+  if(isStopped){
+   if(!self.parkedSince)self.parkedSince=[NSDate date];
+   NSTimeInterval parkedDuration=-[self.parkedSince timeIntervalSinceNow];
+   NSTimeInterval limit=(!valid)?2.5:5.0;
+   if(parkedDuration>=limit){
+    self.parkedSince=nil;
+    [self homePage];
+    self.autoDriveSuppressed=NO;
+   }
+  }else{
+   self.parkedSince=nil;
+  }
+ }else{
+  self.parkedSince=nil;
+ }
  self.gpsLive=valid;[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&valid?self.fix.speed*3.6:0];
  NSString *newSpeed=valid?[NSString stringWithFormat:@"%.0f",self.fix.speed*3.6]:@"—";
  if(![self.speed.text isEqualToString:newSpeed]){
@@ -1044,16 +1065,19 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)showTripSummary{
  if(!self.trip)return;
  [self.settingsSheet dismiss];
+ if(self.driveMode||self.carplayMode||self.tripMode||self.mapMode||self.focused){
+  [self homePage];
+ }
  if(self.tripSummaryCard){
   [self.tripSummaryCard removeFromSuperview];
   self.tripSummaryCard=nil;
  }
  CGFloat w=self.view.bounds.size.width;
  CGFloat h=self.view.bounds.size.height;
- CGFloat cardW=MIN(420,w-40);
- CGFloat cardH=240;
- UIView *card=[[UIView alloc]initWithFrame:CGRectMake((w-cardW)/2,(h-cardH)/2-20,cardW,cardH)];
- card.backgroundColor=[UIColor colorWithRed:0.06 green:0.07 blue:0.09 alpha:0.96];
+ CGFloat cardW=MIN(460,w-40);
+ CGFloat cardH=250;
+ UIView *card=[[UIView alloc]initWithFrame:CGRectMake((w-cardW)/2,(h-cardH)/2-10,cardW,cardH)];
+ card.backgroundColor=[UIColor colorWithRed:0.05 green:0.06 blue:0.08 alpha:0.97];
  card.layer.cornerRadius=14;
  card.layer.borderWidth=2;
  card.layer.borderColor=TRDAccent().CGColor;
@@ -1105,15 +1129,18 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  sub.font=[UIFont systemFontOfSize:11];
  sub.textColor=[UIColor colorWithWhite:0.4 alpha:1];
  sub.textAlignment=NSTextAlignmentCenter;
- sub.text=@"Engine stopped • Powering down to Ultra Deep Sleep";
+ sub.text=@"Engine stopped • Tap to dismiss • Sleep in 10s";
  [card addSubview:sub];
+ 
+ UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(hideTripSummary)];
+ [card addGestureRecognizer:tap];
  
  self.tripSummaryCard=card;
  [self.view addSubview:card];
  [self.view bringSubviewToFront:card];
  
  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
- [self performSelector:@selector(hideTripSummary) withObject:nil afterDelay:3.0];
+ [self performSelector:@selector(hideTripSummary) withObject:nil afterDelay:10.0];
 }
 -(void)hideTripSummary{
  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
@@ -1171,6 +1198,14 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   int (*launch)(CFStringRef, Boolean)=(int (*)(CFStringRef, Boolean))dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
   if(launch&&launch((__bridge CFStringRef)identifier, false)==0){
    [self refreshNowPlaying];
+   return YES;
+  }
+ }
+ if([identifier isEqualToString:@"com.apple.Preferences"] && (&UIApplicationOpenSettingsURLString != NULL)){
+  NSURL *settingsURL=[NSURL URLWithString:UIApplicationOpenSettingsURLString];
+  UIApplication *app=[UIApplication sharedApplication];
+  if(settingsURL && [app canOpenURL:settingsURL]){
+   [app openURL:settingsURL];
    return YES;
   }
  }

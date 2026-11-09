@@ -316,8 +316,8 @@ static void TRDPerformWake(void) {
         if (!gSleepScheduled) {
             gSleepScheduled = YES;
             int gen = ++gSleepGeneration;
-            // Wait 4.2 seconds so CarDash Trip Summary (3.0s) displays AND brief engine crank voltage drops are ignored!
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            // Wait 12.5 seconds so CarDash Trip Summary (10.0s) displays AND brief engine crank voltage drops are ignored!
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(12.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 if (gen != gSleepGeneration) return;
                 gSleepScheduled = NO;
                 if ([UIDevice currentDevice].batteryState == UIDeviceBatteryStateUnplugged) {
