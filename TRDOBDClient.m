@@ -254,6 +254,11 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
 }
 
+- (void)simulateHybridBatterySOC:(CGFloat)soc {
+    _hybridBatterySOC = MAX(0.0, MIN(100.0, soc));
+    [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+}
+
 - (void)simulateGear:(NSString *)gear {
     if (!gear.length) return;
     NSString *oldGear = _currentGear;

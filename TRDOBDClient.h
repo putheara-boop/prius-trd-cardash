@@ -68,6 +68,7 @@ extern NSString * const TRDOBDGearChangedNotification;
 - (void)fetchLiveOilPrices;
 - (void)resetTripFuel;
 - (void)toggleTestBrakeWarning;
+- (void)simulateHybridBatterySOC:(CGFloat)soc;
 - (void)toggleTestReverseGear;
 - (void)simulateGear:(NSString *)gear;
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt;

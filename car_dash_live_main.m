@@ -4,7 +4,7 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import "TRDAutoplayModel.h"
 #import "TRDDriveStatus.h"
-#import "TRDOBDClient.h"
+#import "TRDOBDClient.m"
 #import "TRDWelcomeGate.h"
 #import <CoreLocation/CoreLocation.h>
 #import <QuartzCore/QuartzCore.h>
@@ -125,6 +125,134 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)startRotation{}
 -(void)spin{}
 -(void)stop{self.kmh=0;}
+@end
+@interface TRDHybridEcoBar:UIView
+@property UIView *track,*chgBar,*ecoBar,*pwrBar,*needle;
+@property UILabel *titleLabel,*stateLabel,*chgLabel,*ecoLabel,*pwrLabel,*evRatioLabel;
+@property CGFloat throttleRatio;
+-(void)updateWithSpeed:(double)speed isBraking:(BOOL)isBraking isAccelerating:(BOOL)isAccel;
+@end
+@implementation TRDHybridEcoBar
+-(instancetype)init{
+  if((self=[super init])){
+    self.backgroundColor=[UIColor colorWithWhite:0.04 alpha:0.88];
+    self.layer.cornerRadius=10;
+    self.layer.borderWidth=1.1;
+    self.layer.borderColor=[UIColor colorWithWhite:0.22 alpha:1].CGColor;
+    self.clipsToBounds=YES;
+    self.titleLabel=[[UILabel alloc]init];
+    self.titleLabel.font=[UIFont boldSystemFontOfSize:9.5];
+    self.titleLabel.textColor=[UIColor colorWithWhite:0.65 alpha:1];
+    self.titleLabel.text=@"PRIUS HYBRID SYSTEM INDICATOR";
+    [self addSubview:self.titleLabel];
+    self.stateLabel=[[UILabel alloc]init];
+    self.stateLabel.font=[UIFont boldSystemFontOfSize:9.5];
+    self.stateLabel.textAlignment=NSTextAlignmentRight;
+    self.stateLabel.textColor=[UIColor colorWithRed:0.0 green:0.88 blue:0.45 alpha:1];
+    self.stateLabel.text=@"🍃 EV DRIVING (มอเตอร์ไฟฟ้า)";
+    [self addSubview:self.stateLabel];
+    self.track=[[UIView alloc]init];
+    self.track.backgroundColor=[UIColor colorWithWhite:0.08 alpha:1];
+    self.track.layer.cornerRadius=6;
+    self.track.layer.borderWidth=1.0;
+    self.track.layer.borderColor=[UIColor colorWithWhite:0.2 alpha:1].CGColor;
+    self.track.clipsToBounds=YES;
+    [self addSubview:self.track];
+    self.chgBar=[[UIView alloc]init];
+    self.chgBar.backgroundColor=[UIColor colorWithRed:0.0 green:0.55 blue:0.95 alpha:0.45];
+    [self.track addSubview:self.chgBar];
+    self.ecoBar=[[UIView alloc]init];
+    self.ecoBar.backgroundColor=[UIColor colorWithRed:0.0 green:0.85 blue:0.4 alpha:0.45];
+    [self.track addSubview:self.ecoBar];
+    self.pwrBar=[[UIView alloc]init];
+    self.pwrBar.backgroundColor=[UIColor colorWithRed:0.95 green:0.2 blue:0.2 alpha:0.45];
+    [self.track addSubview:self.pwrBar];
+    self.needle=[[UIView alloc]init];
+    self.needle.backgroundColor=[UIColor whiteColor];
+    self.needle.layer.cornerRadius=2.5;
+    [self.track addSubview:self.needle];
+    self.chgLabel=[[UILabel alloc]init];
+    self.chgLabel.font=[UIFont boldSystemFontOfSize:8.5];
+    self.chgLabel.textColor=[UIColor colorWithRed:0.2 green:0.65 blue:1.0 alpha:1];
+    self.chgLabel.text=@"◀ CHG (รีเจนฯ)";
+    [self addSubview:self.chgLabel];
+    self.ecoLabel=[[UILabel alloc]init];
+    self.ecoLabel.font=[UIFont boldSystemFontOfSize:8.5];
+    self.ecoLabel.textColor=[UIColor colorWithRed:0.2 green:0.9 blue:0.4 alpha:1];
+    self.ecoLabel.text=@"ECO (ขับประหยัด/EV)";
+    [self addSubview:self.ecoLabel];
+    self.pwrLabel=[[UILabel alloc]init];
+    self.pwrLabel.font=[UIFont boldSystemFontOfSize:8.5];
+    self.pwrLabel.textColor=[UIColor colorWithRed:1.0 green:0.3 blue:0.3 alpha:1];
+    self.pwrLabel.text=@"PWR (เร่งแซง) ▶";
+    [self addSubview:self.pwrLabel];
+    self.evRatioLabel=[[UILabel alloc]init];
+    self.evRatioLabel.font=[UIFont boldSystemFontOfSize:8.5];
+    self.evRatioLabel.textColor=[UIColor colorWithWhite:0.7 alpha:1];
+    self.evRatioLabel.textAlignment=NSTextAlignmentRight;
+    self.evRatioLabel.text=@"EV Ratio: 64%";
+    [self addSubview:self.evRatioLabel];
+  }
+  return self;
+}
+-(void)layoutSubviews{
+  [super layoutSubviews];
+  CGFloat w=self.bounds.size.width;
+  self.titleLabel.frame=CGRectMake(10,2,200,13);
+  self.stateLabel.frame=CGRectMake(w-210,2,200,13);
+  CGFloat trackY=16,trackH=12,trackW=w-20;
+  self.track.frame=CGRectMake(10,trackY,trackW,trackH);
+  CGFloat chgW=trackW*0.25;
+  CGFloat ecoW=trackW*0.50;
+  CGFloat pwrW=trackW*0.25;
+  self.chgBar.frame=CGRectMake(0,0,chgW,trackH);
+  self.ecoBar.frame=CGRectMake(chgW,0,ecoW,trackH);
+  self.pwrBar.frame=CGRectMake(chgW+ecoW,0,pwrW,trackH);
+  self.chgLabel.frame=CGRectMake(10,29,100,12);
+  self.ecoLabel.frame=CGRectMake(10+chgW+10,29,150,12);
+  self.pwrLabel.frame=CGRectMake(10+chgW+ecoW+10,29,100,12);
+  self.evRatioLabel.frame=CGRectMake(w-110,29,100,12);
+  [self updateNeedlePosition];
+}
+-(void)updateNeedlePosition{
+  CGFloat trackW=self.track.bounds.size.width;
+  if(trackW<=0)return;
+  CGFloat chgW=trackW*0.25;
+  CGFloat ecoW=trackW*0.50;
+  CGFloat needleX=chgW;
+  if(self.throttleRatio<0){
+    needleX=chgW*(1.0+self.throttleRatio);
+  }else if(self.throttleRatio<=0.6){
+    needleX=chgW+(self.throttleRatio/0.6)*ecoW;
+  }else{
+    needleX=chgW+ecoW+((self.throttleRatio-0.6)/0.4)*(trackW-chgW-ecoW);
+  }
+  needleX=MAX(0,MIN(trackW-5,needleX));
+  self.needle.frame=CGRectMake(needleX,0,5,self.track.bounds.size.height);
+}
+-(void)updateWithSpeed:(double)speed isBraking:(BOOL)isBraking isAccelerating:(BOOL)isAccel{
+  if(isBraking){
+    self.throttleRatio=-0.75;
+    self.stateLabel.text=@"⚡ REGEN BRAKING (ชาร์จไฟกลับ)";
+    self.stateLabel.textColor=[UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1];
+  }else if(speed<=0){
+    self.throttleRatio=0.0;
+    self.stateLabel.text=@"🌿 READY (จอดนิ่ง/ระบบพร้อม)";
+    self.stateLabel.textColor=[UIColor colorWithRed:0.0 green:0.88 blue:0.45 alpha:1];
+  }else if(isAccel||speed>85){
+    self.throttleRatio=0.85;
+    self.stateLabel.text=@"🔥 ENGINE POWER (เร่งแซงเต็มกำลัง)";
+    self.stateLabel.textColor=[UIColor colorWithRed:1.0 green:0.3 blue:0.3 alpha:1];
+  }else{
+    CGFloat ratio=0.15+(MIN(speed,80.0)/80.0)*0.40;
+    self.throttleRatio=ratio;
+    self.stateLabel.text=@"🍃 EV DRIVING (มอเตอร์ไฟฟ้า)";
+    self.stateLabel.textColor=[UIColor colorWithRed:0.0 green:0.88 blue:0.45 alpha:1];
+  }
+  [UIView animateWithDuration:0.2 animations:^{
+    [self updateNeedlePosition];
+  }];
+}
 @end
 @interface Dashboard:UIViewController<CLLocationManagerDelegate,UIGestureRecognizerDelegate,UIWebViewDelegate>
 @property NSString *audioOutput,*audioOutputShort,*audioDevice;
@@ -302,6 +430,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property UIButton *brakeStatusCard;
 -(void)openBrakeDiagnosticsMenu;
 -(void)refreshBrakeStatus;
+@property UIButton *hybridSocCard;
+@property TRDHybridEcoBar *hybridEcoBar;
+-(void)openHybridDiagnosticsMenu;
+-(void)refreshHybridStatus;
+-(void)toggleTestHybridSOC;
+-(void)obdDataUpdated:(NSNotification *)note;
 @property float currentTemperature;
 @property NSInteger currentWeatherCode;
 @property float currentRainMm;
@@ -340,7 +474,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 #import "TRDTripMethods.h"
 -(UILabel *)label:(CGFloat)size color:(UIColor *)color{UILabel *l=[UILabel new];l.font=[UIFont systemFontOfSize:size];l.textColor=color;[self.view addSubview:l];return l;}
 -(void)viewDidLoad{
- [super viewDidLoad];[[TRDOBDClient sharedClient] startScanning];[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(obdGearChanged:) name:TRDOBDGearChangedNotification object:nil];self.trip=[TRDTrip new];[self.trip restore:[[NSUserDefaults standardUserDefaults]dictionaryForKey:@"TRDTripSummary"]];TRDTheme=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDTheme"]));self.displayMode=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDDisplayMode"]));self.panel=[[SportPanel alloc]initWithFrame:self.view.bounds];self.panel.userInteractionEnabled=NO;self.panel.opaque=YES;[self.view addSubview:self.panel];self.view.backgroundColor=[UIColor colorWithRed:.025 green:.025 blue:.03 alpha:1];UIColor *blue=TRDAccent();self.heading=[self label:18 color:blue];self.heading.text=[NSString stringWithFormat:@"PRIUS  TRD  /  %@",TRDDriveModeName(TRDTheme)];self.heading.font=[UIFont boldSystemFontOfSize:18];self.owner=[self label:10 color:[UIColor colorWithWhite:.55 alpha:1]];self.owner.text=@"PEEPUT’S DRIVE";self.owner.font=[UIFont boldSystemFontOfSize:10];
+ [super viewDidLoad];[[TRDOBDClient sharedClient] startScanning];[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(obdGearChanged:) name:TRDOBDGearChangedNotification object:nil];[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(obdDataUpdated:) name:TRDOBDDataDidUpdateNotification object:nil];self.trip=[TRDTrip new];[self.trip restore:[[NSUserDefaults standardUserDefaults]dictionaryForKey:@"TRDTripSummary"]];TRDTheme=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDTheme"]));self.displayMode=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDDisplayMode"]));self.panel=[[SportPanel alloc]initWithFrame:self.view.bounds];self.panel.userInteractionEnabled=NO;self.panel.opaque=YES;[self.view addSubview:self.panel];self.view.backgroundColor=[UIColor colorWithRed:.025 green:.025 blue:.03 alpha:1];UIColor *blue=TRDAccent();self.heading=[self label:18 color:blue];self.heading.text=[NSString stringWithFormat:@"PRIUS  TRD  /  %@",TRDDriveModeName(TRDTheme)];self.heading.font=[UIFont boldSystemFontOfSize:18];self.owner=[self label:10 color:[UIColor colorWithWhite:.55 alpha:1]];self.owner.text=@"PEEPUT’S DRIVE";self.owner.font=[UIFont boldSystemFontOfSize:10];
  NSUserDefaults *wheelPrefs=[NSUserDefaults standardUserDefaults];if(![wheelPrefs boolForKey:@"TRDOptimizedWheelEnabledV1"]){[wheelPrefs setBool:NO forKey:@"TRDCalmDrive"];[wheelPrefs setBool:YES forKey:@"TRDOptimizedWheelEnabledV1"];[wheelPrefs synchronize];}self.calmDrive=[wheelPrefs boolForKey:@"TRDCalmDrive"];self.nightMode=[[NSUserDefaults standardUserDefaults]boolForKey:@"nightMode"];TRDLowLight=self.nightMode;self.dayBrightness=[[NSUserDefaults standardUserDefaults]objectForKey:@"dayBrightness"]?[[NSUserDefaults standardUserDefaults]doubleForKey:@"dayBrightness"]:.6;if(self.dayBrightness<.15)self.dayBrightness=.6;
  NSUserDefaults *p=[NSUserDefaults standardUserDefaults];
   self.hotCarSaverEnabled=[p objectForKey:@"TRDHotCarSaver"]?[p boolForKey:@"TRDHotCarSaver"]:YES;
@@ -350,6 +484,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.driveButton=[UIButton buttonWithType:UIButtonTypeSystem];self.driveButton.backgroundColor=[UIColor colorWithWhite:.10 alpha:1];self.driveButton.layer.cornerRadius=6;self.driveButton.layer.borderWidth=1;self.driveButton.layer.borderColor=[UIColor colorWithWhite:.30 alpha:1].CGColor;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.driveButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];self.driveButton.titleLabel.font=[UIFont boldSystemFontOfSize:12];[self.driveButton addTarget:self action:@selector(toggleDrive) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveButton];
  self.driveEQ=[UIButton buttonWithType:UIButtonTypeSystem];[self.driveEQ setTitle:@"EQ  /  SOUND" forState:UIControlStateNormal];[self.driveEQ setTitleColor:blue forState:UIControlStateNormal];self.driveEQ.titleLabel.font=[UIFont boldSystemFontOfSize:16];self.driveEQ.backgroundColor=[UIColor colorWithRed:.12 green:.04 blue:.06 alpha:1];self.driveEQ.layer.cornerRadius=6;self.driveEQ.layer.borderWidth=1;self.driveEQ.layer.borderColor=[UIColor colorWithRed:.35 green:.10 blue:.13 alpha:1].CGColor;self.driveEQ.accessibilityLabel=@"Open Equalizer";[self.driveEQ addTarget:self action:@selector(openDriveEQ) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveEQ];
  self.driveCar=[[DrivePrius alloc]init];self.driveCar.hidden=YES;[self.view addSubview:self.driveCar];
+ self.hybridEcoBar=[[TRDHybridEcoBar alloc]init];self.hybridEcoBar.hidden=YES;[self.view addSubview:self.hybridEcoBar];
  self.driveLeftCard=[[UIView alloc]init];self.driveLeftCard.backgroundColor=[UIColor colorWithRed:.06 green:.07 blue:.09 alpha:.92];self.driveLeftCard.layer.cornerRadius=14;self.driveLeftCard.layer.borderWidth=1.2;self.driveLeftCard.layer.borderColor=[blue colorWithAlphaComponent:.35].CGColor;self.driveLeftCard.hidden=YES;self.driveLeftCard.userInteractionEnabled=NO;[self.view addSubview:self.driveLeftCard];
  self.driveRightCard=[[UIView alloc]init];self.driveRightCard.backgroundColor=[UIColor colorWithRed:.06 green:.07 blue:.09 alpha:.92];self.driveRightCard.layer.cornerRadius=14;self.driveRightCard.layer.borderWidth=1.2;self.driveRightCard.layer.borderColor=[blue colorWithAlphaComponent:.35].CGColor;self.driveRightCard.hidden=YES;self.driveRightCard.userInteractionEnabled=NO;[self.view addSubview:self.driveRightCard];
  self.carGlow=[UIView new];self.carGlow.userInteractionEnabled=NO;self.carGlow.hidden=YES;CAGradientLayer *glow=[CAGradientLayer layer];glow.name=@"carGlow";glow.startPoint=CGPointMake(0,.5);glow.endPoint=CGPointMake(1,.5);[self.carGlow.layer addSublayer:glow];[self.view addSubview:self.carGlow];
@@ -363,6 +498,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.speedLimit=90;
  self.speedLimitBtn=[UIButton buttonWithType:UIButtonTypeCustom];self.speedLimitBtn.backgroundColor=[UIColor colorWithRed:.85 green:.05 blue:.10 alpha:.18];self.speedLimitBtn.layer.cornerRadius=14;self.speedLimitBtn.layer.borderWidth=2;self.speedLimitBtn.layer.borderColor=[UIColor colorWithRed:.95 green:.10 blue:.15 alpha:.9].CGColor;[self.speedLimitBtn setTitle:@"90" forState:UIControlStateNormal];[self.speedLimitBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];self.speedLimitBtn.titleLabel.font=[UIFont boldSystemFontOfSize:13];[self.speedLimitBtn addTarget:self action:@selector(toggleSpeedLimit) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.speedLimitBtn];
  self.brakeStatusCard=[UIButton buttonWithType:UIButtonTypeCustom];self.brakeStatusCard.backgroundColor=[UIColor colorWithRed:.04 green:.08 blue:.05 alpha:.88];self.brakeStatusCard.layer.cornerRadius=8;self.brakeStatusCard.layer.borderWidth=1.2;self.brakeStatusCard.layer.borderColor=[UIColor colorWithRed:.25 green:.75 blue:.40 alpha:.45].CGColor;[self.brakeStatusCard addTarget:self action:@selector(openBrakeDiagnosticsMenu) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.brakeStatusCard];UILabel *bTitle=[[UILabel alloc]initWithFrame:CGRectMake(8,4,172,16)];bTitle.tag=501;bTitle.font=[UIFont boldSystemFontOfSize:10.5];bTitle.textColor=[UIColor colorWithRed:.35 green:.92 blue:.45 alpha:1];bTitle.text=@"🛡️ BRAKE / ABS: NORMAL";bTitle.userInteractionEnabled=NO;[self.brakeStatusCard addSubview:bTitle];UILabel *bSub=[[UILabel alloc]initWithFrame:CGRectMake(8,20,172,16)];bSub.tag=502;bSub.font=[UIFont systemFontOfSize:9.5];bSub.textColor=[UIColor colorWithWhite:.75 alpha:1];bSub.text=@"FLUID: OK • PUMP: 18.5 MPa";bSub.userInteractionEnabled=NO;[self.brakeStatusCard addSubview:bSub];[self refreshBrakeStatus];
+ self.hybridSocCard=[UIButton buttonWithType:UIButtonTypeCustom];self.hybridSocCard.backgroundColor=[UIColor colorWithRed:.02 green:.07 blue:.06 alpha:.88];self.hybridSocCard.layer.cornerRadius=8;self.hybridSocCard.layer.borderWidth=1.2;self.hybridSocCard.layer.borderColor=[UIColor colorWithRed:.0 green:.78 blue:.55 alpha:.45].CGColor;[self.hybridSocCard addTarget:self action:@selector(openHybridDiagnosticsMenu) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.hybridSocCard];UILabel *hTitle=[[UILabel alloc]initWithFrame:CGRectMake(8,4,172,16)];hTitle.tag=601;hTitle.font=[UIFont boldSystemFontOfSize:10.5];hTitle.textColor=[UIColor colorWithRed:.0 green:.92 blue:.70 alpha:1];hTitle.text=@"🔋 HYBRID SOC: 74% (EV READY)";hTitle.userInteractionEnabled=NO;[self.hybridSocCard addSubview:hTitle];UILabel *hSub=[[UILabel alloc]initWithFrame:CGRectMake(8,20,172,16)];hSub.tag=602;hSub.font=[UIFont systemFontOfSize:9.5];hSub.textColor=[UIColor colorWithWhite:.75 alpha:1];hSub.text=@"ECT: 89°C • INV: 42°C • 14.1V";hSub.userInteractionEnabled=NO;[self.hybridSocCard addSubview:hSub];[self refreshHybridStatus];
  self.energyFlowLabel=[self label:12 color:[UIColor colorWithRed:.0 green:.9 blue:.5 alpha:1]];self.energyFlowLabel.textAlignment=NSTextAlignmentCenter;self.energyFlowLabel.font=[UIFont boldSystemFontOfSize:11];self.energyFlowLabel.text=@"⚡ EV MOTOR · READY";
  self.gps=[CLLocationManager new];self.gps.delegate=self;self.gps.desiredAccuracy=kCLLocationAccuracyBest;self.gps.distanceFilter=kCLDistanceFilterNone;self.gps.activityType=CLActivityTypeAutomotiveNavigation;
  self.audioBars=[[AudioBars alloc]init];[self.view addSubview:self.audioBars];
@@ -592,7 +728,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
  for(int i=0;i<6;i++){UIButton *b=self.cards[i];b.hidden=self.focused||self.driveMode;b.frame=CGRectMake((w-(cols*cellW+(cols-1)*gap))/2+(i%cols)*(cellW+gap),top+(landscape?16:8)+(i/cols)*(cellH+gap),cellW,cellH);UILabel *title=(UILabel *)[b viewWithTag:100];title.textAlignment=NSTextAlignmentCenter;title.font=[UIFont boldSystemFontOfSize:20];title.frame=CGRectMake(12,cellH/2+4,cellW-24,30);title.adjustsFontSizeToFitWidth=YES;[b viewWithTag:104].frame=CGRectMake(cellW/2-17,cellH/2-36,34,34);[b viewWithTag:102].frame=CGRectMake(0,14,3,cellH-28);}
  self.controls.hidden=self.focused;self.hint.hidden=!self.focused;self.controls.frame=CGRectMake(28,h-94,w-56,68);CGFloat width=(w-86)/4;for(int i=0;i<4;i++){UIView *button=[self.controls viewWithTag:20+i];button.frame=CGRectMake(i*(width+10),0,width,68);button.layer.cornerRadius=7;button.backgroundColor=[TRDAccent() colorWithAlphaComponent:.10];button.layer.borderColor=[TRDAccent() colorWithAlphaComponent:.35].CGColor;[button viewWithTag:105].frame=CGRectMake(width/2-20,14,40,40);}
- self.driveCar.hidden=!self.driveMode;self.driveLeftCard.hidden=!self.driveMode;self.driveRightCard.hidden=!self.driveMode;self.driveTripButton.hidden=!self.driveMode;self.driveCameraButton.hidden=!self.driveMode;
+ self.driveCar.hidden=!self.driveMode;self.hybridEcoBar.hidden=!self.driveMode;self.driveLeftCard.hidden=!self.driveMode;self.driveRightCard.hidden=!self.driveMode;self.driveTripButton.hidden=!self.driveMode;self.driveCameraButton.hidden=!self.driveMode;
  if(self.driveMode){
   self.arc.hidden=YES;self.progress.hidden=YES;self.carImage.hidden=YES;self.panel.clockOnly=YES;
   self.energyFlowLabel.hidden=YES;self.compassLabel.hidden=YES;self.tripButton.hidden=YES;
@@ -604,7 +740,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.unit.hidden=NO;self.unit.font=[UIFont boldSystemFontOfSize:15];self.unit.textAlignment=NSTextAlignmentRight;self.unit.text=@"km/h  •  GPS";self.unit.frame=CGRectMake(30,topY+228,136,24);
   self.speedLimitBtn.hidden=NO;self.speedLimitBtn.frame=CGRectMake(174,topY+223,34,34);self.speedLimitBtn.layer.cornerRadius=17;
   self.driveTripButton.hidden=NO;self.driveTripButton.frame=CGRectMake(30,topY+podH-48,podW-12,42);self.driveTripButton.titleLabel.font=[UIFont boldSystemFontOfSize:11.5];self.driveTripButton.titleLabel.minimumScaleFactor=0.6;self.driveTripButton.layer.cornerRadius=8;self.driveTripButton.backgroundColor=[UIColor colorWithWhite:.10 alpha:1];self.driveTripButton.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;
-  self.driveCar.hidden=NO;self.driveCar.frame=CGRectMake(248,topY+32,w-496,240);
+  self.driveCar.hidden=NO;self.driveCar.frame=CGRectMake(248,topY+26,w-496,220);
+  self.hybridEcoBar.hidden=NO;self.hybridEcoBar.frame=CGRectMake(248,topY+podH-46,w-496,44);
   self.audioBars.hidden=YES;
   CGFloat rightX=w-24-podW;self.driveRightCard.hidden=NO;self.driveRightCard.frame=CGRectMake(rightX,topY,podW,podH);
   self.clock.hidden=NO;self.clock.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:84]?:[UIFont boldSystemFontOfSize:84];self.clock.textAlignment=NSTextAlignmentCenter;self.clock.frame=CGRectMake(rightX,topY+8,podW,96);
@@ -638,13 +775,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.artPlaceholder.frame=self.artwork.frame;self.controls.hidden=NO;self.controls.frame=CGRectMake(28,h-104,w-56,82);[self.controls viewWithTag:23].hidden=YES;CGFloat cw=(w-80)/3;for(int i=0;i<3;i++){UIView *b=[self.controls viewWithTag:20+i];b.frame=CGRectMake(i*(cw+12),0,cw,82);[b viewWithTag:105].frame=CGRectMake(cw/2-24,17,48,48);}
  }
  self.navigation.hidden=self.focused;self.navigation.frame=CGRectMake(0,fullH-78,w,78);CGFloat nw=(w-24)/6;for(int i=0;i<6;i++){UIButton *b=self.navButtons[i];BOOL active=(i==0&&!self.musicMode&&!self.mapMode&&!self.tripMode&&!self.carplayMode)||(i==1&&self.carplayMode)||(i==2&&self.musicMode)||(i==3&&self.mapMode);b.frame=CGRectMake(12+i*nw,9,nw-5,60);b.backgroundColor=active?[TRDAccent() colorWithAlphaComponent:.14]:[UIColor clearColor];[b viewWithTag:201].frame=CGRectMake(b.bounds.size.width/2-47,16,26,26);UILabel *t=(UILabel *)[b viewWithTag:202];t.font=[UIFont boldSystemFontOfSize:13];t.frame=CGRectMake(b.bounds.size.width/2-12,16,70,28);t.textColor=active?[UIColor whiteColor]:[UIColor lightGrayColor];[b viewWithTag:203].backgroundColor=TRDAccent();[b viewWithTag:203].hidden=!active;[b viewWithTag:203].frame=CGRectMake(20,56,b.bounds.size.width-40,2);}
- self.tripButton.hidden=focus||self.musicMode||self.tripMode||self.mapMode||self.driveMode;self.brakeStatusCard.hidden=self.tripButton.hidden||self.carplayMode;
+ self.tripButton.hidden=focus||self.musicMode||self.tripMode||self.mapMode||self.driveMode;self.brakeStatusCard.hidden=self.tripButton.hidden||self.carplayMode;self.hybridSocCard.hidden=self.brakeStatusCard.hidden;
  if(!self.driveMode){self.radioButton.hidden=self.tripButton.hidden;if(!self.musicMode){self.offlineMusicBtn.hidden=self.tripButton.hidden;self.searchMusicBtn.hidden=self.tripButton.hidden;}self.tripButton.frame=CGRectMake(w*.70,top-90,w*.28-12,25);}
  if(landscape&&!focus&&!self.driveMode&&!self.musicMode&&!self.tripMode&&!self.mapMode&&!self.carplayMode){
   self.arc.hidden=YES;self.progress.hidden=YES;self.panel.clockOnly=YES;[self.panel setNeedsDisplay];
   self.carImage.frame=CGRectMake(w*.205,82,w*.59,280);self.carGlow.hidden=YES;
   self.speed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:110]?:[UIFont boldSystemFontOfSize:110];self.speed.frame=CGRectMake(18,95,w*.17,132);self.unit.frame=CGRectMake(18,226,w*.17,30);self.unit.font=[UIFont boldSystemFontOfSize:18];self.gpsStatus.frame=CGRectMake(18,265,w*.19,28);self.gpsStatus.adjustsFontSizeToFitWidth=YES;
-  self.speedLimitBtn.frame=CGRectMake(24,296,32,32);self.speedLimitBtn.layer.cornerRadius=16;self.brakeStatusCard.frame=CGRectMake(18,332,185,38);
+  self.speedLimitBtn.frame=CGRectMake(24,296,32,32);self.speedLimitBtn.layer.cornerRadius=16;self.brakeStatusCard.frame=CGRectMake(18,332,185,38);self.hybridSocCard.frame=CGRectMake(18,374,185,38);
   self.clock.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:76]?:[UIFont boldSystemFontOfSize:76];self.clock.frame=CGRectMake(w*.80,110,w*.19,92);self.date.frame=CGRectMake(w*.80,203,w*.19,28);CGFloat rw=(w*.19-8)/2;self.tripButton.frame=CGRectMake(w*.80,236,rw,32);self.radioButton.frame=CGRectMake(w*.80+rw+8,236,rw,32);self.offlineMusicBtn.hidden=NO;self.offlineMusicBtn.frame=CGRectMake(w*.80,272,rw,32);[self.offlineMusicBtn setTitle:@"💾 OFFLINE" forState:UIControlStateNormal];self.offlineMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:12];self.searchMusicBtn.hidden=NO;self.searchMusicBtn.frame=CGRectMake(w*.80+rw+8,272,rw,32);[self.searchMusicBtn setTitle:@"🔍 SEARCH" forState:UIControlStateNormal];self.searchMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:12];self.carStatus.frame=CGRectMake(w*.80,308,w*.19,22);self.carStatus.adjustsFontSizeToFitWidth=YES;
   CGFloat musicY=h-315;self.nowPanel.frame=CGRectMake(28,musicY,w-56,120);self.artwork.frame=CGRectMake(40,musicY+14,90,90);self.artPlaceholder.frame=self.artwork.frame;self.song.font=[UIFont boldSystemFontOfSize:22];self.song.frame=CGRectMake(145,musicY+14,w*.33,30);self.artist.font=[UIFont systemFontOfSize:16];self.artist.frame=CGRectMake(145,musicY+46,w*.37,22);self.trackProgress.frame=CGRectMake(145,musicY+82,w*.37,3);self.trackTime.font=[UIFont systemFontOfSize:12];self.trackTime.frame=CGRectMake(w*.46,musicY+76,w*.11,22);self.sourceBadge.frame=CGRectMake(w*.52-60,14,66,22);
   self.controls.frame=CGRectMake(w*.63,musicY+26,w*.32,68);CGFloat bw=(w*.32-24)/3;for(int i=0;i<3;i++){UIView *b=[self.controls viewWithTag:20+i];b.frame=CGRectMake(i*(bw+12),0,bw,68);b.backgroundColor=[UIColor colorWithWhite:.075 alpha:1];b.layer.borderColor=[UIColor colorWithWhite:.22 alpha:1].CGColor;[b viewWithTag:105].frame=CGRectMake((bw-36)/2,16,36,36);}[self.controls viewWithTag:23].hidden=YES;
@@ -683,7 +820,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self.view bringSubviewToFront:self.driveEQ];
   [self.view bringSubviewToFront:self.controls];
  }
- [self.view bringSubviewToFront:self.heading];[self.view bringSubviewToFront:self.owner];[self.view bringSubviewToFront:self.modeButton];[self.view bringSubviewToFront:self.driveButton];[self.view bringSubviewToFront:self.nightButton];[self.view bringSubviewToFront:self.statusStrip];[self.view bringSubviewToFront:self.brakeStatusCard];if(self.musicMode)[self.view bringSubviewToFront:self.audioBars];[self.view bringSubviewToFront:self.navigation];if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}if(self.tripSummaryCard){[self.view bringSubviewToFront:self.tripSummaryCard];}
+ [self.view bringSubviewToFront:self.heading];[self.view bringSubviewToFront:self.owner];[self.view bringSubviewToFront:self.modeButton];[self.view bringSubviewToFront:self.driveButton];[self.view bringSubviewToFront:self.nightButton];[self.view bringSubviewToFront:self.statusStrip];[self.view bringSubviewToFront:self.brakeStatusCard];[self.view bringSubviewToFront:self.hybridSocCard];if(self.driveMode){[self.view bringSubviewToFront:self.hybridEcoBar];}if(self.musicMode)[self.view bringSubviewToFront:self.audioBars];[self.view bringSubviewToFront:self.navigation];if(self.settingsSheet){self.settingsSheet.frame=self.view.bounds;[self.view bringSubviewToFront:self.settingsSheet];}if(self.welcome){self.welcome.frame=self.view.bounds;[self.view bringSubviewToFront:self.welcome];}if(self.tripSummaryCard){[self.view bringSubviewToFront:self.tripSummaryCard];}
 
 }
 -(void)update{
@@ -943,6 +1080,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.parkedSince=nil;
  }
  self.gpsLive=valid;[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&valid?self.fix.speed*3.6:0];
+ if(self.hybridEcoBar&&!self.hybridEcoBar.hidden){
+  double curSpeed=valid?kmh:0;
+  BOOL braking=(self.harshBrakeCount>0);
+  BOOL accel=(self.harshAccelCount>0);
+  [self.hybridEcoBar updateWithSpeed:curSpeed isBraking:braking isAccelerating:accel];
+ }
  NSString *newSpeed=valid?[NSString stringWithFormat:@"%.0f",self.fix.speed*3.6]:@"—";
  if(![self.speed.text isEqualToString:newSpeed]){
   self.speed.text=newSpeed;
@@ -1773,6 +1916,71 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  AudioServicesPlaySystemSound(1057);
 }
 
+-(void)obdDataUpdated:(NSNotification *)note{
+ [self refreshBrakeStatus];
+ [self refreshHybridStatus];
+}
+
+-(void)refreshHybridStatus{
+ if(!self.hybridSocCard)return;
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ UILabel *t=(UILabel *)[self.hybridSocCard viewWithTag:601];
+ UILabel *s=(UILabel *)[self.hybridSocCard viewWithTag:602];
+ CGFloat soc=obd.hybridBatterySOC;
+ if(soc<40.0){
+  self.hybridSocCard.backgroundColor=[UIColor colorWithRed:.12 green:.08 blue:.02 alpha:.88];
+  self.hybridSocCard.layer.borderColor=[UIColor colorWithRed:.95 green:.65 blue:.15 alpha:.55].CGColor;
+  t.textColor=[UIColor colorWithRed:1.0 green:.75 blue:.20 alpha:1];
+  t.text=[NSString stringWithFormat:@"🔋 HYBRID SOC: %.0f%% (LOW / CHG)", soc];
+ }else{
+  self.hybridSocCard.backgroundColor=[UIColor colorWithRed:.02 green:.07 blue:.06 alpha:.88];
+  self.hybridSocCard.layer.borderColor=[UIColor colorWithRed:.0 green:.78 blue:.55 alpha:.45].CGColor;
+  t.textColor=[UIColor colorWithRed:.0 green:.92 blue:.70 alpha:1];
+  t.text=[NSString stringWithFormat:@"🔋 HYBRID SOC: %.0f%% (EV READY)", soc];
+ }
+ s.textColor=[UIColor colorWithWhite:.75 alpha:1];
+ s.text=[NSString stringWithFormat:@"ECT: %.0f°C • INV: %.0f°C • 12V: %.1fV", obd.coolantTempC, obd.inverterTempC, obd.auxBatteryVoltage];
+}
+
+-(void)openHybridDiagnosticsMenu{
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ NSString *socHealth=(obd.hybridBatterySOC>=40 && obd.hybridBatterySOC<=80)?@"✅ เกณฑ์ปกติ (Optimal 40-80%)":@"⚠️ นอกช่วงเหมาะสม";
+ NSString *invStr=[NSString stringWithFormat:@"%.1f °C (เกณฑ์ปกติ 30-55 °C)", obd.inverterTempC];
+ NSString *ectStr=[NSString stringWithFormat:@"%.1f °C (เกณฑ์ทำงาน 85-95 °C)", obd.coolantTempC];
+ NSString *auxStr=[NSString stringWithFormat:@"%.1f V (ระบบไฟเสริม 12V)", obd.auxBatteryVoltage];
+ NSString *evStr=[NSString stringWithFormat:@"%.0f%% (สัดส่วนขับขี่ด้วยไฟฟ้า)", obd.tripEVDistancePercent];
+ NSString *msg=[NSString stringWithFormat:@"ระบบไฮบริด Toyota Prius Gen 3 (ZVW30):\n• แบตเตอรี่ไฮบริด (SOC): %.0f%% (%@)\n• ความร้อนอินเวอร์เตอร์: %@\n• ความร้อนเครื่องยนต์ (ECT): %@\n• แบตเตอรี่เสริม 12V: %@\n• อัตราขับด้วยไฟฟ้า (EV): %@",
+               obd.hybridBatterySOC, socHealth, invStr, ectStr, auxStr, evStr];
+ TRDSettingsMenu *m=[self settingsMenu:@"🔋 ข้อมูลระบบไฮบริด (PRIUS HYBRID TELEMETRY)" message:msg];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🔄 สลับจำลองระดับแบตเตอรี่ (ปัจจุบัน %.0f%%)", obd.hybridBatterySOC] style:0 handler:^(TRDSettingAction *a){
+  [self toggleTestHybridSOC];
+  [self refreshHybridStatus];
+  [self openHybridDiagnosticsMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⚡ สลับจำลองมาตรวัด CHG (เบรก) / ECO / PWR" style:0 handler:^(TRDSettingAction *a){
+  if(self.hybridEcoBar){
+   static int simStep=0;
+   simStep=(simStep+1)%3;
+   if(simStep==0)[self.hybridEcoBar updateWithSpeed:30 isBraking:YES isAccelerating:NO];
+   else if(simStep==1)[self.hybridEcoBar updateWithSpeed:55 isBraking:NO isAccelerating:NO];
+   else [self.hybridEcoBar updateWithSpeed:95 isBraking:NO isAccelerating:YES];
+  }
+  [self openHybridDiagnosticsMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔙 ปิดหน้าต่าง" style:0 handler:^(TRDSettingAction *a){
+  [self.settingsSheet dismiss];
+ }]];
+ [self presentSettingsMenu:m];
+}
+
+-(void)toggleTestHybridSOC{
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ static int socIndex=0;
+ socIndex=(socIndex+1)%3;
+ CGFloat testValues[3]={78.0, 36.0, 62.0};
+ [obd simulateHybridBatterySOC:testValues[socIndex]];
+}
+
 @end
 @interface CarApp:UIResponder<UIApplicationDelegate>
 @property(nonatomic,strong) UIWindow *window;
@@ -1825,6 +2033,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  if([url.host isEqualToString:@"fuel"])[v openFuelPriceSettings];
  if([url.host isEqualToString:@"obd"])[v openFuelPriceSettings];
  if([url.host isEqualToString:@"brake"])[v openBrakeDiagnosticsMenu];
+ if([url.host isEqualToString:@"hybrid"])[v openHybridDiagnosticsMenu];
  if([url.host isEqualToString:@"reverse"]){ [[TRDOBDClient sharedClient] toggleTestReverseGear]; }
  if([url.host isEqualToString:@"welcome"])[v showWelcome];
  if([url.host isEqualToString:@"capture"])[v capture];
