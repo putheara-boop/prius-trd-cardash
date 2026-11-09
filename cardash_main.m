@@ -328,13 +328,19 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)openSpeedDial;
 -(void)promptSetSpeedDial;
 -(void)updateEcoScoreForSpeed:(double)curKmh valid:(BOOL)valid;
+@property BOOL isReverseActive;
+@property NSTimer *reverseBeepTimer;
+-(void)obdGearChanged:(NSNotification *)note;
+-(void)handleReverseEngaged;
+-(void)handleReverseDisengaged;
+-(void)playReverseBeep;
 @end
 @implementation Dashboard
 #import "CarExtrasMethods.h"
 #import "TRDTripMethods.h"
 -(UILabel *)label:(CGFloat)size color:(UIColor *)color{UILabel *l=[UILabel new];l.font=[UIFont systemFontOfSize:size];l.textColor=color;[self.view addSubview:l];return l;}
 -(void)viewDidLoad{
- [super viewDidLoad];[[TRDOBDClient sharedClient] startScanning];self.trip=[TRDTrip new];[self.trip restore:[[NSUserDefaults standardUserDefaults]dictionaryForKey:@"TRDTripSummary"]];TRDTheme=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDTheme"]));self.displayMode=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDDisplayMode"]));self.panel=[[SportPanel alloc]initWithFrame:self.view.bounds];self.panel.userInteractionEnabled=NO;self.panel.opaque=YES;[self.view addSubview:self.panel];self.view.backgroundColor=[UIColor colorWithRed:.025 green:.025 blue:.03 alpha:1];UIColor *blue=TRDAccent();self.heading=[self label:18 color:blue];self.heading.text=[NSString stringWithFormat:@"PRIUS  TRD  /  %@",TRDDriveModeName(TRDTheme)];self.heading.font=[UIFont boldSystemFontOfSize:18];self.owner=[self label:10 color:[UIColor colorWithWhite:.55 alpha:1]];self.owner.text=@"PEEPUT’S DRIVE";self.owner.font=[UIFont boldSystemFontOfSize:10];
+ [super viewDidLoad];[[TRDOBDClient sharedClient] startScanning];[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(obdGearChanged:) name:TRDOBDGearChangedNotification object:nil];self.trip=[TRDTrip new];[self.trip restore:[[NSUserDefaults standardUserDefaults]dictionaryForKey:@"TRDTripSummary"]];TRDTheme=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDTheme"]));self.displayMode=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDDisplayMode"]));self.panel=[[SportPanel alloc]initWithFrame:self.view.bounds];self.panel.userInteractionEnabled=NO;self.panel.opaque=YES;[self.view addSubview:self.panel];self.view.backgroundColor=[UIColor colorWithRed:.025 green:.025 blue:.03 alpha:1];UIColor *blue=TRDAccent();self.heading=[self label:18 color:blue];self.heading.text=[NSString stringWithFormat:@"PRIUS  TRD  /  %@",TRDDriveModeName(TRDTheme)];self.heading.font=[UIFont boldSystemFontOfSize:18];self.owner=[self label:10 color:[UIColor colorWithWhite:.55 alpha:1]];self.owner.text=@"PEEPUT’S DRIVE";self.owner.font=[UIFont boldSystemFontOfSize:10];
  NSUserDefaults *wheelPrefs=[NSUserDefaults standardUserDefaults];if(![wheelPrefs boolForKey:@"TRDOptimizedWheelEnabledV1"]){[wheelPrefs setBool:NO forKey:@"TRDCalmDrive"];[wheelPrefs setBool:YES forKey:@"TRDOptimizedWheelEnabledV1"];[wheelPrefs synchronize];}self.calmDrive=[wheelPrefs boolForKey:@"TRDCalmDrive"];self.nightMode=[[NSUserDefaults standardUserDefaults]boolForKey:@"nightMode"];TRDLowLight=self.nightMode;self.dayBrightness=[[NSUserDefaults standardUserDefaults]objectForKey:@"dayBrightness"]?[[NSUserDefaults standardUserDefaults]doubleForKey:@"dayBrightness"]:.6;if(self.dayBrightness<.15)self.dayBrightness=.6;
  NSUserDefaults *p=[NSUserDefaults standardUserDefaults];
   self.hotCarSaverEnabled=[p objectForKey:@"TRDHotCarSaver"]?[p boolForKey:@"TRDHotCarSaver"]:YES;
@@ -1707,8 +1713,15 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   [self openBrakeDiagnosticsMenu];
  }]];
  
+ NSString *gearTitle = [NSString stringWithFormat:@"🚗 ทดสอบสลับเกียร์ถอยหลัง R [กล้อง+เสียง] (%@)", obd.isReverseGear ? @"กำลังถอย R" : @"เกียร์ P/D"];
+ [m addAction:[TRDSettingAction actionWithTitle:gearTitle style:0 handler:^(TRDSettingAction *a){
+  [obd toggleTestReverseGear];
+  [self openBrakeDiagnosticsMenu];
+ }]];
+ 
  [m addAction:[TRDSettingAction actionWithTitle:@"🔄 เคลียร์ค่าและรีเซ็ตสถานะปกติ" style:0 handler:^(TRDSettingAction *a){
   if(!obd.brakeFluidNormal)[obd toggleTestBrakeWarning];
+  if(obd.isReverseGear)[obd toggleTestReverseGear];
   [self refreshBrakeStatus];
   [self openBrakeDiagnosticsMenu];
  }]];
@@ -1718,6 +1731,46 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  }]];
  
  [self presentSettingsMenu:m];
+}
+
+-(void)obdGearChanged:(NSNotification *)note{
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ if(obd.isReverseGear){
+  [self handleReverseEngaged];
+ }else{
+  [self handleReverseDisengaged];
+ }
+}
+
+-(void)handleReverseEngaged{
+ if(self.isReverseActive)return;
+ self.isReverseActive=YES;
+ notify_post("com.codex.trd.network.camera");
+ if(![self launchBundleApp:@"com.codex.h109viewer"]){
+  [self launchBundleApp:@"com.apple.camera"];
+ }
+ if(self.radioPlayer){
+  self.radioPlayer.volume=0.5f;
+ }
+ [self.reverseBeepTimer invalidate];
+ self.reverseBeepTimer=[NSTimer scheduledTimerWithTimeInterval:0.85 target:self selector:@selector(playReverseBeep) userInfo:nil repeats:YES];
+ [self playReverseBeep];
+}
+
+-(void)handleReverseDisengaged{
+ if(!self.isReverseActive)return;
+ self.isReverseActive=NO;
+ [self.reverseBeepTimer invalidate];
+ self.reverseBeepTimer=nil;
+ if(self.radioPlayer){
+  self.radioPlayer.volume=1.0f;
+ }
+ notify_post("com.codex.trd.network.internet");
+ [self homePage];
+}
+
+-(void)playReverseBeep{
+ AudioServicesPlaySystemSound(1057);
 }
 
 @end
@@ -1772,6 +1825,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  if([url.host isEqualToString:@"fuel"])[v openFuelPriceSettings];
  if([url.host isEqualToString:@"obd"])[v openFuelPriceSettings];
  if([url.host isEqualToString:@"brake"])[v openBrakeDiagnosticsMenu];
+ if([url.host isEqualToString:@"reverse"]){ [[TRDOBDClient sharedClient] toggleTestReverseGear]; }
  if([url.host isEqualToString:@"welcome"])[v showWelcome];
  if([url.host isEqualToString:@"capture"])[v capture];
  return YES;

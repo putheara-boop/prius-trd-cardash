@@ -6,6 +6,7 @@
 
 NSString * const TRDOBDDataDidUpdateNotification = @"TRDOBDDataDidUpdateNotification";
 NSString * const TRDOBDConnectionStateChangedNotification = @"TRDOBDConnectionStateChangedNotification";
+NSString * const TRDOBDGearChangedNotification = @"TRDOBDGearChangedNotification";
 
 // Well-known BLE Serial Services used by vLinker MC+ and ELM327 BLE
 static NSString * const kNordicUARTServiceUUID = @"6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
@@ -46,6 +47,7 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
 @property (nonatomic, assign) CGFloat tripEVDistancePercent;
 
 @property (nonatomic, copy) NSString *currentGear;
+@property (nonatomic, assign) BOOL isReverseGear;
 @property (nonatomic, assign) BOOL doorFrontLeftOpen;
 @property (nonatomic, assign) BOOL doorFrontRightOpen;
 @property (nonatomic, assign) BOOL doorRearLeftOpen;
@@ -92,6 +94,7 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
         _connectionStatus = @"Initialized";
         _connectedDeviceName = @"";
         _currentGear = @"P";
+        _isReverseGear = NO;
         _engineRPM = 0;
         _coolantTempC = 0.0;
         _hybridBatterySOC = 60.0; // Default Prius nominal SOC
@@ -251,6 +254,25 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
 }
 
+- (void)simulateGear:(NSString *)gear {
+    if (!gear.length) return;
+    NSString *oldGear = _currentGear;
+    _currentGear = [gear copy];
+    _isReverseGear = [_currentGear isEqualToString:@"R"];
+    if (![oldGear isEqualToString:_currentGear]) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDGearChangedNotification object:self userInfo:@{@"gear": _currentGear}];
+    }
+    [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+}
+
+- (void)toggleTestReverseGear {
+    if ([_currentGear isEqualToString:@"R"]) {
+        [self simulateGear:@"P"];
+    } else {
+        [self simulateGear:@"R"];
+    }
+}
+
 // Fallback estimator for when OBD is not yet connected physically (uses Prius 21.5 km/L baseline)
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt {
     if (self.isConnected) {
@@ -406,6 +428,9 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
     } else if (self.pollIndex % 4 == 1) {
         // MAF (Mass Air Flow for fuel flow)
         [self sendCommand:@"0110"];
+    } else if (self.pollIndex % 4 == 3) {
+        // Transmission Shift Position / Reverse Gear (Prius 2182)
+        [self sendCommand:@"2182"];
     } else if (self.pollIndex % 8 == 3) {
         // Coolant Temp
         [self sendCommand:@"0105"];
@@ -520,6 +545,22 @@ static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
         if ([s scanHexInt:&socHex]) {
             self.hybridBatterySOC = (CGFloat)(socHex * 0.5);
             [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+        }
+        return;
+    }
+    
+    // 2182: Toyota Prius Transmission Shift Position -> "6182XX"
+    if ([hex hasPrefix:@"6182"] && hex.length >= 6) {
+        unsigned int b = 0;
+        NSScanner *s = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(4, 2)]];
+        if ([s scanHexInt:&b]) {
+            NSString *g = @"P";
+            if (b == 0x00) g = @"P";
+            else if (b == 0x10 || b == 0x20 || (b & 0x02)) g = @"R";
+            else if (b == 0x30) g = @"N";
+            else if (b == 0x40) g = @"D";
+            else if (b == 0x50) g = @"B";
+            [self simulateGear:g];
         }
         return;
     }

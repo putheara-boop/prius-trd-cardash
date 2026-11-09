@@ -7,6 +7,7 @@
 | :--- | :--- | :--- |
 | ![Home Dashboard](screen_clean_home_badge.png) | **หน้าจอหลัก (Home Dashboard)** | หน้าปัดความเร็ว, นาฬิกา, รถ Prius TRD สีดำ, การ์ดสถานะเบรก & ABS, และแผงคุมเพลง |
 | ![Brake Diagnostics](screen_brake_menu_verified.png) | **เมนูวินิจฉัยระบบเบรก & ABS** | ตรวจสอบระดับน้ำมันเบรก, กล่อง ABS/VSC, แรงดันปั๊มไฮดรอลิก (MPa) และปุ่มสลับทดสอบเตือน |
+| ![Reverse Gear Menu](screen_reverse_gear_menu.png) | **ระบบเกียร์ถอยหลัง R อัตโนมัติ** | สลับ Wi-Fi เข้ากล้องถอย, เปิดแอพ H109Viewer, หรี่เพลง 50% และส่งเสียงโซนาร์ถอยหลัง |
 | ![Trip Summary](screen_trip_summary_live_pump.png) | **สรุปทริปจอดรถ (Trip Summary)** | ระยะทาง, เวลา, ลิตรน้ำมันที่ใช้ และคำนวณค่าน้ำมัน (฿) จากราคาปั๊มสดอัตโนมัติ |
 | ![Live Pump Prices](screen_live_oil_pump_menu.png) | **ราคาน้ำมันสดจากปั๊ม (Oil API)** | เชื่อมโยงราคาน้ำมันสดแบบเรียลไทม์จากปั๊ม ปตท. (แก๊สโซฮอล์ 95, 91, E20, พรีเมียม 95) |
 | ![Car Settings](screen_home_brake_live.png) | **เมนูตั้งค่ารถยนต์ (Car Settings)** | ตั้งค่าเสียงต้อนรับ, ราคาน้ำมัน, โหมดประหยัดแบตเตอรี่, ระยะเปลี่ยนถ่ายน้ำมันเครื่อง |

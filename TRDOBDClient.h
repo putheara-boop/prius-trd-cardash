@@ -9,6 +9,7 @@
 
 extern NSString * const TRDOBDDataDidUpdateNotification;
 extern NSString * const TRDOBDConnectionStateChangedNotification;
+extern NSString * const TRDOBDGearChangedNotification;
 
 @interface TRDOBDClient : NSObject <CBCentralManagerDelegate, CBPeripheralDelegate>
 
@@ -44,6 +45,7 @@ extern NSString * const TRDOBDConnectionStateChangedNotification;
 
 // Body & Door Sensors (Tesla/EV Style)
 @property (nonatomic, copy, readonly) NSString *currentGear;          // @"P", @"R", @"N", @"D", @"B"
+@property (nonatomic, assign, readonly) BOOL isReverseGear;           // YES when gear == @"R"
 @property (nonatomic, assign, readonly) BOOL doorFrontLeftOpen;      // Driver Door
 @property (nonatomic, assign, readonly) BOOL doorFrontRightOpen;     // Passenger Door
 @property (nonatomic, assign, readonly) BOOL doorRearLeftOpen;       // Rear Left Door
@@ -66,6 +68,8 @@ extern NSString * const TRDOBDConnectionStateChangedNotification;
 - (void)fetchLiveOilPrices;
 - (void)resetTripFuel;
 - (void)toggleTestBrakeWarning;
+- (void)toggleTestReverseGear;
+- (void)simulateGear:(NSString *)gear;
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt;
 
 @end
