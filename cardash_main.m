@@ -1510,8 +1510,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self.view addSubview:self.driveTripCard];
 
   self.driveEqBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-  [self.driveEqBtn setTitle:@"\U0001F39B\U0000FE0F EQ SOUND: JBL BASS" forState:UIControlStateNormal];
-  self.driveEqBtn.titleLabel.font = [UIFont boldSystemFontOfSize:11];
+  [self.driveEqBtn setTitle:@"🎚️ JBL EQ SOUND" forState:UIControlStateNormal];
+  self.driveEqBtn.titleLabel.font = [UIFont boldSystemFontOfSize:12];
   self.driveEqBtn.backgroundColor = [UIColor colorWithRed:.04 green:.10 blue:.16 alpha:.9];
   self.driveEqBtn.layer.cornerRadius = 8;
   self.driveEqBtn.layer.borderWidth = 1.0;
@@ -1521,8 +1521,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self.view addSubview:self.driveEqBtn];
 
   self.driveExitBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-  [self.driveExitBtn setTitle:@"\U0001F3E0 EXIT TO HOME" forState:UIControlStateNormal];
-  self.driveExitBtn.titleLabel.font = [UIFont boldSystemFontOfSize:11.5];
+  [self.driveExitBtn setTitle:@"🏠 EXIT TO HOME" forState:UIControlStateNormal];
+  self.driveExitBtn.titleLabel.font = [UIFont boldSystemFontOfSize:12];
   self.driveExitBtn.backgroundColor = [UIColor colorWithRed:.12 green:.06 blue:.08 alpha:.9];
   self.driveExitBtn.layer.cornerRadius = 8;
   self.driveExitBtn.layer.borderWidth = 1.0;
@@ -1735,6 +1735,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.progress.hidden = YES;
   self.brakeStatusCard.hidden = YES;
   self.hybridSocCard.hidden = YES;
+  self.miniPlayer.hidden = YES;
+  self.trackProgress.hidden = hide;
+  self.trackTime.hidden = hide;
+  self.driveEQ.hidden = hide;
   self.nowPanel.hidden = hide;
   UIView *pCard = [self.view viewWithTag:701]; if (pCard) pCard.hidden = hide;
   UIView *deltaL = [self.view viewWithTag:706]; if (deltaL) deltaL.hidden = hide;
@@ -2001,21 +2005,21 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
     // Right Pills: GPS, OBD2, 12V
     CGFloat curRx = w - 20;
-    CGFloat pillH = 26;
-    curRx -= 90;
+    CGFloat pillH = 28;
+    curRx -= 100;
     self.thaiVoicePill.hidden = NO;
-    self.thaiVoicePill.frame = CGRectMake(curRx, barY - 1, 90, pillH);
+    self.thaiVoicePill.frame = CGRectMake(curRx, barY - 2, 100, pillH);
     [self.thaiVoicePill setTitle:@"12V: 13.8V" forState:UIControlStateNormal];
 
-    curRx -= 105;
+    curRx -= 154;
     self.obdStatusPill.hidden = NO;
-    self.obdStatusPill.frame = CGRectMake(curRx, barY - 1, 100, pillH);
-    [self.obdStatusPill setTitle:@"OBD2: LIVE" forState:UIControlStateNormal];
+    self.obdStatusPill.frame = CGRectMake(curRx, barY - 2, 146, pillH);
+    [self.obdStatusPill setTitle:@"● OBD-II: DEMO SIM" forState:UIControlStateNormal];
 
-    curRx -= 115;
+    curRx -= 118;
     self.dayNightPill.hidden = NO;
-    self.dayNightPill.frame = CGRectMake(curRx, barY - 1, 110, pillH);
-    [self.dayNightPill setTitle:@"GPS: 3D LOCK" forState:UIControlStateNormal];
+    self.dayNightPill.frame = CGRectMake(curRx, barY - 2, 110, pillH);
+    [self.dayNightPill setTitle:self.nightMode?@"🌙 กลางคืน":@"☀️ กลางวัน" forState:UIControlStateNormal];
 
     // Left Pod (Width: 250, Y: 48, Height: 590)
     CGFloat podW = 250, topY = 48;
@@ -2176,24 +2180,41 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
     CGFloat artRight = 28 + consoleH - 24 + 14;
     self.song.hidden = NO;
-    self.song.frame = CGRectMake(artRight, consoleY + 16, 260, 26);
-    self.song.font = [UIFont boldSystemFontOfSize:15];
+    self.song.frame = CGRectMake(artRight, consoleY + 14, 280, 30);
+    self.song.font = [UIFont boldSystemFontOfSize:18.5];
     self.song.textColor = [UIColor whiteColor];
 
     self.artist.hidden = NO;
-    self.artist.frame = CGRectMake(artRight, consoleY + 44, 260, 20);
-    self.artist.font = [UIFont systemFontOfSize:12];
-    self.artist.textColor = [UIColor colorWithWhite:0.6 alpha:1];
+    self.artist.frame = CGRectMake(artRight, consoleY + 46, 280, 24);
+    self.artist.font = [UIFont boldSystemFontOfSize:14.0];
+    self.artist.textColor = [UIColor colorWithWhite:0.70 alpha:1];
 
     self.controls.hidden = NO;
-    self.controls.frame = CGRectMake(artRight + 270, consoleY + 18, 180, 60);
+    self.controls.frame = CGRectMake(artRight + 290, consoleY + 18, 220, 60);
+    CGFloat dcw = 210 / 3.0;
+    for (int i = 0; i < 3; i++) {
+      UIView *b = [self.controls viewWithTag:20 + i];
+      b.frame = CGRectMake(i * (dcw + 5), 0, dcw, 60);
+      b.layer.cornerRadius = 10;
+      if (i == 1) {
+        b.backgroundColor = [UIColor colorWithRed:.0 green:.72 blue:.40 alpha:1];
+        b.layer.borderColor = [UIColor colorWithRed:.2 green:.9 blue:.5 alpha:1].CGColor;
+      } else {
+        b.backgroundColor = [UIColor colorWithWhite:.12 alpha:1];
+        b.layer.borderColor = [UIColor colorWithWhite:.24 alpha:1].CGColor;
+      }
+      [b viewWithTag:105].frame = CGRectMake((dcw - 28)/2, (60 - 28)/2, 28, 28);
+    }
 
     self.driveEqBtn.hidden = NO;
-    self.driveEqBtn.frame = CGRectMake(w - 36 - 290, consoleY + 24, 135, 48);
+    self.driveEqBtn.frame = CGRectMake(w - 36 - 305, consoleY + 22, 150, 52);
 
     self.driveExitBtn.hidden = NO;
-    self.driveExitBtn.frame = CGRectMake(w - 36 - 145, consoleY + 24, 135, 48);
+    self.driveExitBtn.frame = CGRectMake(w - 36 - 145, consoleY + 22, 138, 52);
     self.driveEQ.hidden = YES;
+    self.miniPlayer.hidden = YES;
+    self.trackProgress.hidden = YES;
+    self.trackTime.hidden = YES;
     UIView *mH = [self.nowPanel viewWithTag:750]; if(mH) mH.hidden = YES;
 
     // Bring subviews to front for Drive Mode
@@ -2881,7 +2902,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  [self refreshSpeed];
 }
 -(void)cycleDriveMode{NSInteger next=(TRDTheme+1)%3;[self setThemeNumber:@(next)];}
--(void)toggleDrive{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.driveMode=!self.driveMode;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:self.driveMode?@"‹ DASHBOARD":@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)toggleDrive{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.driveMode=!self.driveMode;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:self.driveMode?@"‹ DASHBOARD":@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)toggleNight{
  NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];
  if(!self.nightMode){CGFloat observed=[UIScreen mainScreen].brightness;if(observed>=.15)self.dayBrightness=observed;if(self.dayBrightness<.15)self.dayBrightness=.6;[prefs setDouble:self.dayBrightness forKey:@"dayBrightness"];[UIScreen mainScreen].brightness=MIN(self.dayBrightness,.12);self.nightMode=YES;}
@@ -3695,7 +3716,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  dispatch_async(dispatch_get_main_queue(),^{Dashboard *v=weak;if(!v)return;if(v.commandsPending)v.commandsPending--;if(!ok){v.notice=@"Command unavailable. Tap to retry.";v.noticeUntil=[NSDate dateWithTimeIntervalSinceNow:4];v.song.text=v.notice;}else [v refreshNowPlaying];});}});
 }
 -(UIWebView *)ensureMapWebView{if(!self.mapWebView){self.mapWebView=[[UIWebView alloc]initWithFrame:self.mapContainer.bounds];self.mapWebView.backgroundColor=[UIColor clearColor];self.mapWebView.opaque=NO;self.mapWebView.scalesPageToFit=YES;self.mapWebView.scrollView.bounces=NO;self.mapWebView.delegate=self;[self.mapContainer addSubview:self.mapWebView];}return self.mapWebView;}
--(void)openCarPlay{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.carplayMode=YES;self.carplayGridMode=NO;[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];[self.view setNeedsLayout];[self update];}
+-(void)openCarPlay{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.carplayMode=YES;self.carplayGridMode=NO;[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];[self.view setNeedsLayout];[self update];}
 -(void)toggleCarPlayGrid{self.carplayGridMode=!self.carplayGridMode;[self.view setNeedsLayout];}
 -(void)carplayTapMap{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}else{[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.recenter)window.recenter();"];}}
 -(void)carplayTapMusic{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}[self browseSource:@"com.legacymusic.app"];}
@@ -3707,8 +3728,8 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)openYouTubeSource{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];}
 -(void)navigate:(UIButton *)button{switch(button.tag){case 60:[self homePage];break;case 66:[self openCarPlay];break;case 61:if(self.musicMode){[self showMusicSources:button];}else{[self openMusic];}break;case 62:[self openMap];break;case 63:[self openDriveEQ];break;case 64:[self screenOff];break;case 65:[self openCamera];break;case 67:notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];break;case 68:[self carSettings];break;}}
 -(void)homePage{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
--(void)openMusic{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=YES;self.driveMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self.view setNeedsLayout];self.ticks=0;[self update];}
--(void)openMap{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self ensureMapWebView];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];else [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];[self updateMapCar];}
+-(void)openMusic{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self homePage];}
+-(void)openMap{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self ensureMapWebView];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];else [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];[self updateMapCar];}
 -(void)syncMapAppearance:(BOOL)initial{if(!self.mapWebView)return;NSString *mode=self.nightMode?@"night":@"traffic";NSString *js=initial?[NSString stringWithFormat:@"if(window.setMode && !window.__trdInitialThemeDone){window.__trdInitialThemeDone=true;window.setMode('%@');}",mode]:[NSString stringWithFormat:@"if(window.setMode){window.setMode('%@');}",mode];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
 -(void)webViewDidFinishLoad:(UIWebView *)webView{if(webView==self.mapWebView)[self syncMapAppearance:YES];}
 -(void)loadMapHTML{[self ensureMapWebView];NSString *path=@"/Applications/CarDash.app/map.html";if([[NSFileManager defaultManager]fileExistsAtPath:path])[self.mapWebView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:path]]];}
