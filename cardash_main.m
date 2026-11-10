@@ -2437,7 +2437,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveEQ.layer.borderWidth = 1.2;
     self.driveEQ.layer.borderColor = [UIColor colorWithRed:0 green:.85 blue:1 alpha:.5].CGColor;
     self.driveEQ.backgroundColor = [UIColor colorWithRed:.04 green:.12 blue:.18 alpha:1];
-    [self.driveEQ setTitle:@"U0001F39BU0000FE0F JBL EQ" forState:UIControlStateNormal];
+    [self.driveEQ setTitle:@"🎚️ JBL EQ" forState:UIControlStateNormal];
     [self.driveEQ setTitleColor:[UIColor colorWithRed:0 green:.9 blue:1 alpha:1] forState:UIControlStateNormal];
     self.driveEQ.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
     if(mHead) mHead.hidden = NO;
