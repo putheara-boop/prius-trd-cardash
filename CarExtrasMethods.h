@@ -60,6 +60,22 @@ static BOOL gTRDWelcomeSpoken;
  return NO;
 }
 
+static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences, NSString *langCode, float rate) {
+ AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
+ for(NSUInteger i=0;i<sentences.count;i++){
+  NSString *s=sentences[i];
+  if(!s.length)continue;
+  AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:s];
+  if(v)utt.voice=v;
+  utt.rate=rate;
+  utt.pitchMultiplier=1.0f;
+  utt.preUtteranceDelay=(i==0)?0.20f:0.0f;
+  utt.postUtteranceDelay=(i+1<sentences.count)?0.32f:0.10f;
+  utt.volume=1.0f;
+  [synth speakUtterance:utt];
+ }
+}
+
 -(void)speakWelcomeMessage{
  dispatch_async(dispatch_get_main_queue(), ^{
   if(gTRDWelcomeSpoken) return;
@@ -85,9 +101,9 @@ static BOOL gTRDWelcomeSpoken;
     [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
    }
    NSInteger hour=[[NSCalendar currentCalendar] component:NSCalendarUnitHour fromDate:[NSDate date]];
-   NSString *phrase;
    NSString *langCode;
    float rate;
+   NSMutableArray *sentences=[NSMutableArray array];
 
    NSUserDefaults *pW=[NSUserDefaults standardUserDefaults];
    double totalKm=[pW doubleForKey:@"TRDTotalOdometer"];
@@ -99,47 +115,52 @@ static BOOL gTRDWelcomeSpoken;
 
    if(voiceLang==1){ // Thai
     langCode=@"th-TH";
-    rate=0.18f;
+    rate=0.03f;
     if(hour>=5 && hour<12){
-     phrase=@"อรุณสวัสดิ์ครับคุณพีพุท ระบบพร้อมใช้งาน ขอให้เป็นวันที่ดี และเดินทางปลอดภัยนะครับ";
+     [sentences addObject:@"อรุณสวัสดิ์ครับคุณพีพุท"];
+     [sentences addObject:@"ระบบพร้อมใช้งาน"];
+     [sentences addObject:@"ขอให้เป็นวันที่ดี และเดินทางปลอดภัยนะครับ"];
     }else if(hour>=12 && hour<18){
-     phrase=@"สวัสดีตอนบ่ายครับคุณพีพุท ระบบพร้อมใช้งาน ขอให้ขับรถอย่างมีความสุข และเดินทางปลอดภัยนะครับ";
+     [sentences addObject:@"สวัสดีตอนบ่ายครับคุณพีพุท"];
+     [sentences addObject:@"ระบบพร้อมใช้งาน"];
+     [sentences addObject:@"ขอให้ขับรถอย่างมีความสุข และเดินทางปลอดภัยนะครับ"];
     }else{
-     phrase=@"สวัสดีตอนค่ำครับคุณพีพุท ระบบพร้อมใช้งาน ขอให้เดินทางปลอดภัยในค่ำคืนนี้นะครับ";
+     [sentences addObject:@"สวัสดีตอนค่ำครับคุณพีพุท"];
+     [sentences addObject:@"ระบบพร้อมใช้งาน"];
+     [sentences addObject:@"ขอให้เดินทางปลอดภัยในค่ำคืนนี้นะครับ"];
     }
     if(rain){
-     phrase=[phrase stringByAppendingString:@" วันนี้มีรายงานฝนตกในพื้นที่ โปรดขับขี่ด้วยความระมัดระวังนะครับ"];
+     [sentences addObject:@"วันนี้มีรายงานฝนตกในพื้นที่ โปรดขับขี่ด้วยความระมัดระวังนะครับ"];
     }else if(serviceWarning){
-     phrase=[phrase stringByAppendingString:@" แจ้งเตือน ใกล้ถึงระยะเปลี่ยนถ่ายน้ำมันเครื่องแล้วครับ"];
+     [sentences addObject:@"แจ้งเตือน ใกล้ถึงระยะเปลี่ยนถ่ายน้ำมันเครื่องแล้วครับ"];
     }
    }else{ // English default
     langCode=@"en-US";
-    rate=0.16f;
+    rate=0.02f;
     if(hour>=5 && hour<12){
-     phrase=@"Good morning, PeePut. System is ready. Have a productive day, and travel safely.";
+     [sentences addObject:@"Good morning, PeePut."];
+     [sentences addObject:@"System is ready."];
+     [sentences addObject:@"Have a productive day, and travel safely."];
     }else if(hour>=12 && hour<18){
-     phrase=@"Good afternoon, PeePut. System is ready. Enjoy your drive, and travel safely.";
+     [sentences addObject:@"Good afternoon, PeePut."];
+     [sentences addObject:@"System is ready."];
+     [sentences addObject:@"Enjoy your drive, and travel safely."];
     }else{
-     phrase=@"Good evening, PeePut. System is ready. Enjoy your drive, and travel safely tonight.";
+     [sentences addObject:@"Good evening, PeePut."];
+     [sentences addObject:@"System is ready."];
+     [sentences addObject:@"Enjoy your drive, and travel safely tonight."];
     }
     if(rain){
-     phrase=[phrase stringByAppendingString:@" Rain is reported in your area. Drive carefully on wet roads."];
+     [sentences addObject:@"Rain is reported in your area. Drive carefully on wet roads."];
     }else if(serviceWarning){
-     phrase=[phrase stringByAppendingString:@" Maintenance reminder. Engine oil service is due soon."];
+     [sentences addObject:@"Maintenance reminder. Engine oil service is due soon."];
     }
    }
-   AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:phrase];
-   AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
-   if(v) utt.voice=v;
-   utt.rate=rate;
-   utt.pitchMultiplier=1.0f;
-   utt.preUtteranceDelay=0.15f;
-   utt.volume=1.0f;
-   [gTRDWelcomeSynth speakUtterance:utt];
+   TRDEnqueueCalmSpeech(gTRDWelcomeSynth, sentences, langCode, rate);
   } @catch(NSException *e){}
   if(self.welcome){
    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];
-   [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:8.5];
+   [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:9.5];
   }
  });
 }
@@ -156,35 +177,32 @@ static BOOL gTRDWelcomeSpoken;
    if([gTRDWelcomeSynth isSpeaking]){
     [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
    }
-   NSString *phrase;
    NSString *langCode;
    float rate;
+   NSMutableArray *sentences=[NSMutableArray array];
    NSInteger eco = self.ecoScore > 0 ? self.ecoScore : 95;
    if(voiceLang==1){
-    if(eco >= 85){
-     phrase=[NSString stringWithFormat:@"สิ้นสุดการเดินทาง คะแนนขับขี่ประหยัดพลังงาน %ld เต็ม 100 ขับขี่ได้นุ่มนวลยอดเยี่ยมมากครับคุณพีพุท", (long)eco];
-    }else{
-     phrase=[NSString stringWithFormat:@"สิ้นสุดการเดินทาง คะแนนขับขี่ประหยัดพลังงาน %ld เต็ม 100 ขอบคุณครับคุณพีพุท ขอให้เป็นวันที่ดีนะครับ", (long)eco];
-    }
     langCode=@"th-TH";
-    rate=0.18f;
-   }else{
+    rate=0.03f;
+    [sentences addObject:@"สิ้นสุดการเดินทาง"];
+    [sentences addObject:[NSString stringWithFormat:@"คะแนนขับขี่ประหยัดพลังงาน %ld เต็ม 100", (long)eco]];
     if(eco >= 85){
-     phrase=[NSString stringWithFormat:@"Trip completed. Your eco drive score is %ld out of 100. Excellent and smooth driving, PeePut.", (long)eco];
+     [sentences addObject:@"ขับขี่ได้นุ่มนวลยอดเยี่ยมมากครับคุณพีพุท"];
     }else{
-     phrase=[NSString stringWithFormat:@"Trip completed. Your eco drive score is %ld out of 100. Goodbye, PeePut. Have a nice day.", (long)eco];
+     [sentences addObject:@"ขอบคุณครับคุณพีพุท ขอให้เป็นวันที่ดีนะครับ"];
     }
+   }else{
     langCode=@"en-US";
-    rate=0.16f;
+    rate=0.02f;
+    [sentences addObject:@"Trip completed."];
+    [sentences addObject:[NSString stringWithFormat:@"Your eco drive score is %ld out of 100.", (long)eco]];
+    if(eco >= 85){
+     [sentences addObject:@"Excellent and smooth driving, PeePut."];
+    }else{
+     [sentences addObject:@"Goodbye, PeePut. Have a nice day."];
+    }
    }
-   AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:phrase];
-   AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
-   if(v) utt.voice=v;
-   utt.rate=rate;
-   utt.pitchMultiplier=1.0f;
-   utt.preUtteranceDelay=0.15f;
-   utt.volume=1.0f;
-   [gTRDWelcomeSynth speakUtterance:utt];
+   TRDEnqueueCalmSpeech(gTRDWelcomeSynth, sentences, langCode, rate);
   } @catch(NSException *e){}
  });
 }

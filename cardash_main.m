@@ -3495,14 +3495,10 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
    if([gTRDWelcomeSynth isSpeaking]){
     [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
    }
-   AVSpeechUtterance *utt = [AVSpeechUtterance speechUtteranceWithString:phrase];
    NSInteger voiceLang = [[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];
-   utt.voice = [AVSpeechSynthesisVoice voiceWithLanguage:voiceLang == 1 ? @"th-TH" : @"en-US"];
-   utt.rate = (voiceLang == 1) ? 0.18f : 0.16f;
-   utt.pitchMultiplier = 1.0f;
-   utt.preUtteranceDelay = 0.15f;
-   utt.volume = 1.0f;
-   [gTRDWelcomeSynth speakUtterance:utt];
+   NSString *langCode = (voiceLang == 1) ? @"th-TH" : @"en-US";
+   float rate = (voiceLang == 1) ? 0.03f : 0.02f;
+   TRDEnqueueCalmSpeech(gTRDWelcomeSynth, @[phrase], langCode, rate);
   } @catch(NSException *e){}
  });
 }
