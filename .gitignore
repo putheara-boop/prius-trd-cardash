@@ -19,7 +19,11 @@ Thumbs.db
  
 *.zip
 
-# Subprojects
-shopee-scroll-app/
+# Binary packages & credentials
+*.ipa
+*.exe
+*.p12
+*.txt
+
 
 
