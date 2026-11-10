@@ -277,10 +277,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   CGFloat h = self.bounds.size.height;
   if (self.driveStyle) {
     self.speedLimitBadge.frame = CGRectMake(w - 36, 4, 28, 28);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:76] ?: [UIFont boldSystemFontOfSize:76];
-    self.speedLabel.frame = CGRectMake(10, 20, w - 20, 78);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:68] ?: [UIFont boldSystemFontOfSize:68];
+    self.speedLabel.frame = CGRectMake(10, 44, w - 20, 72);
     self.gearBadge.hidden = YES;
-    self.unitLabel.frame = CGRectMake(10, h - 26, w - 20, 20);
+    self.unitLabel.frame = CGRectMake(10, h - 28, w - 20, 20);
     self.unitLabel.font = [UIFont boldSystemFontOfSize:12];
     self.unitLabel.text = @"km/h  •  GPS SPEED";
   } else {
@@ -343,7 +343,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     
     UIFont *trdFont = [UIFont boldSystemFontOfSize:14];
     NSDictionary *trdAttrs = @{NSFontAttributeName: trdFont, NSForegroundColorAttributeName: [UIColor colorWithRed:1.0 green:0.2 blue:0.25 alpha:1]};
-    [@"TRD" drawAtPoint:CGPointMake(center.x - 14, center.y - radius + 12) withAttributes:trdAttrs];
+    [@"TRD" drawAtPoint:CGPointMake(center.x - 16, center.y - radius + 8) withAttributes:trdAttrs];
   } else {
     CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.08 green:0.14 blue:0.20 alpha:0.75].CGColor);
     CGContextSetLineWidth(ctx, 4.0);
@@ -3452,8 +3452,8 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
     NSInteger voiceLang = [p integerForKey:@"TRDVoiceLanguage"];
     if(voiceLang != 2){
      NSString *phrase = (voiceLang == 1) ?
-      [NSString stringWithFormat:@"ระวัง... มีกล้องตรวจจับความเร็วข้างหน้า... กำหนดความเร็ว %d กิโลเมตรต่อชั่วโมง", limit] :
-      [NSString stringWithFormat:@"Caution... Speed camera ahead... Speed limit %d.", limit];
+      [NSString stringWithFormat:@"แจ้งเตือน ระวังกล้องตรวจจับความเร็วข้างหน้า กำหนดความเร็ว %d กิโลเมตรต่อชั่วโมงครับ", limit] :
+      [NSString stringWithFormat:@"Caution. Speed camera ahead. Speed limit is %d kilometers per hour.", limit];
      [self speakQuickAlert:phrase];
     }
     break;
@@ -3475,9 +3475,9 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
    NSInteger voiceLang = [p integerForKey:@"TRDVoiceLanguage"];
    if(voiceLang != 2){
     NSString *msg = (voiceLang == 1) ?
-     @"แบตเตอรี่ชาร์จถึง 80 เปอร์เซ็นต์แล้วครับ... สามารถถอดสายชาร์จเพื่อถนอมอายุการใช้งานได้ครับ" :
-     @"Battery charged to 80 percent... Optimal level reached to preserve battery health.";
-    [self speakQuickAlert:msg];
+     NSString *msg = (voiceLang == 1) ?
+      @"แบตเตอรี่ชาร์จถึง 80 เปอร์เซ็นต์แล้วครับ สามารถถอดสายชาร์จเพื่อถนอมอายุการใช้งานได้ครับ" :
+      @"Battery is charged to 80 percent. Please unplug the charger to preserve battery health.";
    }
   }
  }else if(power == UIDeviceBatteryStateUnplugged){
@@ -3498,7 +3498,9 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
    AVSpeechUtterance *utt = [AVSpeechUtterance speechUtteranceWithString:phrase];
    NSInteger voiceLang = [[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];
    utt.voice = [AVSpeechSynthesisVoice voiceWithLanguage:voiceLang == 1 ? @"th-TH" : @"en-US"];
-   utt.rate = 0.40f;
+   utt.rate = (voiceLang == 1) ? 0.18f : 0.16f;
+   utt.pitchMultiplier = 1.0f;
+   utt.preUtteranceDelay = 0.15f;
    utt.volume = 1.0f;
    [gTRDWelcomeSynth speakUtterance:utt];
   } @catch(NSException *e){}
