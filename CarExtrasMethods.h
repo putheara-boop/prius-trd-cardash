@@ -245,12 +245,13 @@ static BOOL gTRDWelcomeSpoken;
  self.welcome.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
  [self.welcome addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(hideWelcome)]];
  [self.view addSubview:self.welcome];
+ [self.view bringSubviewToFront:self.welcome];
  CarWelcome *welcome=self.welcome;
  welcome.alpha=0;
  welcome.name.alpha=0;
  welcome.tagline.alpha=0;
- [UIView animateWithDuration:.65 animations:^{welcome.alpha=1;}];
- [UIView animateWithDuration:.65 delay:.25 options:UIViewAnimationOptionCurveEaseOut animations:^{welcome.name.alpha=1;welcome.tagline.alpha=1;} completion:nil];
+ [UIView animateWithDuration:.45 animations:^{welcome.alpha=1;}];
+ [UIView animateWithDuration:.45 delay:.15 options:UIViewAnimationOptionCurveEaseOut animations:^{welcome.name.alpha=1;welcome.tagline.alpha=1;} completion:nil];
  
  gTRDWelcomeSpoken=NO;
  gTRDWelcomeWaitStart=[NSDate date];
@@ -259,7 +260,7 @@ static BOOL gTRDWelcomeSpoken;
  if([self isCarBluetoothReady] || !waitForCar){
   if([self isCarBluetoothReady]){
    if(voiceLang==1){
-    welcome.tagline.text=@"เชื่อมต่อ PRIUS AUDIO สำเร็จ  •  ระบบพร้อม";
+    welcome.tagline.text=@"เชื่อมต่อ PRIUS AUDIO สำเร็จ  •  ระบบไฮบริดพร้อม";
     welcome.tagline.font=[UIFont systemFontOfSize:15];
    }else{
     welcome.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"CONNECTED TO PRIUS  •  SYSTEM READY" attributes:@{NSKernAttributeName:@2.5}];
@@ -267,7 +268,7 @@ static BOOL gTRDWelcomeSpoken;
    }
   }else{
    if(voiceLang==1){
-    welcome.tagline.text=@"ยินดีต้อนรับ... ขอให้ขับรถอย่างสนุก... และเดินทางปลอดภัยนะครับ";
+    welcome.tagline.text=@"ยินดีต้อนรับครับ พี่พุธ • ขอให้ขับรถอย่างสนุก และเดินทางปลอดภัยครับ";
     welcome.tagline.font=[UIFont systemFontOfSize:15];
    }else{
     welcome.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"SYSTEM READY  •  HAVE A SAFE DRIVE" attributes:@{NSKernAttributeName:@2.5}];
@@ -275,6 +276,7 @@ static BOOL gTRDWelcomeSpoken;
    }
   }
   [self performSelector:@selector(speakWelcomeMessage) withObject:nil afterDelay:0.4];
+  [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:5.5];
  }else{
   if(voiceLang==1){
    welcome.tagline.text=@"กำลังเชื่อมต่อ PRIUS AUDIO...";
@@ -283,7 +285,7 @@ static BOOL gTRDWelcomeSpoken;
    welcome.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"CONNECTING TO PRIUS AUDIO..." attributes:@{NSKernAttributeName:@2.0}];
    welcome.tagline.font=[UIFont systemFontOfSize:13];
   }
-  [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:10.0];
+  [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:8.0];
   gTRDWelcomeBTTimer=[NSTimer scheduledTimerWithTimeInterval:0.2 target:self selector:@selector(checkWelcomeBluetoothReady) userInfo:nil repeats:YES];
  }
 }
@@ -303,9 +305,13 @@ static BOOL gTRDWelcomeSpoken;
   [gTRDWelcomeBTTimer invalidate];
   gTRDWelcomeBTTimer=nil;
  }
+ if(!self.welcome) return;
  CarWelcome *view=self.welcome;
  self.welcome=nil;
- [UIView animateWithDuration:.25 animations:^{view.alpha=0;} completion:^(BOOL done){[view removeFromSuperview];}];
+ [UIView animateWithDuration:.25 animations:^{view.alpha=0;} completion:^(BOOL done){
+  [view removeFromSuperview];
+  [self.view setNeedsLayout];
+ }];
 }
 -(void)previewWelcomeCapture{[self showWelcome];[self.welcome layoutIfNeeded];[self capture];}
 -(void)soundProfileSettings{NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];BOOL enabled=[cfg[@"enabled"]boolValue];TRDSettingsMenu *m=[self settingsMenu:@"SOUND PROFILES" message:@"Presets follow the app playing audio. Choosing a preset in EQE also remembers it for that app."];[m addAction:[TRDSettingAction actionWithTitle:enabled?@"Automatic sound: ON (tap to turn off)":@"Automatic sound: OFF (tap to turn on)" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *next=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];next[@"enabled"]=@(!enabled);[next writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();}]];NSArray *names=@[@"Music / audioNINJA",@"YouTube"],*ids=@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine"];for(NSInteger i=0;i<names.count;i++){NSString *bundle=ids[i],*label=names[i];NSString *title=[NSString stringWithFormat:@"%@: %@",label,cfg[@"profiles"][bundle]?:@"Flat"];[m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){[self chooseProfile:bundle title:label];}]];}[self presentSettingsMenu:m];}
