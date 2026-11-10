@@ -99,39 +99,41 @@ static BOOL gTRDWelcomeSpoken;
 
    if(voiceLang==1){ // Thai
     langCode=@"th-TH";
-    rate=0.42f;
+    rate=0.18f;
     if(hour>=5 && hour<12){
-     phrase=@"อรุณสวัสดิ์ครับคุณพีพุท... ระบบพร้อม... ขอให้เป็นวันที่ดี และขับขี่ปลอดภัยนะครับ";
+     phrase=@"อรุณสวัสดิ์ครับคุณพีพุท ระบบพร้อมใช้งาน ขอให้เป็นวันที่ดี และเดินทางปลอดภัยนะครับ";
     }else if(hour>=12 && hour<18){
-     phrase=@"สวัสดีตอนบ่ายครับคุณพีพุท... ระบบพร้อม... ขอให้ขับรถอย่างสนุก และเดินทางปลอดภัยนะครับ";
+     phrase=@"สวัสดีตอนบ่ายครับคุณพีพุท ระบบพร้อมใช้งาน ขอให้ขับรถอย่างมีความสุข และเดินทางปลอดภัยนะครับ";
     }else{
-     phrase=@"สวัสดีตอนค่ำครับคุณพีพุท... ระบบพร้อม... ขอให้เดินทางปลอดภัยในค่ำคืนนี้นะครับ";
+     phrase=@"สวัสดีตอนค่ำครับคุณพีพุท ระบบพร้อมใช้งาน ขอให้เดินทางปลอดภัยในค่ำคืนนี้นะครับ";
     }
     if(rain){
-     phrase=[phrase stringByAppendingString:@"... มีรายงานฝนตกในพื้นที่ โปรดขับขี่ด้วยความระมัดระวังนะครับ"];
+     phrase=[phrase stringByAppendingString:@" วันนี้มีรายงานฝนตกในพื้นที่ โปรดขับขี่ด้วยความระมัดระวังนะครับ"];
     }else if(serviceWarning){
-     phrase=[phrase stringByAppendingString:@"... แจ้งเตือน: ใกล้ถึงระยะเปลี่ยนถ่ายน้ำมันเครื่องแล้วครับ"];
+     phrase=[phrase stringByAppendingString:@" แจ้งเตือน ใกล้ถึงระยะเปลี่ยนถ่ายน้ำมันเครื่องแล้วครับ"];
     }
    }else{ // English default
     langCode=@"en-US";
-    rate=0.38f;
+    rate=0.16f;
     if(hour>=5 && hour<12){
-     phrase=@"Good morning, PeePut... System ready. Have a productive day, and travel safe.";
+     phrase=@"Good morning, PeePut. System is ready. Have a productive day, and travel safely.";
     }else if(hour>=12 && hour<18){
-     phrase=@"Good afternoon, PeePut... System ready. Enjoy your drive, and travel safe.";
+     phrase=@"Good afternoon, PeePut. System is ready. Enjoy your drive, and travel safely.";
     }else{
-     phrase=@"Good evening, PeePut... System ready. Enjoy your drive, and travel safe tonight.";
+     phrase=@"Good evening, PeePut. System is ready. Enjoy your drive, and travel safely tonight.";
     }
     if(rain){
-     phrase=[phrase stringByAppendingString:@"... Rain detected in your area. Drive carefully on wet roads."];
+     phrase=[phrase stringByAppendingString:@" Rain is reported in your area. Drive carefully on wet roads."];
     }else if(serviceWarning){
-     phrase=[phrase stringByAppendingString:@"... Maintenance reminder: Engine oil service due soon."];
+     phrase=[phrase stringByAppendingString:@" Maintenance reminder. Engine oil service is due soon."];
     }
    }
    AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:phrase];
    AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
    if(v) utt.voice=v;
    utt.rate=rate;
+   utt.pitchMultiplier=1.0f;
+   utt.preUtteranceDelay=0.15f;
    utt.volume=1.0f;
    [gTRDWelcomeSynth speakUtterance:utt];
   } @catch(NSException *e){}
@@ -160,25 +162,27 @@ static BOOL gTRDWelcomeSpoken;
    NSInteger eco = self.ecoScore > 0 ? self.ecoScore : 95;
    if(voiceLang==1){
     if(eco >= 85){
-     phrase=[NSString stringWithFormat:@"สิ้นสุดการเดินทาง... คะแนนขับขี่ประหยัดพลังงาน %ld เต็ม 100... ขับขี่ได้นุ่มนวลยอดเยี่ยมมากครับคุณพีพุท", (long)eco];
+     phrase=[NSString stringWithFormat:@"สิ้นสุดการเดินทาง คะแนนขับขี่ประหยัดพลังงาน %ld เต็ม 100 ขับขี่ได้นุ่มนวลยอดเยี่ยมมากครับคุณพีพุท", (long)eco];
     }else{
-     phrase=[NSString stringWithFormat:@"สิ้นสุดการเดินทาง... คะแนนขับขี่ประหยัดพลังงาน %ld เต็ม 100... ขอบคุณครับคุณพีพุท ขอให้เป็นวันที่ดีนะครับ", (long)eco];
+     phrase=[NSString stringWithFormat:@"สิ้นสุดการเดินทาง คะแนนขับขี่ประหยัดพลังงาน %ld เต็ม 100 ขอบคุณครับคุณพีพุท ขอให้เป็นวันที่ดีนะครับ", (long)eco];
     }
     langCode=@"th-TH";
-    rate=AVSpeechUtteranceDefaultSpeechRate*0.90f;
+    rate=0.18f;
    }else{
     if(eco >= 85){
-     phrase=[NSString stringWithFormat:@"Trip completed... Eco drive score: %ld out of 100... Excellent and smooth driving, PeePut!", (long)eco];
+     phrase=[NSString stringWithFormat:@"Trip completed. Your eco drive score is %ld out of 100. Excellent and smooth driving, PeePut.", (long)eco];
     }else{
-     phrase=[NSString stringWithFormat:@"Trip completed... Eco drive score: %ld out of 100... Goodbye, PeePut. Have a nice day.", (long)eco];
+     phrase=[NSString stringWithFormat:@"Trip completed. Your eco drive score is %ld out of 100. Goodbye, PeePut. Have a nice day.", (long)eco];
     }
     langCode=@"en-US";
-    rate=0.38f;
+    rate=0.16f;
    }
    AVSpeechUtterance *utt=[AVSpeechUtterance speechUtteranceWithString:phrase];
    AVSpeechSynthesisVoice *v=[AVSpeechSynthesisVoice voiceWithLanguage:langCode];
    if(v) utt.voice=v;
    utt.rate=rate;
+   utt.pitchMultiplier=1.0f;
+   utt.preUtteranceDelay=0.15f;
    utt.volume=1.0f;
    [gTRDWelcomeSynth speakUtterance:utt];
   } @catch(NSException *e){}

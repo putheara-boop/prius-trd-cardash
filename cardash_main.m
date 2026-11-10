@@ -3473,12 +3473,12 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
    self.hasAlertedBattery80 = YES;
    AudioServicesPlaySystemSound(1054);
    NSInteger voiceLang = [p integerForKey:@"TRDVoiceLanguage"];
-   if(voiceLang != 2){
-    NSString *msg = (voiceLang == 1) ?
+    if(voiceLang != 2){
      NSString *msg = (voiceLang == 1) ?
       @"แบตเตอรี่ชาร์จถึง 80 เปอร์เซ็นต์แล้วครับ สามารถถอดสายชาร์จเพื่อถนอมอายุการใช้งานได้ครับ" :
       @"Battery is charged to 80 percent. Please unplug the charger to preserve battery health.";
-   }
+     [self speakQuickAlert:msg];
+    }
   }
  }else if(power == UIDeviceBatteryStateUnplugged){
   self.hasAlertedBattery80 = NO;
