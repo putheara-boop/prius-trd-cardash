@@ -3091,6 +3091,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  [self presentSettingsMenu:m];
 }
 -(void)showTripSummary{
+  if(self.welcome)[self hideWelcome];
   if(!self.trip) self.trip=[TRDTrip new];
   [self.settingsSheet dismiss];
   if(self.driveMode||self.carplayMode||self.tripMode||self.mapMode||self.focused){
@@ -3139,9 +3140,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   NSDateFormatter *df=[[NSDateFormatter alloc]init];
   [df setDateFormat:@"d MMM yyyy • HH:mm"];
   NSString *timeStr=[df stringFromDate:[NSDate date]]?:@"";
-  UILabel *hdrSub=[[UILabel alloc]initWithFrame:CGRectMake(24,42,cardW-88,18)];
-  hdrSub.font=[UIFont systemFontOfSize:12];
-  hdrSub.textColor=[UIColor colorWithWhite:0.62 alpha:1.0];
+  UILabel *hdrSub=[[UILabel alloc]initWithFrame:CGRectMake(24,42,cardW-88,20)];
+  hdrSub.font=[UIFont boldSystemFontOfSize:13.5];
+  hdrSub.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
   hdrSub.text=[NSString stringWithFormat:@"%@  •  ENGINE SHUTDOWN  •  สรุปข้อมูลการขับขี่ประจำรอบ", timeStr];
   [card addSubview:hdrSub];
 
@@ -3206,9 +3207,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   hVal1.text=[NSString stringWithFormat:@"%.1f km",km];
   [heroBox addSubview:hVal1];
 
-  UILabel *hSub1=[[UILabel alloc]initWithFrame:CGRectMake(10,76,hColW-20,16)];
-  hSub1.font=[UIFont systemFontOfSize:11];
-  hSub1.textColor=[UIColor colorWithRed:0.40 green:0.80 blue:1.0 alpha:0.9];
+  UILabel *hSub1=[[UILabel alloc]initWithFrame:CGRectMake(10,76,hColW-20,18)];
+  hSub1.font=[UIFont boldSystemFontOfSize:13];
+  hSub1.textColor=[UIColor colorWithRed:0.40 green:0.80 blue:1.0 alpha:0.95];
   hSub1.textAlignment=NSTextAlignmentCenter;
   hSub1.text=@"ระยะทางรวมรอบนี้";
   [heroBox addSubview:hSub1];
@@ -3228,9 +3229,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   hVal2.text=[NSString stringWithFormat:@"%ld min",min];
   [heroBox addSubview:hVal2];
 
-  UILabel *hSub2=[[UILabel alloc]initWithFrame:CGRectMake(hColW+10,76,hColW-20,16)];
-  hSub2.font=[UIFont systemFontOfSize:11];
-  hSub2.textColor=[UIColor colorWithWhite:0.55 alpha:1.0];
+  UILabel *hSub2=[[UILabel alloc]initWithFrame:CGRectMake(hColW+10,76,hColW-20,18)];
+  hSub2.font=[UIFont boldSystemFontOfSize:13];
+  hSub2.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
   hSub2.textAlignment=NSTextAlignmentCenter;
   hSub2.text=@"เวลาในการขับขี่";
   [heroBox addSubview:hSub2];
@@ -3250,9 +3251,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   hVal3.text=[NSString stringWithFormat:@"฿ %.1f",fuelCost];
   [heroBox addSubview:hVal3];
 
-  UILabel *hSub3=[[UILabel alloc]initWithFrame:CGRectMake(hColW*2+10,76,hColW-20,16)];
-  hSub3.font=[UIFont systemFontOfSize:11];
-  hSub3.textColor=[UIColor colorWithWhite:0.55 alpha:1.0];
+  UILabel *hSub3=[[UILabel alloc]initWithFrame:CGRectMake(hColW*2+10,76,hColW-20,18)];
+  hSub3.font=[UIFont boldSystemFontOfSize:13];
+  hSub3.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
   hSub3.textAlignment=NSTextAlignmentCenter;
   hSub3.text=@"ค่าน้ำมันโดยประมาณ";
   [heroBox addSubview:hSub3];
@@ -3317,17 +3318,17 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     tVal.text=gridValues[i];
     [tile addSubview:tVal];
 
-    UILabel *tSub=[[UILabel alloc]initWithFrame:CGRectMake(12,66,tileW-24,20)];
-    tSub.font=[UIFont systemFontOfSize:11];
-    tSub.textColor=[UIColor colorWithWhite:0.50 alpha:1.0];
+    UILabel *tSub=[[UILabel alloc]initWithFrame:CGRectMake(12,66,tileW-24,22)];
+    tSub.font=[UIFont boldSystemFontOfSize:13];
+    tSub.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
     tSub.text=gridSubs[i];
     [tile addSubview:tSub];
   }
 
   // 5. BOTTOM FOOTER & ACTIONS
-  UILabel *subNote=[[UILabel alloc]initWithFrame:CGRectMake(20,418,cardW-40,20)];
-  subNote.font=[UIFont systemFontOfSize:12];
-  subNote.textColor=[UIColor colorWithWhite:0.55 alpha:1.0];
+  UILabel *subNote=[[UILabel alloc]initWithFrame:CGRectMake(20,418,cardW-40,22)];
+  subNote.font=[UIFont boldSystemFontOfSize:14];
+  subNote.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
   subNote.textAlignment=NSTextAlignmentCenter;
   subNote.text=@"เครื่องยนต์ดับแล้ว • หน้าจอจะพักอัตโนมัติในอีก 15 วินาที (Auto-sleep in 15s)";
   [card addSubview:subNote];

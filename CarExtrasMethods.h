@@ -255,6 +255,11 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
 }
 
 -(void)showWelcomeWaitingForCar:(BOOL)waitForCar{
+ [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
+ if(self.tripSummaryCard){
+  [self.tripSummaryCard removeFromSuperview];
+  self.tripSummaryCard=nil;
+ }
  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];
  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(speakWelcomeMessage) object:nil];
  if(gTRDWelcomeBTTimer){

@@ -94,8 +94,8 @@ static void TRDProfileChanged(void){CFNotificationCenterPostNotification(CFNotif
 
  self.hint=[UILabel new];
  self.hint.text=@"แตะที่ใดก็ได้เพื่อเริ่มใช้งาน (Tap anywhere to start)";
- self.hint.font=[UIFont systemFontOfSize:13];
- self.hint.textColor=[UIColor colorWithWhite:0.42 alpha:1.0];
+ self.hint.font=[UIFont boldSystemFontOfSize:14.5];
+ self.hint.textColor=[UIColor colorWithWhite:0.65 alpha:1.0];
  self.hint.textAlignment=NSTextAlignmentCenter;
  [self addSubview:self.hint];
  }return self;}
