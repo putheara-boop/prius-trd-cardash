@@ -293,8 +293,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.unitLabel.text = @"km/h  •  GPS SPEED";
   } else {
     self.speedLimitBadge.frame = CGRectMake(w - 30, 8, 28, 28);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:74] ?: [UIFont boldSystemFontOfSize:74];
-    self.speedLabel.frame = CGRectMake(10, 14, w - 20, 70);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:92] ?: [UIFont boldSystemFontOfSize:92];
+    self.speedLabel.frame = CGRectMake(10, 12, w - 20, 88);
     self.gearBadge.hidden = NO;
     self.gearBadge.frame = CGRectMake(10, h - 25, 68, 24);
     self.unitLabel.frame = CGRectMake(82, h - 23, w - 90, 20);
@@ -356,7 +356,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [@"TRD" drawAtPoint:CGPointMake(center.x - 16, center.y - radius + 7) withAttributes:trdAttrs];
   } else {
     CGPoint center = CGPointMake(w / 2.0, h - 24);
-    CGFloat radius = MIN(w / 2.0 - 38, h - 42);
+    CGFloat radius = MIN(w / 2.0 - 34, h - 42);
     CGFloat startAngle = M_PI * 0.96;
     CGFloat endAngle = M_PI * 2.04;
     CGFloat totalAngle = endAngle - startAngle;
@@ -2620,34 +2620,36 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveLeftCard.backgroundColor = [UIColor colorWithRed:.04 green:.06 blue:.08 alpha:.95];
 
     self.readyPill.hidden = NO;
-    self.readyPill.frame = CGRectMake(leftX + (leftW - 154)/2, topY + 8, 154, 24);
+    self.readyPill.frame = CGRectMake(leftX + (leftW - 154)/2, topY + 6, 154, 24);
 
     self.homeSpeedoDial.hidden = NO;
     self.gearBadge.hidden = YES;
-    self.homeSpeedoDial.frame = CGRectMake(leftX + 6, topY + 32, leftW - 12, 108);
+    self.homeSpeedoDial.frame = CGRectMake(leftX + 6, topY + 30, leftW - 12, 126);
 
     CGFloat gw = (leftW - 20 - 4*5)/5;
     for (int i = 0; i < self.gearButtons.count; i++) {
       UIButton *gb = self.gearButtons[i];
       gb.hidden = NO;
-      gb.frame = CGRectMake(leftX + 10 + i*(gw + 5), topY + 143, gw, 30);
+      gb.frame = CGRectMake(leftX + 10 + i*(gw + 5), topY + 158, gw, 28);
     }
 
     self.hybridEcoBar.hidden = NO;
-    self.hybridEcoBar.frame = CGRectMake(leftX + 10, topY + 178, leftW - 20, 26);
+    self.hybridEcoBar.frame = CGRectMake(leftX + 10, topY + 190, leftW - 20, 25);
 
     CGFloat mw = (leftW - 20 - 2*6)/3;
     for (int i = 0; i < self.driveModePills.count; i++) {
       UIButton *mb = self.driveModePills[i];
       mb.hidden = NO;
-      mb.frame = CGRectMake(leftX + 10 + i*(mw + 6), topY + 209, mw, 30);
+      mb.frame = CGRectMake(leftX + 10 + i*(mw + 6), topY + 219, mw, 28);
     }
 
     self.homeAiEcoCard.hidden = NO;
-    self.homeAiEcoCard.frame = CGRectMake(leftX + 10, topY + 246, leftW - 20, 175);
+    self.homeAiEcoCard.frame = CGRectMake(leftX + 10, topY + 253, leftW - 20, 170);
+    UILabel *ecoD = (UILabel *)[self.homeAiEcoCard viewWithTag:503];
+    if (ecoD) ecoD.frame = CGRectMake(10, 52, leftW - 40, 112);
 
     self.homeThermalsCard.hidden = NO;
-    self.homeThermalsCard.frame = CGRectMake(leftX + 10, topY + 428, leftW - 20, 180);
+    self.homeThermalsCard.frame = CGRectMake(leftX + 10, topY + 429, leftW - 20, 179);
 
     // 2. CENTER ZONE
     self.energyFlowLabel.hidden = NO;
