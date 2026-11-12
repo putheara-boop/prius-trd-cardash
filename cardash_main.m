@@ -1103,6 +1103,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)refreshTransportState;
 @property CarWelcome *welcome;
 @property BOOL didShowWelcome;
+@property BOOL isCarSessionActive;
 -(void)showWelcome;
 -(void)previewWelcome;
 -(void)showWelcomeWaitingForCar:(BOOL)waitForCar;
@@ -1936,7 +1937,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   UISwipeGestureRecognizer *gridSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];gridSwR.direction=UISwipeGestureRecognizerDirectionRight;gridSwR.delegate=self;gridSwR.cancelsTouchesInView=NO;gridSwR.delaysTouchesBegan=NO;[self.carplayAppGrid addGestureRecognizer:gridSwR];
   UISwipeGestureRecognizer *mapSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];mapSwR.direction=UISwipeGestureRecognizerDirectionRight;mapSwR.delegate=self;mapSwR.cancelsTouchesInView=NO;mapSwR.delaysTouchesBegan=NO;[self.mapContainer addGestureRecognizer:mapSwR];
   self.edgeR=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:self action:@selector(handleEdgePan:)];self.edgeR.edges=UIRectEdgeLeft;self.edgeR.delegate=self;self.edgeR.cancelsTouchesInView=NO;self.edgeR.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.edgeR];
- self.returnTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(leaveClock)];self.returnTap.enabled=NO;self.returnTap.delegate=self;[self.view addGestureRecognizer:self.returnTap];[UIDevice currentDevice].batteryMonitoringEnabled=YES;[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(batteryStateChanged:) name:UIDeviceBatteryStateDidChangeNotification object:nil];dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);Class manager=NSClassFromString(@"BluetoothManager");if([manager respondsToSelector:@selector(sharedInstance)])self.bluetooth=[manager performSelector:@selector(sharedInstance)];dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",RTLD_LAZY);[self update];if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}
+ self.returnTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(leaveClock)];self.returnTap.enabled=NO;self.returnTap.delegate=self;[self.view addGestureRecognizer:self.returnTap];[UIDevice currentDevice].batteryMonitoringEnabled=YES;UIDeviceBatteryState initBat=[UIDevice currentDevice].batteryState;self.isCarSessionActive=(initBat==UIDeviceBatteryStateCharging||initBat==UIDeviceBatteryStateFull);[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(batteryStateChanged:) name:UIDeviceBatteryStateDidChangeNotification object:nil];dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);Class manager=NSClassFromString(@"BluetoothManager");if([manager respondsToSelector:@selector(sharedInstance)])self.bluetooth=[manager performSelector:@selector(sharedInstance)];dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",RTLD_LAZY);[self update];if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}
   [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
   MPRemoteCommandCenter *rCenter = [MPRemoteCommandCenter sharedCommandCenter];
   [rCenter.nextTrackCommand removeTarget:nil];
@@ -4187,13 +4188,18 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
  UIDeviceBatteryState state=[UIDevice currentDevice].batteryState;
  if(state==UIDeviceBatteryStateUnplugged){
-  // Engine stopped / Charger unplugged: Purge cache & memory for smooth performance
+  // Engine stopped / Charger unplugged: Reset session, purge cache & memory, show trip summary
+  self.isCarSessionActive = NO;
   [[NSURLCache sharedURLCache] removeAllCachedResponses];
   [self releaseArtwork];
-  system("purge &");
+  system("killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null &");
   notify_post("com.apple.SpringBoard.MemoryWarning");
   [self showTripSummary];
  }else if(state==UIDeviceBatteryStateCharging||state==UIDeviceBatteryStateFull){
+  // Only run Welcome ONCE per car power-on session; ignore Charging<->Full ripples!
+  if(self.isCarSessionActive) return;
+  self.isCarSessionActive = YES;
+
   // Power plugged: 0.5s digitizer touch guard to absorb transient electrical ripple & avoid ghost touches
   self.view.userInteractionEnabled = NO;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -4495,7 +4501,19 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)carplayGridTrip{self.carplayMode=NO;self.carplayGridMode=NO;[self openTrip];}
 -(void)carplayGridSettings{[self carSettings];}
 -(void)handleEdgePan:(UIScreenEdgePanGestureRecognizer *)gesture{if(gesture.state==UIGestureRecognizerStateBegan||gesture.state==UIGestureRecognizerStateRecognized){if(self.carplayMode)[self homePage];}}
--(void)openYouTubeSource{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];}
+-(void)openYouTubeSource{
+ if(self.welcome)[self hideWelcome];
+ [self.settingsSheet dismiss];
+ [self releaseArtwork];
+ if(self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}
+ self.mapContainer.hidden=YES;
+ [[NSURLCache sharedURLCache] removeAllCachedResponses];
+ if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
+ Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
+ system("sync; purge 2>/dev/null &");
+ notify_post("com.codex.trd.network.internet");
+ [self send:@"com.himais0giiiin.ytnine"];
+}
 -(void)navigate:(UIButton *)button{
  static NSTimeInterval lastNavTime = 0;
  NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
@@ -4509,7 +4527,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   case 63:[self openDriveEQ];break;
   case 64:[self screenOff];break;
   case 65:[self openCamera];break;
-  case 67:notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];break;
+  case 67:[self openYouTubeSource];break;
   case 68:[self carSettings];break;
  }
 }
