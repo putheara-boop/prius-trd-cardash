@@ -127,13 +127,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   CGFloat h = self.bounds.size.height;
   if (w <= 0 || h <= 0) return;
 
-  // 1. Front Xenon/LED Headlight Cone (Prius faces Left: headlamp at 0.125*w, 0.48*h)
-  CGPoint lamp = CGPointMake(w * 0.125, h * 0.485);
+  // 1. Front Xenon/LED Headlight Cone (Prius faces Left: headlamp at front nose 0.052*w, 0.44*h - completely clear of wheels)
+  CGPoint lamp = CGPointMake(w * 0.052, h * 0.44);
   CGMutablePathRef cone = CGPathCreateMutable();
-  CGPathMoveToPoint(cone, NULL, lamp.x, lamp.y - 4);
-  CGPathAddLineToPoint(cone, NULL, -w * 0.14, h * 0.30);
-  CGPathAddLineToPoint(cone, NULL, -w * 0.14, h * 0.72);
-  CGPathAddLineToPoint(cone, NULL, lamp.x, lamp.y + 6);
+  CGPathMoveToPoint(cone, NULL, lamp.x, lamp.y - 3);
+  CGPathAddLineToPoint(cone, NULL, -w * 0.22, h * 0.24);
+  CGPathAddLineToPoint(cone, NULL, -w * 0.22, h * 0.68);
+  CGPathAddLineToPoint(cone, NULL, lamp.x, lamp.y + 5);
   CGPathCloseSubpath(cone);
 
   CGContextSaveGState(ctx);
@@ -147,7 +147,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   };
   CGFloat locs[] = {0.0, 0.45, 1.0};
   CGGradientRef grad = CGGradientCreateWithColorComponents(cs, colors, locs, 3);
-  CGContextDrawLinearGradient(ctx, grad, lamp, CGPointMake(-w * 0.14, lamp.y + 10), 0);
+  CGContextDrawLinearGradient(ctx, grad, lamp, CGPointMake(-w * 0.22, lamp.y + 10), 0);
   CGGradientRelease(grad);
   CGColorSpaceRelease(cs);
   CGContextRestoreGState(ctx);
@@ -155,14 +155,14 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
   // Headlight lens bright star halo
   [[UIColor colorWithRed:0.65 green:0.96 blue:1.0 alpha:0.85] setFill];
-  [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(lamp.x - 12, lamp.y - 8, 24, 16)] fill];
+  [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(lamp.x - 10, lamp.y - 7, 20, 14)] fill];
   [[UIColor whiteColor] setFill];
-  [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(lamp.x - 6, lamp.y - 4, 12, 8)] fill];
+  [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(lamp.x - 5, lamp.y - 3, 10, 6)] fill];
 
-  // Lower TRD Fog/DRL LED glow (0.095*w, 0.61*h)
-  CGPoint fog = CGPointMake(w * 0.095, h * 0.615);
+  // Lower TRD Fog/DRL LED glow (0.038*w, 0.59*h)
+  CGPoint fog = CGPointMake(w * 0.038, h * 0.59);
   [[UIColor colorWithRed:0.20 green:0.92 blue:1.0 alpha:0.75] setFill];
-  [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(fog.x - 8, fog.y - 4, 16, 8)] fill];
+  [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(fog.x - 6, fog.y - 3, 12, 6)] fill];
 
   // 2. Rear LED Taillight Red Glow (0.91*w, 0.38*h)
   CGPoint tail = CGPointMake(w * 0.912, h * 0.385);
@@ -1837,7 +1837,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.radioButton=[UIButton buttonWithType:UIButtonTypeCustom];[self.radioButton setTitle:@"📻 RADIO" forState:0];self.radioButton.titleLabel.font=[UIFont boldSystemFontOfSize:13];[self.radioButton setTitleColor:TRDAccent() forState:0];self.radioButton.backgroundColor=[UIColor colorWithWhite:.075 alpha:1];self.radioButton.layer.cornerRadius=6;self.radioButton.layer.borderWidth=1;self.radioButton.layer.borderColor=[TRDAccent() colorWithAlphaComponent:.4].CGColor;[self.radioButton addTarget:self action:@selector(openRadioStationsMenu) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.radioButton];
   self.offlineMusicBtn=[UIButton buttonWithType:UIButtonTypeCustom];[self.offlineMusicBtn setTitle:@"💾 OFFLINE" forState:0];self.offlineMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:13];[self.offlineMusicBtn setTitleColor:TRDAccent() forState:0];self.offlineMusicBtn.backgroundColor=[UIColor colorWithWhite:.075 alpha:1];self.offlineMusicBtn.layer.cornerRadius=6;self.offlineMusicBtn.layer.borderWidth=1;self.offlineMusicBtn.layer.borderColor=[TRDAccent() colorWithAlphaComponent:.4].CGColor;[self.offlineMusicBtn addTarget:self action:@selector(openOfflineMusicMenu) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.offlineMusicBtn];
   self.searchMusicBtn=[UIButton buttonWithType:UIButtonTypeCustom];[self.searchMusicBtn setTitle:@"🔍 SEARCH" forState:0];self.searchMusicBtn.titleLabel.font=[UIFont boldSystemFontOfSize:13];[self.searchMusicBtn setTitleColor:TRDAccent() forState:0];self.searchMusicBtn.backgroundColor=[UIColor colorWithWhite:.075 alpha:1];self.searchMusicBtn.layer.cornerRadius=6;self.searchMusicBtn.layer.borderWidth=1;self.searchMusicBtn.layer.borderColor=[TRDAccent() colorWithAlphaComponent:.4].CGColor;[self.searchMusicBtn addTarget:self action:@selector(openSearchMusic) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.searchMusicBtn];
- self.miniPlayer=[TRDMini new];self.miniPlayer.hidden=YES;[self.miniPlayer.prev addTarget:self action:@selector(miniPrev) forControlEvents:UIControlEventTouchUpInside];[self.miniPlayer.play addTarget:self action:@selector(miniPlay) forControlEvents:UIControlEventTouchUpInside];[self.miniPlayer.next addTarget:self action:@selector(miniNext) forControlEvents:UIControlEventTouchUpInside];[self.miniPlayer.open addTarget:self action:@selector(miniOpen) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.miniPlayer];UILongPressGestureRecognizer *musicHold=[[UILongPressGestureRecognizer alloc]initWithTarget:self action:@selector(musicHold:)];musicHold.minimumPressDuration=.55;[self.navButtons[4]addGestureRecognizer:musicHold];UILongPressGestureRecognizer *homeHold=[[UILongPressGestureRecognizer alloc]initWithTarget:self action:@selector(homeHold:)];homeHold.minimumPressDuration=.55;[self.navButtons[0]addGestureRecognizer:homeHold];
+ self.miniPlayer=[TRDMini new];self.miniPlayer.hidden=YES;[self.miniPlayer.prev addTarget:self action:@selector(miniPrev) forControlEvents:UIControlEventTouchUpInside];[self.miniPlayer.play addTarget:self action:@selector(miniPlay) forControlEvents:UIControlEventTouchUpInside];[self.miniPlayer.next addTarget:self action:@selector(miniNext) forControlEvents:UIControlEventTouchUpInside];[self.miniPlayer.open addTarget:self action:@selector(miniOpen) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.miniPlayer];UILongPressGestureRecognizer *homeHold=[[UILongPressGestureRecognizer alloc]initWithTarget:self action:@selector(homeHold:)];homeHold.minimumPressDuration=.55;[self.navButtons[0]addGestureRecognizer:homeHold];
  self.mapContainer=[[UIView alloc]init];self.mapContainer.backgroundColor=[UIColor colorWithRed:.06 green:.06 blue:.07 alpha:1];self.mapContainer.layer.cornerRadius=8;self.mapContainer.layer.borderWidth=1;self.mapContainer.layer.borderColor=[blue colorWithAlphaComponent:.35].CGColor;self.mapContainer.clipsToBounds=YES;self.mapContainer.hidden=YES;[self.view addSubview:self.mapContainer];
 
   // CarPlay Left Dock
@@ -2431,10 +2431,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.energyFlowLabel.text = @"🍃 โหมดขับขี่อัจฉริยะ EV / HYBRID  •  CRUISE READY";
 
     self.driveCameraButton.hidden = NO;
-    self.driveCameraButton.frame = CGRectMake(centerX + 16, topY + 52, centerW - 32, 42);
+    self.driveCameraButton.frame = CGRectMake(centerX + 16, topY + 130, centerW - 32, 38);
     [self.driveCameraButton setTitle:@"📷  เปิดกล้องมองหลัง / มุมอับสายตา (REAR CAMERA)" forState:UIControlStateNormal];
-    self.driveCameraButton.titleLabel.font = [UIFont boldSystemFontOfSize:14.0];
-    self.driveCameraButton.layer.cornerRadius = 10;
+    self.driveCameraButton.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
+    self.driveCameraButton.layer.cornerRadius = 8;
     self.driveCameraButton.layer.borderWidth = 1.2;
     self.driveCameraButton.layer.borderColor = [UIColor colorWithWhite:.28 alpha:1].CGColor;
     self.driveCameraButton.backgroundColor = [UIColor colorWithRed:.06 green:.10 blue:.15 alpha:.95];
@@ -2495,7 +2495,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       [self.view addSubview:abPod];
     }
     abPod.hidden = NO;
-    abPod.frame = CGRectMake(centerX + 16, topY + 102, centerW - 32, 74);
+    abPod.frame = CGRectMake(centerX + 16, topY + 50, centerW - 32, 72);
 
     self.drive3DGrid.hidden = NO;
     self.drive3DGrid.frame = CGRectMake(centerX + 8, topY + 230, centerW - 16, 240);
@@ -3156,19 +3156,23 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     if (!mCard) {
       mCard = [[UIView alloc] init];
       mCard.tag = 707;
+      mCard.userInteractionEnabled = YES;
       mCard.backgroundColor = [UIColor colorWithRed:.02 green:.045 blue:.06 alpha:.95];
       mCard.layer.cornerRadius = 10;
       mCard.layer.borderWidth = 1.0;
       mCard.layer.borderColor = [UIColor colorWithWhite:.20 alpha:1].CGColor;
+      UITapGestureRecognizer *mTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tractionMotorTapped)];
+      [mCard addGestureRecognizer:mTap];
 
       UILabel *ml = [[UILabel alloc] initWithFrame:CGRectMake(10, 6, rightW - 36, 166)];
       ml.tag = 708;
+      ml.userInteractionEnabled = NO;
       ml.font = [UIFont boldSystemFontOfSize:13.5];
       ml.adjustsFontSizeToFitWidth = YES;
       ml.minimumScaleFactor = 0.85;
       ml.textColor = [UIColor whiteColor];
       ml.numberOfLines = 6;
-      ml.text = @"⚙️ TRACTION MOTOR MG2\n     1,420 RPM  •  กำลังขับ 18 kW\n⚡ GENERATOR MG1\n     980 RPM  •  ปั่นไฟชาร์จ 8 kW\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  พัดลมแบต: ปกติ";
+      ml.text = @"⚙️ TRACTION MOTOR MG2 (แตะดู)\n     1,420 RPM  •  กำลังขับ 18 kW\n⚡ GENERATOR MG1\n     980 RPM  •  ปั่นไฟชาร์จ 8 kW\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  พัดลมแบต: ปกติ";
       [mCard addSubview:ml];
       [self.view addSubview:mCard];
     }
@@ -3177,7 +3181,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     UILabel *mlLbl = (UILabel *)[mCard viewWithTag:708];
     if (mlLbl) {
       mlLbl.frame = CGRectMake(10, 6, rightW - 36, 166);
-      mlLbl.text = @"⚙️ TRACTION MOTOR MG2\n     1,420 RPM  •  กำลังขับ 18 kW\n⚡ GENERATOR MG1\n     980 RPM  •  ปั่นไฟชาร์จ 8 kW\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  พัดลมแบต: ปกติ";
+      mlLbl.text = @"⚙️ TRACTION MOTOR MG2 (แตะดู)\n     1,420 RPM  •  กำลังขับ 18 kW\n⚡ GENERATOR MG1\n     980 RPM  •  ปั่นไฟชาร์จ 8 kW\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  พัดลมแบต: ปกติ";
     }
 
     // Right Card 3: GPS Trip Computer & Range (Y = topY + 426, H = 186, exact mirror of homeThermalsCard!)
@@ -3340,20 +3344,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }
  UIDeviceBatteryState currentPower=[UIDevice currentDevice].batteryState;
  static UIDeviceBatteryState previousPower=UIDeviceBatteryStateUnknown;
- if((previousPower==UIDeviceBatteryStateCharging||previousPower==UIDeviceBatteryStateFull)&&currentPower==UIDeviceBatteryStateUnplugged){
-  [self showTripSummary];
- }else if(previousPower==UIDeviceBatteryStateUnplugged&&(currentPower==UIDeviceBatteryStateCharging||currentPower==UIDeviceBatteryStateFull)){
-  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
-  if(self.tripSummaryCard){
-   [self.tripSummaryCard removeFromSuperview];
-   self.tripSummaryCard=nil;
-  }
-  self.trip=[TRDTrip new];
-  self.activeTripSlot=0;
-  [self saveTrip];
-  [[TRDOBDClient sharedClient] resetTripFuel];
-  [self restoreDisplayBrightness];
-  [self showWelcome];
+ if(previousPower!=UIDeviceBatteryStateUnknown && previousPower!=currentPower){
+  [self batteryStateChanged:nil];
  }
  previousPower=currentPower;
  if(self.carplayMode){
@@ -3654,11 +3646,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.stationarySince = nil;
  }
 
- // 1. AUTO-ENTER DRIVE MODE from HOME when speed >= 20 km/h (within 1.5 seconds)
- if(kmh >= 15.0) self.manualDriveActive = NO;
+ // 1. AUTO-ENTER DRIVE MODE from HOME when speed >= 20 km/h (within 1.0 second)
  if([UIApplication sharedApplication].applicationState==UIApplicationStateActive && !self.driveMode && !self.musicMode && !self.tripMode && !self.mapMode && !self.carplayMode && !self.focused && !self.autoDriveSuppressed && reliable && kmh >= 20.0){
   if(!self.movingSince) self.movingSince = [NSDate date];
-  if(-[self.movingSince timeIntervalSinceNow] >= 1.5){
+  if(-[self.movingSince timeIntervalSinceNow] >= 1.0){
    self.movingSince = nil;
    self.parkedSince = nil;
    self.manualDriveActive = NO;
@@ -3669,16 +3660,17 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.movingSince = nil;
  }
 
- // 2. AUTO-RETURN TO HOME from DRIVE MODE when speed <= 3.0 km/h (within 1.5 seconds)
- if(self.driveMode && !self.manualDriveActive){
-  BOOL isStopped = (!valid) || (kmh <= 3.0) || (fixAge > 3.5);
+ // 2. AUTO-RETURN TO HOME from DRIVE MODE when speed <= 3.0 km/h (within 1.0 second)
+ if(self.driveMode && !self.musicMode && !self.tripMode && !self.mapMode && !self.carplayMode){
+  BOOL isStopped = (!valid) || (kmh <= 3.0) || (fixAge > 3.0);
   if(isStopped){
    if(!self.parkedSince) self.parkedSince = [NSDate date];
    NSTimeInterval parkedDuration = -[self.parkedSince timeIntervalSinceNow];
-   if(parkedDuration >= 1.5){
+   if(parkedDuration >= 1.0){
     self.parkedSince = nil;
     self.movingSince = nil;
     self.driveMode = NO;
+    self.manualDriveActive = NO;
     self.autoDriveSuppressed = NO;
     [self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];
     [self.view setNeedsLayout];
@@ -4184,11 +4176,30 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     }];
   }
 }
+-(void)tractionMotorTapped{
+  [self showFeatureExplanation:@"⚙️ มอเตอร์ขับเคลื่อน MG2 & เจเนอเรเตอร์ MG1" body:@"• มอเตอร์ไฟฟ้าหลัก MG2 (Traction Motor): กำลังขับ 60 kW (80 แรงม้า) แรงบิดสูงสุด 207 Nm ขับเคลื่อนล้อหน้าโดยตรง ออกตัวเงียบและตอบสนองทันที\n• เจเนอเรเตอร์ MG1: ทำหน้าที่สตาร์ทเครื่องยนต์ 1.8L อย่างนุ่มนวล และปั่นไฟชาร์จกลับเข้าแบตเตอรี่ไฮบริด\n• Inverter ระบายความร้อนด้วยระบบน้ำแยกอิสระ พร้อมระบบชาร์จไฟกลับขณะเบรก (Regenerative Braking) สูงสุด 20+ kW"];
+}
 -(void)batteryStateChanged:(NSNotification *)note{
+ static NSTimeInterval lastBatteryChange = 0;
+ NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+ if (lastBatteryChange > 0 && (now - lastBatteryChange < 3.0)) return; // Debounce rapid power ripples
+ lastBatteryChange = now;
+
  UIDeviceBatteryState state=[UIDevice currentDevice].batteryState;
  if(state==UIDeviceBatteryStateUnplugged){
+  // Engine stopped / Charger unplugged: Purge cache & memory for smooth performance
+  [[NSURLCache sharedURLCache] removeAllCachedResponses];
+  [self releaseArtwork];
+  system("purge &");
+  notify_post("com.apple.SpringBoard.MemoryWarning");
   [self showTripSummary];
  }else if(state==UIDeviceBatteryStateCharging||state==UIDeviceBatteryStateFull){
+  // Power plugged: 0.5s digitizer touch guard to absorb transient electrical ripple & avoid ghost touches
+  self.view.userInteractionEnabled = NO;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+   self.view.userInteractionEnabled = YES;
+  });
+
   [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
   if(self.tripSummaryCard){
    [self.tripSummaryCard removeFromSuperview];
@@ -4485,9 +4496,25 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)carplayGridSettings{[self carSettings];}
 -(void)handleEdgePan:(UIScreenEdgePanGestureRecognizer *)gesture{if(gesture.state==UIGestureRecognizerStateBegan||gesture.state==UIGestureRecognizerStateRecognized){if(self.carplayMode)[self homePage];}}
 -(void)openYouTubeSource{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];}
--(void)navigate:(UIButton *)button{switch(button.tag){case 60:[self homePage];break;case 66:[self openCarPlay];break;case 61:if(self.musicMode){[self showMusicSources:button];}else{[self openMusic];}break;case 62:[self openMap];break;case 63:[self openDriveEQ];break;case 64:[self screenOff];break;case 65:[self openCamera];break;case 67:notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];break;case 68:[self carSettings];break;}}
+-(void)navigate:(UIButton *)button{
+ static NSTimeInterval lastNavTime = 0;
+ NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+ if (now - lastNavTime < 0.45) return; // Ghost-touch shield: block high-frequency noise spikes
+ lastNavTime = now;
+ switch(button.tag){
+  case 60:[self homePage];break;
+  case 66:[self openCarPlay];break;
+  case 61:if(self.musicMode){[self showMusicSources:button];}else{[self openMusic];}break;
+  case 62:[self openMap];break;
+  case 63:[self openDriveEQ];break;
+  case 64:[self screenOff];break;
+  case 65:[self openCamera];break;
+  case 67:notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];break;
+  case 68:[self carSettings];break;
+ }
+}
 -(void)homePage{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
--(void)openMusic{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self homePage];}
+-(void)openMusic{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
 -(void)openMap{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self ensureMapWebView];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];else [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];[self updateMapCar];}
 -(void)syncMapAppearance:(BOOL)initial{if(!self.mapWebView)return;NSString *mode=self.nightMode?@"night":@"traffic";NSString *js=initial?[NSString stringWithFormat:@"if(window.setMode && !window.__trdInitialThemeDone){window.__trdInitialThemeDone=true;window.setMode('%@');}",mode]:[NSString stringWithFormat:@"if(window.setMode){window.setMode('%@');}",mode];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
 -(void)webViewDidFinishLoad:(UIWebView *)webView{if(webView==self.mapWebView)[self syncMapAppearance:YES];}
@@ -4497,7 +4524,15 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)fetchRouteWithCoords:(NSString *)coords{NSString *urlStr=[NSString stringWithFormat:@"http://router.project-osrm.org/route/v1/driving/%@?overview=full&geometries=geojson&steps=true",coords];NSURL *url=[NSURL URLWithString:urlStr];if(!url)return;NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url];[req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6)" forHTTPHeaderField:@"User-Agent"];__weak Dashboard *weak=self;[[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){if(data&&!err){NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];if(json){dispatch_async(dispatch_get_main_queue(),^{[weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}",json]];});}}}]resume];}
 -(void)fetchSearchWithQuery:(NSString *)query{if(!query.length)return;NSString *encoded=[query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];CLLocationDegrees lat=self.fix?self.fix.coordinate.latitude:13.7563;CLLocationDegrees lng=self.fix?self.fix.coordinate.longitude:100.5018;NSString *viewbox=[NSString stringWithFormat:@"%.3f,%.3f,%.3f,%.3f",lng-.4,lat+.4,lng+.4,lat-.4];NSString *urlStr=[NSString stringWithFormat:@"http://nominatim.openstreetmap.org/search?q=%@&format=json&countrycodes=th&limit=5&viewbox=%@",encoded,viewbox];NSURL *url=[NSURL URLWithString:urlStr];if(!url)return;NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url];[req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6; Prius)" forHTTPHeaderField:@"User-Agent"];__weak Dashboard *weak=self;[[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){if(data&&!err){NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];if(json){dispatch_async(dispatch_get_main_queue(),^{[weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window._onNominatimResult){window._onNominatimResult(%@);}",json]];});}}}]resume];}
 -(void)openActiveSourceApp{NSDictionary *src=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];NSString *bundle=src[@"bundle"]?:(self.youtubeSource?@"com.himais0giiiin.ytnine":@"com.legacymusic.app");if([bundle isEqualToString:@"com.legacymusic.app"])[self browseSource:bundle];else [self send:bundle];}
--(void)showMusicSources:(UIButton *)button{TRDSettingsMenu *menu=[self settingsMenu:@"AUDIO SOURCES" message:@"Select music, live radio or player"];[menu addAction:[TRDSettingAction actionWithTitle:@"📻 Live Radio & Music (วิทยุออนไลน์)" style:0 handler:^(TRDSettingAction *a){[self openRadioStationsMenu];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"💾 Offline Music (เพลงที่โหลดไว้)" style:0 handler:^(TRDSettingAction *a){[self openOfflineMusicMenu];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"🔍 Search Music (ค้นหา audioNINJA)" style:0 handler:^(TRDSettingAction *a){[self openSearchMusic];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"🎵 audioNINJA Player" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.legacymusic.app"];}]];[menu addAction:[TRDSettingAction actionWithTitle:@"▶️ YouTube" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.himais0giiiin.ytnine"];}]];[self presentSettingsMenu:menu];}
+-(void)showMusicSources:(UIButton *)button{
+ TRDSettingsMenu *menu=[self settingsMenu:@"AUDIO & MUSIC SOURCES" message:@"Select music, search songs, or online radio"];
+ [menu addAction:[TRDSettingAction actionWithTitle:@"🔍 Search Music (ค้นหาเพลง audioNINJA)" style:0 handler:^(TRDSettingAction *a){[self openSearchMusic];}]];
+ [menu addAction:[TRDSettingAction actionWithTitle:@"📻 Live Radio & Music (วิทยุออนไลน์)" style:0 handler:^(TRDSettingAction *a){[self openRadioStationsMenu];}]];
+ [menu addAction:[TRDSettingAction actionWithTitle:@"💾 Offline Music (เพลงที่โหลดไว้)" style:0 handler:^(TRDSettingAction *a){[self openOfflineMusicMenu];}]];
+ [menu addAction:[TRDSettingAction actionWithTitle:@"🎵 audioNINJA Player" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.legacymusic.app"];}]];
+ [menu addAction:[TRDSettingAction actionWithTitle:@"▶️ YouTube" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.himais0giiiin.ytnine"];}]];
+ [self presentSettingsMenu:menu];
+}
 -(void)openSearchMusic{[self browseSource:@"com.legacymusic.app"];}
 -(void)openOfflineMusicMenu{
  NSString *libPath=@"/var/mobile/Documents/LegacyMusic/library.plist";

@@ -385,6 +385,10 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
 }
 
 -(void)showWelcome{
+ static NSTimeInterval lastWelcomeTime = 0;
+ NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+ if(lastWelcomeTime > 0 && (now - lastWelcomeTime < 15.0)) return;
+ lastWelcomeTime = now;
  [self showWelcomeWaitingForCar:NO];
 }
 
