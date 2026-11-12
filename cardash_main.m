@@ -4513,8 +4513,8 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   case 68:[self carSettings];break;
  }
 }
--(void)homePage{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
--(void)openMusic{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
+-(void)homePage{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];if(self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}self.mapContainer.hidden=YES;system("killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null &");self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)openMusic{system("killall -9 YTNine 2>/dev/null; sync; purge 2>/dev/null &");if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
 -(void)openMap{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self ensureMapWebView];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];else [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];[self updateMapCar];}
 -(void)syncMapAppearance:(BOOL)initial{if(!self.mapWebView)return;NSString *mode=self.nightMode?@"night":@"traffic";NSString *js=initial?[NSString stringWithFormat:@"if(window.setMode && !window.__trdInitialThemeDone){window.__trdInitialThemeDone=true;window.setMode('%@');}",mode]:[NSString stringWithFormat:@"if(window.setMode){window.setMode('%@');}",mode];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
 -(void)webViewDidFinishLoad:(UIWebView *)webView{if(webView==self.mapWebView)[self syncMapAppearance:YES];}
@@ -4623,7 +4623,108 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 }
 
 -(void)carStatusTapped{
-  [self showFeatureExplanation:@"🚪 ประตู 5 บาน & เข็มขัดนิรภัยรอบคัน" body:@"• ตรวจสอบสถานะประตูทั้ง 5 บาน: หน้าซ้าย (FL), หน้าขวา (FR), หลังซ้าย (RL), หลังขวา (RR) และฝาท้าย (Trunk)\n• แถบสีเขียว = ปิดสนิทปลอดภัย\n• แถบสีแดง = ประตูเปิดอยู่หรือปิดไม่สนิท มีการแจ้งเตือนทันที\n• พร้อมระบบตรวจสอบการล็อคเข็มขัดนิรภัยเพื่อความปลอดภัยสูงสุดก่อนออกตัวครับ"];
+  if (self.featureExplanationTimer) {
+    [self.featureExplanationTimer invalidate];
+    self.featureExplanationTimer = nil;
+  }
+  if (self.featureExplanationBanner) {
+    [self.featureExplanationBanner removeFromSuperview];
+    self.featureExplanationBanner = nil;
+  }
+
+  UIView *dim = [[UIView alloc] initWithFrame:self.view.bounds];
+  dim.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.85];
+  dim.userInteractionEnabled = YES;
+  dim.layer.zPosition = 99999;
+  [dim addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(hideFeatureExplanation)]];
+
+  CGFloat w = 720;
+  CGFloat h = 420;
+  CGFloat x = (self.view.bounds.size.width - w) / 2.0;
+  CGFloat y = (self.view.bounds.size.height - h) / 2.0;
+
+  UIView *card = [[UIView alloc] initWithFrame:CGRectMake(x, y, w, h)];
+  card.backgroundColor = [UIColor colorWithRed:0.03 green:0.06 blue:0.10 alpha:0.98];
+  card.layer.cornerRadius = 18;
+  card.layer.borderWidth = 2.0;
+  card.layer.borderColor = [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:0.9].CGColor;
+  card.layer.shadowColor = [UIColor blackColor].CGColor;
+  card.layer.shadowOffset = CGSizeMake(0, 10);
+  card.layer.shadowRadius = 24;
+  card.layer.shadowOpacity = 0.95;
+  card.layer.zPosition = 100000;
+  card.userInteractionEnabled = YES;
+
+  UIView *topBar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, 56)];
+  topBar.backgroundColor = [UIColor colorWithRed:0.02 green:0.20 blue:0.30 alpha:1.0];
+  topBar.layer.cornerRadius = 18;
+  [card addSubview:topBar];
+
+  UILabel *tLbl = [[UILabel alloc] initWithFrame:CGRectMake(24, 12, w - 80, 32)];
+  tLbl.font = [UIFont boldSystemFontOfSize:22];
+  tLbl.textColor = [UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1];
+  tLbl.text = @"🚪 สถานะประตู 5 บาน & ตัวถัง (5-DOOR STATUS)";
+  [card addSubview:tLbl];
+
+  UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+  closeBtn.frame = CGRectMake(w - 56, 10, 44, 36);
+  [closeBtn setTitle:@"✕" forState:UIControlStateNormal];
+  closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:24];
+  [closeBtn setTitleColor:[UIColor colorWithWhite:0.95 alpha:1] forState:UIControlStateNormal];
+  [closeBtn addTarget:self action:@selector(hideFeatureExplanation) forControlEvents:UIControlEventTouchUpInside];
+  [card addSubview:closeBtn];
+
+  NSArray *doorTitles = @[
+    @"🚪 ประตูหน้าซ้าย (DRIVER FL)",
+    @"🚪 ประตูหน้าขวา (PASSENGER FR)",
+    @"🚪 ประตูหลังซ้าย (REAR LEFT)",
+    @"🚪 ประตูหลังขวา (REAR RIGHT)",
+    @"🚙 ฝาท้ายสัมภาระ (TRUNK / HATCH)"
+  ];
+  
+  for(int i=0; i<5; i++){
+    CGFloat bY = 70 + (i * 54);
+    UIView *doorRow = [[UIView alloc] initWithFrame:CGRectMake(24, bY, w - 48, 46)];
+    doorRow.backgroundColor = [UIColor colorWithWhite:0.07 alpha:1];
+    doorRow.layer.cornerRadius = 8;
+    doorRow.layer.borderWidth = 1.2;
+    doorRow.layer.borderColor = [UIColor colorWithRed:0.1 green:0.8 blue:0.4 alpha:0.5].CGColor;
+    
+    UILabel *dLbl = [[UILabel alloc] initWithFrame:CGRectMake(16, 8, 380, 30)];
+    dLbl.font = [UIFont boldSystemFontOfSize:17];
+    dLbl.textColor = [UIColor whiteColor];
+    dLbl.text = doorTitles[i];
+    [doorRow addSubview:dLbl];
+    
+    UILabel *sLbl = [[UILabel alloc] initWithFrame:CGRectMake(w - 48 - 220, 8, 204, 30)];
+    sLbl.font = [UIFont boldSystemFontOfSize:16];
+    sLbl.textColor = [UIColor colorWithRed:0.2 green:0.95 blue:0.45 alpha:1];
+    sLbl.textAlignment = NSTextAlignmentRight;
+    sLbl.text = @"🟢 ปิดสนิท (CLOSED - OK)";
+    [doorRow addSubview:sLbl];
+    
+    [card addSubview:doorRow];
+  }
+
+  UIView *beltRow = [[UIView alloc] initWithFrame:CGRectMake(24, 348, w - 48, 48)];
+  beltRow.backgroundColor = [UIColor colorWithRed:0.02 green:0.14 blue:0.08 alpha:0.95];
+  beltRow.layer.cornerRadius = 8;
+  beltRow.layer.borderWidth = 1.2;
+  beltRow.layer.borderColor = [UIColor colorWithRed:0.2 green:0.85 blue:0.45 alpha:0.7].CGColor;
+  
+  UILabel *bLbl = [[UILabel alloc] initWithFrame:CGRectMake(16, 10, w - 80, 28)];
+  bLbl.font = [UIFont boldSystemFontOfSize:16];
+  bLbl.textColor = [UIColor colorWithRed:0.35 green:0.98 blue:0.55 alpha:1];
+  bLbl.text = @"🔒 SEATBELTS: ล็อคครบทุกตำแหน่ง • พร้อมออกตัวปลอดภัย 100%";
+  [beltRow addSubview:bLbl];
+  [card addSubview:beltRow];
+
+  [dim addSubview:card];
+  self.featureExplanationBanner = dim;
+  [self.view addSubview:self.featureExplanationBanner];
+  [self.view bringSubviewToFront:self.featureExplanationBanner];
+  
+  self.featureExplanationTimer = [NSTimer scheduledTimerWithTimeInterval:8.0 target:self selector:@selector(hideFeatureExplanation) userInfo:nil repeats:NO];
 }
 
 -(void)showFeatureExplanation:(NSString *)title body:(NSString *)body {
