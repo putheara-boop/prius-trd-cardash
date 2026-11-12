@@ -285,16 +285,16 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.speedLabel.minimumScaleFactor = 0.72;
   if (self.driveStyle) {
     self.speedLimitBadge.frame = CGRectMake(w - 36, 4, 30, 30);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:90] ?: [UIFont boldSystemFontOfSize:90];
-    self.speedLabel.frame = CGRectMake(10, 42, w - 20, 96);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:118] ?: [UIFont boldSystemFontOfSize:118];
+    self.speedLabel.frame = CGRectMake(8, 34, w - 16, 114);
     self.gearBadge.hidden = YES;
-    self.unitLabel.frame = CGRectMake(10, h - 28, w - 20, 22);
+    self.unitLabel.frame = CGRectMake(10, h - 26, w - 20, 22);
     self.unitLabel.font = [UIFont boldSystemFontOfSize:13.0];
     self.unitLabel.text = @"km/h  •  GPS SPEED";
   } else {
     self.speedLimitBadge.frame = CGRectMake(w - 30, 8, 28, 28);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:92] ?: [UIFont boldSystemFontOfSize:92];
-    self.speedLabel.frame = CGRectMake(10, 12, w - 20, 88);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:108] ?: [UIFont boldSystemFontOfSize:108];
+    self.speedLabel.frame = CGRectMake(8, 8, w - 16, 98);
     self.gearBadge.hidden = NO;
     self.gearBadge.frame = CGRectMake(10, h - 25, 68, 24);
     self.unitLabel.frame = CGRectMake(82, h - 23, w - 90, 20);
@@ -356,7 +356,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [@"TRD" drawAtPoint:CGPointMake(center.x - 16, center.y - radius + 7) withAttributes:trdAttrs];
   } else {
     CGPoint center = CGPointMake(w / 2.0, h - 24);
-    CGFloat radius = MIN(w / 2.0 - 34, h - 42);
+    CGFloat radius = MIN(w / 2.0 - 30, h - 42);
     CGFloat startAngle = M_PI * 0.96;
     CGFloat endAngle = M_PI * 2.04;
     CGFloat totalAngle = endAngle - startAngle;
@@ -2636,27 +2636,27 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     hTopPod.frame = CGRectMake(leftX + 10, topY + 8, leftW - 20, 224);
 
     self.readyPill.hidden = NO;
-    self.readyPill.frame = CGRectMake(leftX + (leftW - 154)/2, topY + 14, 154, 22);
+    self.readyPill.frame = CGRectMake(leftX + (leftW - 154)/2, topY + 12, 154, 22);
 
     self.homeSpeedoDial.hidden = NO;
     self.gearBadge.hidden = YES;
-    self.homeSpeedoDial.frame = CGRectMake(leftX + 12, topY + 36, leftW - 24, 114);
+    self.homeSpeedoDial.frame = CGRectMake(leftX + 12, topY + 34, leftW - 24, 128);
 
     CGFloat gw = (leftW - 36 - 4*4)/5.0;
     for (int i = 0; i < self.gearButtons.count; i++) {
       UIButton *gb = self.gearButtons[i];
       gb.hidden = NO;
-      gb.frame = CGRectMake(leftX + 18 + i*(gw + 4), topY + 150, gw, 26);
+      gb.frame = CGRectMake(leftX + 18 + i*(gw + 4), topY + 162, gw, 24);
     }
 
     self.hybridEcoBar.hidden = NO;
-    self.hybridEcoBar.frame = CGRectMake(leftX + 14, topY + 178, leftW - 28, 22);
+    self.hybridEcoBar.frame = CGRectMake(leftX + 14, topY + 187, leftW - 28, 20);
 
     CGFloat mw = (leftW - 28 - 2*4)/3.0;
     for (int i = 0; i < self.driveModePills.count; i++) {
       UIButton *mb = self.driveModePills[i];
       mb.hidden = NO;
-      mb.frame = CGRectMake(leftX + 14 + i*(mw + 4), topY + 201, mw, 25);
+      mb.frame = CGRectMake(leftX + 14 + i*(mw + 4), topY + 208, mw, 22);
     }
 
     // Left Card 2: AI ECO COACH (Exact mirror of Right Card 2 at Y = topY + 240, H = 178!)
