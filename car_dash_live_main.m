@@ -3208,10 +3208,6 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  CLAuthorizationStatus auth=[CLLocationManager authorizationStatus];NSDictionary *gps=TRDDriveGPSStatus(self.fix,[NSDate date],auth,self.hadGPSSpeed);BOOL valid=[gps[@"valid"]boolValue];if(valid)self.hadGPSSpeed=YES;
  double fixAge = self.fix ? fabs([[NSDate date] timeIntervalSinceDate:self.fix.timestamp]) : 999.0;
  double rawKmh = (valid && fixAge <= 6.0 && self.fix.speed >= 0) ? (self.fix.speed * 3.6) : 0.0;
- if([TRDOBDClient sharedClient].isConnected && [TRDOBDClient sharedClient].vehicleSpeedKmh > 0){
-  rawKmh = [TRDOBDClient sharedClient].vehicleSpeedKmh;
-  valid = YES;
- }
  double kmh = (rawKmh < 1.5) ? 0.0 : rawKmh;
  BOOL reliable = valid && (!self.fix || self.fix.horizontalAccuracy <= 65.0);
  [self updateEcoScoreForSpeed:kmh valid:valid];
