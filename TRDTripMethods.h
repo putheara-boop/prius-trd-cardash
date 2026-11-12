@@ -1,7 +1,31 @@
 -(void)openTrip{[self.settingsSheet dismiss];self.carplayMode=NO;self.carplayGridMode=NO;self.tripMode=YES;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:0];[self refreshTrip];[self.view setNeedsLayout];}
 -(void)toggleTrip{[self refreshTrip];}
 -(void)saveTrip{if(self.trip){NSUserDefaults *p=[NSUserDefaults standardUserDefaults];[p setObject:[self.trip summary] forKey:@"TRDTripSummary"];self.lastTripSavedAt=[NSDate date];}}
--(void)resetTripMenu{TRDSettingsMenu *menu=[self settingsMenu:@"RESET TRIP?" message:@"Clear accumulated distance, moving time and maximum speed? Automatic tracking will continue."];[menu addAction:[TRDSettingAction actionWithTitle:@"Reset this trip" style:0 handler:^(TRDSettingAction *a){self.trip=[TRDTrip new];[self saveTrip];[self refreshTrip];}]];[self presentSettingsMenu:menu];}
+-(void)resetTripMenu{
+  NSArray *slotNames = @[@"TRIP A (ทริปปัจจุบัน)", @"TRIP B (ทริปถังน้ำมันนี้)", @"TRIP C (ทริประยะยาว)"];
+  NSInteger curSlot = self.activeTripSlot;
+  if(curSlot < 0 || curSlot > 2) curSlot = 0;
+  TRDSettingsMenu *menu=[self settingsMenu:@"📍 จัดการข้อมูลทริป (TRIP A / B / C)" message:[NSString stringWithFormat:@"กำลังเลือก: %@\nสามารถสลับดูทริป A/B/C หรือรีเซ็ตค่าเป็นศูนย์ได้ทันที", slotNames[curSlot]]];
+  for(int i=0; i<3; i++){
+    NSString *prefix = (i == curSlot) ? @"✓  " : @"    ";
+    [menu addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"%@สลับไปแสดง %@", prefix, slotNames[i]] style:0 handler:^(TRDSettingAction *a){
+      self.activeTripSlot = i;
+      [[NSUserDefaults standardUserDefaults] setInteger:i forKey:@"TRDActiveTripSlot"];
+      [[NSUserDefaults standardUserDefaults] synchronize];
+      [self refreshDriveTripDisplay];
+    }]];
+  }
+  [menu addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🔄 รีเซ็ตค่า %@ เป็น 0.0 km", slotNames[curSlot]] style:0 handler:^(TRDSettingAction *a){
+    self.trip=[TRDTrip new];
+    [self saveTrip];
+    [self refreshTrip];
+    [self refreshDriveTripDisplay];
+  }]];
+  [menu addAction:[TRDSettingAction actionWithTitle:@"📊 เปิดหน้าจอสรุปทริปแบบเต็มจอ (Trip Summary)" style:0 handler:^(TRDSettingAction *a){
+    [self showTripSummary];
+  }]];
+  [self presentSettingsMenu:menu];
+}
 -(void)refreshTrip{
  if(!self.tripView)return;
  TRDTrip *t=self.trip;
