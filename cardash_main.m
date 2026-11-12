@@ -1209,6 +1209,34 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self refreshDriveTripDisplay];
 }
 -(void)refreshDriveTripDisplay{
+  double liveKm = self.trip ? (self.trip.meters / 1000.0) : 0.0;
+  long liveSec = self.trip ? (long)self.trip.seconds : 0;
+  double liveKml = 24.2;
+  double liveLiters = liveKm / liveKml;
+  double liveCost = liveLiters * 38.50;
+  NSString *liveTimeMin = (liveSec >= 3600)
+    ? [NSString stringWithFormat:@"%02ld:%02ld ชม.", liveSec / 3600, (liveSec / 60) % 60]
+    : [NSString stringWithFormat:@"%02ld:%02ld นาที", (liveSec / 60) % 60, liveSec % 60];
+
+  UIView *abPod = [self.view viewWithTag:895];
+  if (abPod) {
+    UILabel *abState = (UILabel *)[abPod viewWithTag:899];
+    UILabel *abSub = (UILabel *)[abPod viewWithTag:897];
+    UILabel *abVal = (UILabel *)[abPod viewWithTag:898];
+    double curSpd = (self.fix && self.fix.speed >= 0 && self.gpsLive) ? (self.fix.speed * 3.6) : 0.0;
+    BOOL isMoving = (curSpd >= 2.0);
+    if (abState) {
+      abState.text = isMoving ? @"🟢 รถกำลังเคลื่อนที่ • นับระยะ GPS ต่อเนื่อง" : @"⏸️ รถจอดนิ่ง • หยุดพักการนับอัตโนมัติ";
+      abState.textColor = isMoving ? [UIColor colorWithRed:0.25 green:1.0 blue:0.65 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.82 blue:0.28 alpha:1.0];
+    }
+    if (abSub) {
+      abSub.text = [NSString stringWithFormat:@"⏱️ เวลาขับ %@  •  ⛽ %.2f L (฿ %.1f)", liveTimeMin, liveLiters, liveCost];
+    }
+    if (abVal) {
+      abVal.text = (liveKm < 100.0) ? [NSString stringWithFormat:@"%.2f km", liveKm] : [NSString stringWithFormat:@"%.1f km", liveKm];
+    }
+  }
+
   if(!self.driveTripCard) return;
   NSInteger slot = self.activeTripSlot;
   NSArray *slotNames = @[@"TRIP A", @"TRIP B", @"TRIP C"];
@@ -1226,28 +1254,32 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       }
     }
   }
-  double dist = (self.trip && self.trip.meters > 100) ? (self.trip.meters / 1000.0) : 24.6;
-  double kml = 24.2;
-  double cost = 38.50;
-  double avgSpd = (self.trip && self.trip.seconds > 10) ? (self.trip.meters / self.trip.seconds * 3.6) : 48.5;
-  NSString *timeStr = (self.trip && self.trip.seconds > 10) ? [NSString stringWithFormat:@"%02ld:%02ld ชม.", (long)self.trip.seconds/3600, ((long)self.trip.seconds/60)%60] : @"00:28 ชม.";
+  double dist = liveKm;
+  double kml = liveKml;
+  double cost = liveCost;
+  double avgSpd = (self.trip && self.trip.seconds > 5) ? (self.trip.meters / self.trip.seconds * 3.6) : 0.0;
+  NSString *timeStr = liveTimeMin;
   if(slot == 1){
-    dist = 186.4; kml = 23.6; cost = 304.50; avgSpd = 54.0; timeStr = @"03:26 ชม.";
+    dist = 186.4 + liveKm; kml = 23.6; cost = 304.50 + liveCost; avgSpd = 54.0; timeStr = @"03:26 ชม.";
   }else if(slot == 2){
     double odo = [[NSUserDefaults standardUserDefaults] doubleForKey:@"TRDTotalOdometer"];
-    dist = (odo > 50) ? odo : 1420.8; kml = 23.9; cost = 2285.00; avgSpd = 52.4; timeStr = @"27:08 ชม.";
+    dist = ((odo > 50) ? odo : 1420.8) + liveKm; kml = 23.9; cost = 2285.00 + liveCost; avgSpd = 52.4; timeStr = @"27:08 ชม.";
   }
   UILabel *subL = (UILabel *)[self.driveTripCard viewWithTag:823];
   if(subL){
-    if(slot == 0) subL.text = @"📍 ทริปปัจจุบัน (Current Trip)";
-    else if(slot == 1) subL.text = @"⛽ ทริปถังน้ำมันนี้ (Tank Trip)";
-    else subL.text = @"🏁 ทริปสะสมระยะยาว (Long-Term)";
+    if(slot == 0) subL.text = @"📍 ทริปนี้ A ➔ B (ตั้งแต่สตาร์ทรถจนดับเครื่อง)";
+    else if(slot == 1) subL.text = @"⛽ ทริปถังน้ำมันนี้ (Tank Trip B)";
+    else subL.text = @"🏁 ทริปสะสมระยะยาว (Long-Term C)";
   }
   UILabel *vDist = (UILabel *)[self.driveTripCard viewWithTag:851];
   UILabel *vKml  = (UILabel *)[self.driveTripCard viewWithTag:852];
   UILabel *vCost = (UILabel *)[self.driveTripCard viewWithTag:853];
   UILabel *vTime = (UILabel *)[self.driveTripCard viewWithTag:854];
-  if(vDist) vDist.text = [NSString stringWithFormat:@"%.1f km", dist];
+  if(vDist){
+    vDist.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:22.0] ?: [UIFont boldSystemFontOfSize:22.0];
+    vDist.textColor = [UIColor colorWithRed:0.20 green:1.0 blue:0.65 alpha:1.0];
+    vDist.text = (slot == 0) ? [NSString stringWithFormat:@"%.2f km", dist] : [NSString stringWithFormat:@"%.1f km", dist];
+  }
   if(vKml)  vKml.text  = [NSString stringWithFormat:@"%.1f km/L", kml];
   if(vCost) vCost.text = [NSString stringWithFormat:@"฿ %.2f", cost];
   if(vTime) vTime.text = [NSString stringWithFormat:@"%@ • %.0f km/h", [timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@""], avgSpd];
@@ -1270,9 +1302,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     }
     UILabel *htbL = (UILabel *)[hTripCard viewWithTag:713];
     if(htbL){
-      NSString *slotTitle = (slot == 0) ? @"CURRENT TRIP • ทริปปัจจุบัน (A)" : (slot == 1) ? @"TANK TRIP • ถังน้ำมันนี้ (B)" : @"LONG-TERM • สะสมระยะยาว (C)";
-      NSString *enTimeStr = [timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@" hrs"];
-      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %.1f km\nECONOMY: %.1f km/L (ประหยัดดีเยี่ยม)\nFUEL COST: ฿ %.2f (ค่าน้ำมัน)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, dist, kml, cost, avgSpd, enTimeStr];
+      NSString *slotTitle = (slot == 0) ? @"START-TO-STOP • ทริปนี้ A➔B" : (slot == 1) ? @"TANK TRIP • ถังน้ำมันนี้ (B)" : @"LONG-TERM • สะสมระยะยาว (C)";
+      NSString *enTimeStr = [[timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@" hrs"] stringByReplacingOccurrencesOfString:@" นาที" withString:@" min"];
+      NSString *distFmt = (slot == 0) ? [NSString stringWithFormat:@"%.2f km", dist] : [NSString stringWithFormat:@"%.1f km", dist];
+      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %@\nECONOMY: %.1f km/L (ประหยัดดีเยี่ยม)\nFUEL COST: ฿ %.2f (ค่าน้ำมัน)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, distFmt, kml, cost, avgSpd, enTimeStr];
     }
   }
   (void)slotNames;
@@ -1890,6 +1923,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.driveCameraButton.hidden = hide;
   self.radioButton.hidden = hide;
   UIView *cPod = [self.view viewWithTag:890]; if (cPod) cPod.hidden = hide;
+  UIView *abPod = [self.view viewWithTag:895]; if (abPod) abPod.hidden = hide;
 }
 
 -(void)viewDidLayoutSubviews{
@@ -2235,7 +2269,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     cPod.frame = CGRectMake(centerX, topY, centerW, podH);
 
     self.energyFlowLabel.hidden = NO;
-    self.energyFlowLabel.frame = CGRectMake(centerX + 16, topY + 14, centerW - 32, 36);
+    self.energyFlowLabel.frame = CGRectMake(centerX + 16, topY + 12, centerW - 32, 34);
     self.energyFlowLabel.font = [UIFont boldSystemFontOfSize:13.5];
     self.energyFlowLabel.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
     self.energyFlowLabel.layer.cornerRadius = 8;
@@ -2245,7 +2279,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.energyFlowLabel.text = @"🍃 โหมดขับขี่อัจฉริยะ EV / HYBRID  •  CRUISE READY";
 
     self.driveCameraButton.hidden = NO;
-    self.driveCameraButton.frame = CGRectMake(centerX + 16, topY + 58, centerW - 32, 46);
+    self.driveCameraButton.frame = CGRectMake(centerX + 16, topY + 52, centerW - 32, 42);
     [self.driveCameraButton setTitle:@"📷  เปิดกล้องมองหลัง / มุมอับสายตา (REAR CAMERA)" forState:UIControlStateNormal];
     self.driveCameraButton.titleLabel.font = [UIFont boldSystemFontOfSize:14.0];
     self.driveCameraButton.layer.cornerRadius = 10;
@@ -2253,11 +2287,67 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveCameraButton.layer.borderColor = [UIColor colorWithWhite:.28 alpha:1].CGColor;
     self.driveCameraButton.backgroundColor = [UIColor colorWithRed:.06 green:.10 blue:.15 alpha:.95];
 
+    // Luxury Start-to-Stop (A -> B) Live Distance HUD Card in Center Pod
+    UIButton *abPod = (UIButton *)[self.view viewWithTag:895];
+    if (!abPod) {
+      abPod = [UIButton buttonWithType:UIButtonTypeCustom];
+      abPod.tag = 895;
+      abPod.layer.cornerRadius = 12;
+      abPod.layer.borderWidth = 1.3;
+      abPod.layer.borderColor = [UIColor colorWithRed:0.0 green:0.92 blue:0.68 alpha:0.65].CGColor;
+      abPod.backgroundColor = [UIColor colorWithRed:0.02 green:0.08 blue:0.12 alpha:0.96];
+      [abPod addTarget:self action:@selector(resetTripMenu) forControlEvents:UIControlEventTouchUpInside];
+
+      UIView *abBar = [[UIView alloc] initWithFrame:CGRectMake(0, 10, 4, 54)];
+      abBar.backgroundColor = [UIColor colorWithRed:0.15 green:1.0 blue:0.65 alpha:1.0];
+      abBar.userInteractionEnabled = NO;
+      [abPod addSubview:abBar];
+
+      UILabel *abTitle = [[UILabel alloc] initWithFrame:CGRectMake(14, 7, 240, 20)];
+      abTitle.tag = 896;
+      abTitle.font = [UIFont boldSystemFontOfSize:13.0];
+      abTitle.textColor = [UIColor colorWithRed:0.0 green:0.92 blue:1.0 alpha:1.0];
+      abTitle.text = @"📍 ระยะทางตั้งแต่สตาร์ทรถ (A ➔ B)";
+      abTitle.userInteractionEnabled = NO;
+      [abPod addSubview:abTitle];
+
+      UILabel *abState = [[UILabel alloc] initWithFrame:CGRectMake(14, 28, 240, 18)];
+      abState.tag = 899;
+      abState.font = [UIFont boldSystemFontOfSize:11.5];
+      abState.textColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.28 alpha:1.0];
+      abState.text = @"⏸️ รถจอดนิ่ง • หยุดพักการนับอัตโนมัติ";
+      abState.userInteractionEnabled = NO;
+      [abPod addSubview:abState];
+
+      UILabel *abSub = [[UILabel alloc] initWithFrame:CGRectMake(14, 48, 240, 18)];
+      abSub.tag = 897;
+      abSub.font = [UIFont boldSystemFontOfSize:11.5];
+      abSub.textColor = [UIColor colorWithWhite:0.86 alpha:1.0];
+      abSub.text = @"⏱️ เวลาขับ 00:00 นาที  •  ⛽ 0.00 L (฿ 0.0)";
+      abSub.userInteractionEnabled = NO;
+      [abPod addSubview:abSub];
+
+      UILabel *abVal = [[UILabel alloc] initWithFrame:CGRectMake(252, 8, 140, 58)];
+      abVal.tag = 898;
+      abVal.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:38.0] ?: [UIFont boldSystemFontOfSize:38.0];
+      abVal.adjustsFontSizeToFitWidth = YES;
+      abVal.minimumScaleFactor = 0.75;
+      abVal.textAlignment = NSTextAlignmentRight;
+      abVal.textColor = [UIColor colorWithRed:0.20 green:1.0 blue:0.65 alpha:1.0];
+      abVal.text = @"0.00 km";
+      abVal.userInteractionEnabled = NO;
+      [abPod addSubview:abVal];
+
+      [self.view addSubview:abPod];
+    }
+    abPod.hidden = NO;
+    abPod.frame = CGRectMake(centerX + 16, topY + 102, centerW - 32, 74);
+
     self.drive3DGrid.hidden = NO;
-    self.drive3DGrid.frame = CGRectMake(centerX + 8, topY + 210, centerW - 16, 260);
+    self.drive3DGrid.frame = CGRectMake(centerX + 8, topY + 230, centerW - 16, 240);
 
     self.driveCar.hidden = NO;
-    self.driveCar.frame = CGRectMake(centerX + (centerW - 376)/2, topY + 150, 376, 236);
+    self.driveCar.frame = CGRectMake(centerX + (centerW - 356)/2, topY + 184, 356, 214);
 
     self.compassLabel.hidden = NO;
     self.compassLabel.frame = CGRectMake(centerX + 14, topY + 482, centerW - 28, 36);
@@ -2534,6 +2624,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self.view bringSubviewToFront:self.driveCar];
     [self.view bringSubviewToFront:self.energyFlowLabel];
     [self.view bringSubviewToFront:self.driveCameraButton];
+    if (abPod) [self.view bringSubviewToFront:abPod];
     [self.view bringSubviewToFront:self.compassLabel];
     [self.view bringSubviewToFront:self.carStatus];
     [self.view bringSubviewToFront:self.driveRightCard];
@@ -3075,6 +3166,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
    [self.tripSummaryCard removeFromSuperview];
    self.tripSummaryCard=nil;
   }
+  self.trip=[TRDTrip new];
+  self.activeTripSlot=0;
+  [self saveTrip];
+  [[TRDOBDClient sharedClient] resetTripFuel];
   [self restoreDisplayBrightness];
   [self showWelcome];
  }
@@ -4134,7 +4229,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  }] resume];
 }
 
--(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations{self.gpsUpdates++;self.gpsError=nil;self.fix=[locations lastObject];BOOL wasRunning=self.trip.running;for(CLLocation *fix in locations)[self.trip accept:fix now:[NSDate date]];if(wasRunning!=self.trip.running||!self.lastTripSavedAt||-[self.lastTripSavedAt timeIntervalSinceNow]>=5)[self saveTrip];double spd=(self.fix.speed>=0)?(self.fix.speed*3.6):0;[[TRDOBDClient sharedClient] integrateFallbackFuelForDistanceKm:(self.trip.meters/1000.0) speedKmh:spd dtSeconds:1.0];
+-(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations{self.gpsUpdates++;self.gpsError=nil;self.fix=[locations lastObject];BOOL wasRunning=self.trip.running;for(CLLocation *fix in locations){double fixKmh=(fix&&fix.speed>=0)?(fix.speed*3.6):0.0;if(fixKmh>=2.0&&fix.horizontalAccuracy>=0&&fix.horizontalAccuracy<=45.0){[self.trip accept:fix now:[NSDate date]];}else{[self.trip breakSegment];}}if(wasRunning!=self.trip.running||!self.lastTripSavedAt||-[self.lastTripSavedAt timeIntervalSinceNow]>=5)[self saveTrip];double spd=(self.fix.speed>=0)?(self.fix.speed*3.6):0;if(spd>=2.0)[[TRDOBDClient sharedClient] integrateFallbackFuelForDistanceKm:(self.trip.meters/1000.0) speedKmh:spd dtSeconds:1.0];
  [self trackOdometerUpdates];
  [self checkSpeedCamerasNearLocation:self.fix];
  if(!self.hasFetchedWeather && self.fix && self.fix.horizontalAccuracy>0 && self.fix.horizontalAccuracy<=1000){
