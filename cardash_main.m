@@ -281,21 +281,23 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [super layoutSubviews];
   CGFloat w = self.bounds.size.width;
   CGFloat h = self.bounds.size.height;
+  self.speedLabel.adjustsFontSizeToFitWidth = YES;
+  self.speedLabel.minimumScaleFactor = 0.72;
   if (self.driveStyle) {
-    self.speedLimitBadge.frame = CGRectMake(w - 36, 4, 28, 28);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:68] ?: [UIFont boldSystemFontOfSize:68];
-    self.speedLabel.frame = CGRectMake(10, 44, w - 20, 72);
+    self.speedLimitBadge.frame = CGRectMake(w - 36, 4, 30, 30);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:90] ?: [UIFont boldSystemFontOfSize:90];
+    self.speedLabel.frame = CGRectMake(10, 42, w - 20, 96);
     self.gearBadge.hidden = YES;
-    self.unitLabel.frame = CGRectMake(10, h - 28, w - 20, 20);
-    self.unitLabel.font = [UIFont boldSystemFontOfSize:12];
+    self.unitLabel.frame = CGRectMake(10, h - 28, w - 20, 22);
+    self.unitLabel.font = [UIFont boldSystemFontOfSize:13.0];
     self.unitLabel.text = @"km/h  •  GPS SPEED";
   } else {
-    self.speedLimitBadge.frame = CGRectMake(w - 34, 4, 28, 28);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:54] ?: [UIFont boldSystemFontOfSize:54];
-    self.speedLabel.frame = CGRectMake(10, 26, w - 20, 54);
+    self.speedLimitBadge.frame = CGRectMake(w - 30, 8, 28, 28);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:74] ?: [UIFont boldSystemFontOfSize:74];
+    self.speedLabel.frame = CGRectMake(10, 14, w - 20, 70);
     self.gearBadge.hidden = NO;
-    self.gearBadge.frame = CGRectMake(10, h - 26, 68, 24);
-    self.unitLabel.frame = CGRectMake(82, h - 24, w - 90, 20);
+    self.gearBadge.frame = CGRectMake(10, h - 25, 68, 24);
+    self.unitLabel.frame = CGRectMake(82, h - 23, w - 90, 20);
     self.unitLabel.font = [UIFont boldSystemFontOfSize:12.0];
     self.unitLabel.adjustsFontSizeToFitWidth = YES;
     self.unitLabel.minimumScaleFactor = 0.85;
@@ -331,38 +333,44 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   CGContextRef ctx = UIGraphicsGetCurrentContext();
   CGFloat w = self.bounds.size.width;
   CGFloat h = self.bounds.size.height;
-  CGPoint center = CGPointMake(w / 2.0, h / 2.0 + (self.driveStyle ? 6 : 2));
-  CGFloat radius = MIN(w / 2.0 - 18, h / 2.0 - 8);
-  
-  CGFloat startAngle = M_PI * 0.85;
-  CGFloat endAngle = M_PI * 2.15;
-  CGFloat totalAngle = endAngle - startAngle;
   
   if (self.driveStyle) {
+    CGPoint center = CGPointMake(w / 2.0, h / 2.0 + 10);
+    CGFloat radius = MIN(w / 2.0 - 14, h / 2.0 - 4);
+    CGFloat startAngle = M_PI * 0.85;
+    CGFloat endAngle = M_PI * 2.15;
+    CGFloat totalAngle = endAngle - startAngle;
+
     CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:0.85].CGColor);
-    CGContextSetLineWidth(ctx, 5.0);
+    CGContextSetLineWidth(ctx, 5.5);
     CGContextAddArc(ctx, center.x, center.y, radius, startAngle, startAngle + totalAngle * 0.5, 0);
     CGContextStrokePath(ctx);
     
     CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:1.0 green:0.2 blue:0.25 alpha:0.85].CGColor);
-    CGContextSetLineWidth(ctx, 5.0);
+    CGContextSetLineWidth(ctx, 5.5);
     CGContextAddArc(ctx, center.x, center.y, radius, startAngle + totalAngle * 0.5, endAngle, 0);
     CGContextStrokePath(ctx);
     
     UIFont *trdFont = [UIFont boldSystemFontOfSize:14];
     NSDictionary *trdAttrs = @{NSFontAttributeName: trdFont, NSForegroundColorAttributeName: [UIColor colorWithRed:1.0 green:0.2 blue:0.25 alpha:1]};
-    [@"TRD" drawAtPoint:CGPointMake(center.x - 16, center.y - radius + 8) withAttributes:trdAttrs];
+    [@"TRD" drawAtPoint:CGPointMake(center.x - 16, center.y - radius + 7) withAttributes:trdAttrs];
   } else {
-    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.08 green:0.14 blue:0.20 alpha:0.75].CGColor);
-    CGContextSetLineWidth(ctx, 4.0);
+    CGPoint center = CGPointMake(w / 2.0, h - 24);
+    CGFloat radius = MIN(w / 2.0 - 38, h - 42);
+    CGFloat startAngle = M_PI * 0.96;
+    CGFloat endAngle = M_PI * 2.04;
+    CGFloat totalAngle = endAngle - startAngle;
+
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.08 green:0.14 blue:0.20 alpha:0.85].CGColor);
+    CGContextSetLineWidth(ctx, 4.5);
     CGContextAddArc(ctx, center.x, center.y, radius, startAngle, endAngle, 0);
     CGContextStrokePath(ctx);
     
     CGFloat ratio = MIN(MAX(self.speed / 180.0, 0.0), 1.0);
     if (ratio > 0.01) {
       CGFloat currentAngle = startAngle + totalAngle * ratio;
-      CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:0.9].CGColor);
-      CGContextSetLineWidth(ctx, 5.0);
+      CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:0.95].CGColor);
+      CGContextSetLineWidth(ctx, 5.5);
       CGContextAddArc(ctx, center.x, center.y, radius, startAngle, currentAngle, 0);
       CGContextStrokePath(ctx);
     }
@@ -392,9 +400,20 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       if (val == 0 || val == 60 || val == 100 || val == 140) {
         NSString *str = [NSString stringWithFormat:@"%.0f", val];
         CGSize sz = [str sizeWithAttributes:textAttrs];
-        CGFloat textR = radius - 14.0;
-        CGFloat tx = center.x + textR * cos(angle) - sz.width / 2.0;
-        CGFloat ty = center.y + textR * sin(angle) - sz.height / 2.0;
+        CGFloat tx = 0, ty = 0;
+        if (val == 0) {
+          tx = center.x - radius - 17.0;
+          ty = center.y - 15.0;
+        } else if (val == 60) {
+          tx = center.x + (radius + 11.0) * cos(angle) - sz.width - 2.0;
+          ty = center.y + (radius + 9.0) * sin(angle) - sz.height / 2.0 - 2.0;
+        } else if (val == 100) {
+          tx = center.x + (radius + 11.0) * cos(angle) + 2.0;
+          ty = center.y + (radius + 9.0) * sin(angle) - sz.height / 2.0 - 2.0;
+        } else if (val == 140) {
+          tx = center.x + (radius + 10.0) * cos(angle) + 2.0;
+          ty = center.y + (radius + 9.0) * sin(angle) - sz.height / 2.0 + 3.0;
+        }
         [str drawAtPoint:CGPointMake(tx, ty) withAttributes:textAttrs];
       }
     }
