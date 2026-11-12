@@ -1047,6 +1047,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property BOOL hasElapsed;
 @property NSDate *mediaTimestamp;
 @property BOOL driveMode;
+@property BOOL manualDriveActive;
 @property UIView *driveLeftCard,*driveRightCard;
 @property BOOL autoDriveSuppressed;
 @property BOOL carplayMode,carplayGridMode;
@@ -3011,7 +3012,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self refreshStatusStrip];
    [self checkBatteryHealthGuard];
  }
- [self applyMotionPolicy];[self refreshTrip];[self refreshMini];[self refreshBrakeStatus];
+ [self applyMotionPolicy];[self refreshTrip];[self refreshDriveTripDisplay];[self refreshMini];[self refreshBrakeStatus];
 }
 -(void)refreshNowPlaying{
  if(self.radioPlayer){
@@ -3191,7 +3192,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  [self refreshSpeed];
 }
 -(void)cycleDriveMode{NSInteger next=(TRDTheme+1)%3;[self setThemeNumber:@(next)];}
--(void)toggleDrive{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.driveMode=!self.driveMode;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:self.driveMode?@"‹ DASHBOARD":@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)toggleDrive{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;self.manualDriveActive=NO;}else{double curSpd=(self.fix&&self.fix.speed>=0)?(self.fix.speed*3.6):0;self.manualDriveActive=(curSpd<15.0);}self.driveMode=!self.driveMode;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:self.driveMode?@"‹ DASHBOARD":@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)toggleNight{
  NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];
  if(!self.nightMode){CGFloat observed=[UIScreen mainScreen].brightness;if(observed>=.15)self.dayBrightness=observed;if(self.dayBrightness<.15)self.dayBrightness=.6;[prefs setDouble:self.dayBrightness forKey:@"dayBrightness"];[UIScreen mainScreen].brightness=MIN(self.dayBrightness,.12);self.nightMode=YES;}
@@ -3201,42 +3202,88 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)captureGPSState{}
 -(void)restartGPS{[self.gps stopUpdatingLocation];self.fix=nil;self.gpsError=nil;[self startGPS];[self captureGPSState];}
 -(void)locationManager:(CLLocationManager *)manager didChangeAuthorizationStatus:(CLAuthorizationStatus)status{if(status==kCLAuthorizationStatusAuthorizedAlways||status==kCLAuthorizationStatusAuthorizedWhenInUse)[self startGPS];[self captureGPSState];}
--(void)startGPS{self.gps.pausesLocationUpdatesAutomatically=NO;self.gps.desiredAccuracy=kCLLocationAccuracyBestForNavigation;self.gps.distanceFilter=1.0;self.gps.activityType=CLActivityTypeAutomotiveNavigation;if([self.gps respondsToSelector:@selector(setAllowsBackgroundLocationUpdates:)])self.gps.allowsBackgroundLocationUpdates=YES;CLAuthorizationStatus status=[CLLocationManager authorizationStatus];if(status==kCLAuthorizationStatusNotDetermined)[self.gps requestWhenInUseAuthorization];if(status!=kCLAuthorizationStatusDenied&&status!=kCLAuthorizationStatusRestricted)[self.gps startUpdatingLocation];}
+-(void)startGPS{self.gps.pausesLocationUpdatesAutomatically=NO;self.gps.desiredAccuracy=kCLLocationAccuracyBestForNavigation;self.gps.distanceFilter=kCLDistanceFilterNone;self.gps.activityType=CLActivityTypeAutomotiveNavigation;if([self.gps respondsToSelector:@selector(setAllowsBackgroundLocationUpdates:)])self.gps.allowsBackgroundLocationUpdates=YES;CLAuthorizationStatus status=[CLLocationManager authorizationStatus];if(status==kCLAuthorizationStatusNotDetermined)[self.gps requestWhenInUseAuthorization];if(status!=kCLAuthorizationStatusDenied&&status!=kCLAuthorizationStatusRestricted)[self.gps startUpdatingLocation];}
 -(void)refreshClockHud{if(!self.clockHud)return;UIColor *c=TRDAccent();self.clockHud.layer.borderColor=[c colorWithAlphaComponent:.38].CGColor;[self.clockHud viewWithTag:401].backgroundColor=c;UILabel *hudSpeed=(UILabel *)[self.clockHud viewWithTag:402],*hudUnit=(UILabel *)[self.clockHud viewWithTag:403],*hudGps=(UILabel *)[self.clockHud viewWithTag:405],*hudAcc=(UILabel *)[self.clockHud viewWithTag:406],*hudTrip=(UILabel *)[self.clockHud viewWithTag:407];hudSpeed.text=self.speed.text?:@"--";hudSpeed.textColor=self.clock.textColor?:[UIColor whiteColor];hudUnit.textColor=c;hudGps.text=self.gpsStatus.text?:@"WAITING FOR GPS";hudGps.textColor=self.gpsLive?[UIColor colorWithRed:.30 green:self.nightMode?.58:.80 blue:.48 alpha:1]:[UIColor colorWithWhite:self.nightMode?.58:.76 alpha:1];hudAcc.text=(self.fix&&self.fix.horizontalAccuracy>=0)?[NSString stringWithFormat:@"ACCURACY ±%.0f m  •  %@",self.fix.horizontalAccuracy,self.gpsLive?@"SPEED LOCKED":@"NO SPEED VECTOR"]:@"SIGNAL  •  SEARCHING SATELLITES";hudTrip.text=self.trip.seconds>0?[NSString stringWithFormat:@"TRIP  %.2f km  •  MAX %.0f km/h",self.trip.meters/1000.0,self.trip.maximum]:(self.trip.running?@"TRIP  ARMED  •  WAITING FOR GPS":@"TRIP  AUTO  •  WAITING FOR MOVEMENT");hudTrip.textColor=c;}
 -(void)refreshSpeed{
  CLAuthorizationStatus auth=[CLLocationManager authorizationStatus];NSDictionary *gps=TRDDriveGPSStatus(self.fix,[NSDate date],auth,self.hadGPSSpeed);BOOL valid=[gps[@"valid"]boolValue];if(valid)self.hadGPSSpeed=YES;
- double kmh=valid?self.fix.speed*3.6:0;BOOL reliable=valid&&self.fix.horizontalAccuracy<=25;
+ double fixAge = self.fix ? fabs([[NSDate date] timeIntervalSinceDate:self.fix.timestamp]) : 999.0;
+ double rawKmh = (valid && fixAge <= 6.0 && self.fix.speed >= 0) ? (self.fix.speed * 3.6) : 0.0;
+ if([TRDOBDClient sharedClient].isConnected && [TRDOBDClient sharedClient].vehicleSpeedKmh > 0){
+  rawKmh = [TRDOBDClient sharedClient].vehicleSpeedKmh;
+  valid = YES;
+ }
+ double kmh = (rawKmh < 1.5) ? 0.0 : rawKmh;
+ BOOL reliable = valid && (!self.fix || self.fix.horizontalAccuracy <= 65.0);
  [self updateEcoScoreForSpeed:kmh valid:valid];
- if(reliable&&kmh<=1){if(!self.stationarySince)self.stationarySince=[NSDate date];if(-[self.stationarySince timeIntervalSinceNow]>=10)self.autoDriveSuppressed=NO;}else self.stationarySince=nil;
- if([UIApplication sharedApplication].applicationState==UIApplicationStateActive&&!self.driveMode&&!self.musicMode&&!self.tripMode&&!self.mapMode&&!self.focused&&!self.autoDriveSuppressed&&reliable&&kmh>=10){if(!self.movingSince)self.movingSince=[NSDate date];if(-[self.movingSince timeIntervalSinceNow]>=5){self.movingSince=nil;[self toggleDrive];}}else self.movingSince=nil;
- if(self.driveMode){
-  BOOL isStopped=(!valid)||(reliable&&kmh<=1.0);
-  if(isStopped){
-   if(!self.parkedSince)self.parkedSince=[NSDate date];
-   NSTimeInterval parkedDuration=-[self.parkedSince timeIntervalSinceNow];
-   NSTimeInterval limit=(!valid)?2.5:5.0;
-   if(parkedDuration>=limit){
-    self.parkedSince=nil;
-    [self homePage];
-    self.autoDriveSuppressed=NO;
-   }
-  }else{
-   self.parkedSince=nil;
+
+ // Sync live speed to all custom dials & widgets!
+ if(self.homeSpeedoDial) self.homeSpeedoDial.speed = kmh;
+ if(self.driveSpeedoDial) self.driveSpeedoDial.speed = kmh;
+ if(self.carplayTelemetryWidget && self.carplayTelemetryWidget.speedLabel){
+  self.carplayTelemetryWidget.speedLabel.text = [NSString stringWithFormat:@"%.0f", kmh];
+ }
+
+ // Clear manual suppression quickly once vehicle drops below 5 km/h
+ if(kmh <= 5.0){
+  if(!self.stationarySince) self.stationarySince = [NSDate date];
+  if(-[self.stationarySince timeIntervalSinceNow] >= 2.0) self.autoDriveSuppressed = NO;
+ }else{
+  self.stationarySince = nil;
+ }
+
+ // 1. AUTO-ENTER DRIVE MODE from HOME when speed >= 20 km/h (within 1.5 seconds)
+ if(kmh >= 15.0) self.manualDriveActive = NO;
+ if([UIApplication sharedApplication].applicationState==UIApplicationStateActive && !self.driveMode && !self.musicMode && !self.tripMode && !self.mapMode && !self.carplayMode && !self.focused && !self.autoDriveSuppressed && reliable && kmh >= 20.0){
+  if(!self.movingSince) self.movingSince = [NSDate date];
+  if(-[self.movingSince timeIntervalSinceNow] >= 1.5){
+   self.movingSince = nil;
+   self.parkedSince = nil;
+   self.manualDriveActive = NO;
+   [self toggleDrive];
+   self.manualDriveActive = NO;
   }
  }else{
-  self.parkedSince=nil;
+  self.movingSince = nil;
  }
- self.gpsLive=valid;[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&valid?self.fix.speed*3.6:0];
+
+ // 2. AUTO-RETURN TO HOME from DRIVE MODE when speed <= 3.0 km/h (within 1.5 seconds)
+ if(self.driveMode && !self.manualDriveActive){
+  BOOL isStopped = (!valid) || (kmh <= 3.0) || (fixAge > 3.5);
+  if(isStopped){
+   if(!self.parkedSince) self.parkedSince = [NSDate date];
+   NSTimeInterval parkedDuration = -[self.parkedSince timeIntervalSinceNow];
+   if(parkedDuration >= 1.5){
+    self.parkedSince = nil;
+    self.movingSince = nil;
+    self.driveMode = NO;
+    self.autoDriveSuppressed = NO;
+    [self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];
+    [self.view setNeedsLayout];
+   }
+  }else{
+   self.parkedSince = nil;
+  }
+ }else{
+  self.parkedSince = nil;
+ }
+ self.gpsLive=valid;[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&valid?kmh:0];
  if(self.hybridEcoBar&&!self.hybridEcoBar.hidden){
   double curSpeed=valid?kmh:0;
   BOOL braking=(self.harshBrakeCount>0);
   BOOL accel=(self.harshAccelCount>0);
   [self.hybridEcoBar updateWithSpeed:curSpeed isBraking:braking isAccelerating:accel];
  }
- NSString *newSpeed=valid?[NSString stringWithFormat:@"%.0f",MAX(0,self.fix.speed*3.6)]:@"0";
+ if(self.drivePowerMeter&&!self.drivePowerMeter.hidden){
+  CGFloat pRatio = (kmh <= 1.0) ? 0.0 : MIN(0.95, (kmh / 110.0) - 0.15);
+  if(self.harshBrakeCount > 0) pRatio = -0.55;
+  else if(self.harshAccelCount > 0) pRatio = 0.85;
+  self.drivePowerMeter.powerRatio = pRatio;
+  [self.drivePowerMeter setNeedsDisplay];
+ }
+ NSString *newSpeed=[NSString stringWithFormat:@"%.0f",kmh];
  if(![self.speed.text isEqualToString:newSpeed]){
   self.speed.text=newSpeed;
-  [CATransaction begin];[CATransaction setDisableActions:YES];self.progress.strokeEnd=valid?MIN(1,self.fix.speed*3.6/180):0;[CATransaction commit];
+  [CATransaction begin];[CATransaction setDisableActions:YES];self.progress.strokeEnd=valid?MIN(1,kmh/180.0):0;[CATransaction commit];
  }
  
  BOOL overSpeed=(self.speedLimit>0&&valid&&kmh>(self.speedLimit+0.5));
@@ -4016,7 +4063,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)handleEdgePan:(UIScreenEdgePanGestureRecognizer *)gesture{if(gesture.state==UIGestureRecognizerStateBegan||gesture.state==UIGestureRecognizerStateRecognized){if(self.carplayMode)[self homePage];}}
 -(void)openYouTubeSource{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];}
 -(void)navigate:(UIButton *)button{switch(button.tag){case 60:[self homePage];break;case 66:[self openCarPlay];break;case 61:if(self.musicMode){[self showMusicSources:button];}else{[self openMusic];}break;case 62:[self openMap];break;case 63:[self openDriveEQ];break;case 64:[self screenOff];break;case 65:[self openCamera];break;case 67:notify_post("com.codex.trd.network.internet");[self send:@"com.himais0giiiin.ytnine"];break;case 68:[self carSettings];break;}}
--(void)homePage{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)homePage{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)openMusic{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self homePage];}
 -(void)openMap{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self ensureMapWebView];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];else [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];[self updateMapCar];}
 -(void)syncMapAppearance:(BOOL)initial{if(!self.mapWebView)return;NSString *mode=self.nightMode?@"night":@"traffic";NSString *js=initial?[NSString stringWithFormat:@"if(window.setMode && !window.__trdInitialThemeDone){window.__trdInitialThemeDone=true;window.setMode('%@');}",mode]:[NSString stringWithFormat:@"if(window.setMode){window.setMode('%@');}",mode];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
