@@ -140,15 +140,19 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   if((self=[super init])){
     self.backgroundColor=[UIColor clearColor];
     self.evPowerLabel=[[UILabel alloc]init];
-    self.evPowerLabel.font=[UIFont boldSystemFontOfSize:10.5];
-    self.evPowerLabel.textColor=[UIColor colorWithRed:0.0 green:0.88 blue:0.45 alpha:1];
+    self.evPowerLabel.font=[UIFont boldSystemFontOfSize:12.5];
+    self.evPowerLabel.adjustsFontSizeToFitWidth=YES;
+    self.evPowerLabel.minimumScaleFactor=0.85;
+    self.evPowerLabel.textColor=[UIColor colorWithRed:0.0 green:0.92 blue:0.50 alpha:1];
     self.evPowerLabel.text=@"⚡ EV POWER: +0.0 kW";
     [self addSubview:self.evPowerLabel];
     
     self.evPowerRangeLabel=[[UILabel alloc]init];
-    self.evPowerRangeLabel.font=[UIFont boldSystemFontOfSize:9.0];
+    self.evPowerRangeLabel.font=[UIFont boldSystemFontOfSize:11.5];
+    self.evPowerRangeLabel.adjustsFontSizeToFitWidth=YES;
+    self.evPowerRangeLabel.minimumScaleFactor=0.85;
     self.evPowerRangeLabel.textAlignment=NSTextAlignmentRight;
-    self.evPowerRangeLabel.textColor=[UIColor colorWithWhite:0.60 alpha:1];
+    self.evPowerRangeLabel.textColor=[UIColor colorWithWhite:0.92 alpha:1];
     self.evPowerRangeLabel.text=@"CHG | ECO | PWR";
     [self addSubview:self.evPowerRangeLabel];
     
@@ -233,27 +237,29 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self addSubview:self.speedLabel];
     
     self.unitLabel = [[UILabel alloc] init];
-    self.unitLabel.font = [UIFont boldSystemFontOfSize:9.5];
-    self.unitLabel.textColor = [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:1];
+    self.unitLabel.font = [UIFont boldSystemFontOfSize:12.0];
+    self.unitLabel.textColor = [UIColor colorWithRed:0.0 green:0.88 blue:1.0 alpha:1];
     self.unitLabel.textAlignment = NSTextAlignmentCenter;
     self.unitLabel.text = @"KM / H • DYNAMICS";
     [self addSubview:self.unitLabel];
     
     self.gearBadge = [[UIView alloc] init];
-    self.gearBadge.backgroundColor = [UIColor colorWithRed:0.02 green:0.18 blue:0.10 alpha:0.9];
+    self.gearBadge.backgroundColor = [UIColor colorWithRed:0.02 green:0.18 blue:0.10 alpha:0.95];
     self.gearBadge.layer.cornerRadius = 6;
-    self.gearBadge.layer.borderWidth = 1.0;
-    self.gearBadge.layer.borderColor = [UIColor colorWithRed:0.2 green:0.85 blue:0.45 alpha:0.7].CGColor;
-    UILabel *gl = [[UILabel alloc] initWithFrame:CGRectMake(5, 2, 14, 18)];
+    self.gearBadge.layer.borderWidth = 1.2;
+    self.gearBadge.layer.borderColor = [UIColor colorWithRed:0.2 green:0.85 blue:0.45 alpha:0.8].CGColor;
+    UILabel *gl = [[UILabel alloc] initWithFrame:CGRectMake(5, 2, 16, 20)];
     gl.tag = 101;
-    gl.font = [UIFont boldSystemFontOfSize:13];
+    gl.font = [UIFont boldSystemFontOfSize:14.5];
     gl.textColor = [UIColor whiteColor];
     gl.text = @"D";
     [self.gearBadge addSubview:gl];
-    UILabel *gw = [[UILabel alloc] initWithFrame:CGRectMake(20, 4, 38, 14)];
+    UILabel *gw = [[UILabel alloc] initWithFrame:CGRectMake(21, 3, 44, 18)];
     gw.tag = 102;
-    gw.font = [UIFont boldSystemFontOfSize:8.5];
-    gw.textColor = [UIColor colorWithRed:0.25 green:0.95 blue:0.50 alpha:1];
+    gw.font = [UIFont boldSystemFontOfSize:11.0];
+    gw.adjustsFontSizeToFitWidth = YES;
+    gw.minimumScaleFactor = 0.85;
+    gw.textColor = [UIColor colorWithRed:0.35 green:0.98 blue:0.55 alpha:1];
     gw.text = @"DRIVE";
     [self.gearBadge addSubview:gw];
     [self addSubview:self.gearBadge];
@@ -284,13 +290,15 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.unitLabel.font = [UIFont boldSystemFontOfSize:12];
     self.unitLabel.text = @"km/h  •  GPS SPEED";
   } else {
-    self.speedLimitBadge.frame = CGRectMake(w - 32, 6, 26, 26);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:52] ?: [UIFont boldSystemFontOfSize:52];
-    self.speedLabel.frame = CGRectMake(10, 28, w - 20, 52);
+    self.speedLimitBadge.frame = CGRectMake(w - 34, 4, 28, 28);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:54] ?: [UIFont boldSystemFontOfSize:54];
+    self.speedLabel.frame = CGRectMake(10, 26, w - 20, 54);
     self.gearBadge.hidden = NO;
-    self.gearBadge.frame = CGRectMake(12, h - 26, 60, 22);
-    self.unitLabel.frame = CGRectMake(76, h - 24, w - 88, 18);
-    self.unitLabel.font = [UIFont boldSystemFontOfSize:9.5];
+    self.gearBadge.frame = CGRectMake(10, h - 26, 68, 24);
+    self.unitLabel.frame = CGRectMake(82, h - 24, w - 90, 20);
+    self.unitLabel.font = [UIFont boldSystemFontOfSize:12.0];
+    self.unitLabel.adjustsFontSizeToFitWidth = YES;
+    self.unitLabel.minimumScaleFactor = 0.85;
     self.unitLabel.text = @"KM / H • DYNAMICS";
   }
 }
@@ -360,8 +368,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     }
     
     NSArray *ticks = @[@0, @30, @60, @80, @100, @120, @140, @160];
-    UIFont *font = [UIFont boldSystemFontOfSize:8.5];
-    NSDictionary *textAttrs = @{NSFontAttributeName: font, NSForegroundColorAttributeName: [UIColor colorWithWhite:0.6 alpha:0.85]};
+    UIFont *font = [UIFont boldSystemFontOfSize:11.0];
+    NSDictionary *textAttrs = @{NSFontAttributeName: font, NSForegroundColorAttributeName: [UIColor colorWithWhite:0.92 alpha:1.0]};
     
     for (NSNumber *num in ticks) {
       CGFloat val = [num doubleValue];
@@ -1195,13 +1203,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     for(int i=0; i<self.gearButtons.count; i++){
       UIButton *b = self.gearButtons[i];
       if(i == idx){
-        b.backgroundColor = [UIColor colorWithRed:.05 green:.40 blue:.20 alpha:1];
-        b.layer.borderColor = [UIColor colorWithRed:.25 green:.85 blue:.45 alpha:1].CGColor;
+        b.backgroundColor = [UIColor colorWithRed:.05 green:.45 blue:.22 alpha:1];
+        b.layer.borderColor = [UIColor colorWithRed:.25 green:.90 blue:.48 alpha:1].CGColor;
         [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
       }else{
-        b.backgroundColor = [UIColor colorWithWhite:.08 alpha:1];
-        b.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
-        [b setTitleColor:[UIColor colorWithWhite:.60 alpha:1] forState:UIControlStateNormal];
+        b.backgroundColor = [UIColor colorWithWhite:.13 alpha:1];
+        b.layer.borderColor = [UIColor colorWithWhite:.34 alpha:1].CGColor;
+        [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
       }
     }
   }
@@ -1214,13 +1222,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   for(int i=0; i<self.driveModePills.count; i++){
     UIButton *b = self.driveModePills[i];
     if(i == idx){
-      b.backgroundColor = (idx==2)?[UIColor colorWithRed:.3 green:.05 blue:.08 alpha:1]:[UIColor colorWithRed:.03 green:.14 blue:.08 alpha:.9];
-      b.layer.borderColor = (idx==2)?[UIColor colorWithRed:1 green:.2 blue:.2 alpha:1].CGColor:[UIColor colorWithRed:.25 green:.75 blue:.40 alpha:.8].CGColor;
+      b.backgroundColor = (idx==2)?[UIColor colorWithRed:.35 green:.06 blue:.10 alpha:1]:[UIColor colorWithRed:.04 green:.22 blue:.12 alpha:.95];
+      b.layer.borderColor = (idx==2)?[UIColor colorWithRed:1 green:.25 blue:.25 alpha:1].CGColor:[UIColor colorWithRed:.25 green:.85 blue:.45 alpha:.9].CGColor;
       [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     }else{
-      b.backgroundColor = [UIColor colorWithWhite:.08 alpha:1];
-      b.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
-      [b setTitleColor:[UIColor colorWithWhite:.65 alpha:1] forState:UIControlStateNormal];
+      b.backgroundColor = [UIColor colorWithWhite:.13 alpha:1];
+      b.layer.borderColor = [UIColor colorWithWhite:.34 alpha:1].CGColor;
+      [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     }
   }
 }
@@ -1293,13 +1301,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self.view addSubview:self.settingsPill];
 
   self.readyPill = [[UIView alloc]init];
-  self.readyPill.backgroundColor = [UIColor colorWithRed:.02 green:.08 blue:.05 alpha:.92];
+  self.readyPill.backgroundColor = [UIColor colorWithRed:.02 green:.10 blue:.06 alpha:.95];
   self.readyPill.layer.cornerRadius = 6;
-  self.readyPill.layer.borderWidth = 1.0;
-  self.readyPill.layer.borderColor = [UIColor colorWithRed:.25 green:.75 blue:.40 alpha:.45].CGColor;
-  UILabel *rpL = [[UILabel alloc]initWithFrame:CGRectMake(0,0,130,22)];
-  rpL.font = [UIFont boldSystemFontOfSize:11];
-  rpL.textColor = [UIColor colorWithRed:.35 green:.92 blue:.45 alpha:1];
+  self.readyPill.layer.borderWidth = 1.2;
+  self.readyPill.layer.borderColor = [UIColor colorWithRed:.25 green:.85 blue:.45 alpha:.6].CGColor;
+  UILabel *rpL = [[UILabel alloc]initWithFrame:CGRectMake(0,0,154,24)];
+  rpL.font = [UIFont boldSystemFontOfSize:13.0];
+  rpL.textColor = [UIColor colorWithRed:.35 green:.98 blue:.50 alpha:1];
   rpL.textAlignment = NSTextAlignmentCenter;
   rpL.text = @"◀◀  ● READY  ▶▶";
   [self.readyPill addSubview:rpL];
@@ -1310,16 +1318,16 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.gearBadge.layer.cornerRadius = 6;
   self.gearBadge.layer.borderWidth = 1.0;
   self.gearBadge.layer.borderColor = [UIColor colorWithRed:.25 green:.75 blue:.40 alpha:.6].CGColor;
-  UILabel *gLetter = [[UILabel alloc]initWithFrame:CGRectMake(6,2,16,20)];
+  UILabel *gLetter = [[UILabel alloc]initWithFrame:CGRectMake(6,2,18,20)];
   gLetter.tag = 801;
-  gLetter.font = [UIFont boldSystemFontOfSize:16];
+  gLetter.font = [UIFont boldSystemFontOfSize:16.5];
   gLetter.textColor = [UIColor whiteColor];
   gLetter.text = @"D";
   [self.gearBadge addSubview:gLetter];
-  UILabel *gWord = [[UILabel alloc]initWithFrame:CGRectMake(24,5,44,14)];
+  UILabel *gWord = [[UILabel alloc]initWithFrame:CGRectMake(25,4,46,16)];
   gWord.tag = 802;
-  gWord.font = [UIFont boldSystemFontOfSize:9.5];
-  gWord.textColor = [UIColor colorWithRed:.35 green:.92 blue:.45 alpha:1];
+  gWord.font = [UIFont boldSystemFontOfSize:11.5];
+  gWord.textColor = [UIColor colorWithRed:.35 green:.95 blue:.50 alpha:1];
   gWord.text = @"DRIVE";
   [self.gearBadge addSubview:gWord];
   [self.view addSubview:self.gearBadge];
@@ -1330,17 +1338,17 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     UIButton *gb = [UIButton buttonWithType:UIButtonTypeCustom];
     gb.tag = 810 + i;
     [gb setTitle:gNames[i] forState:UIControlStateNormal];
-    gb.titleLabel.font = [UIFont boldSystemFontOfSize:12];
+    gb.titleLabel.font = [UIFont boldSystemFontOfSize:15.5];
     gb.layer.cornerRadius = 6;
-    gb.layer.borderWidth = 1.0;
+    gb.layer.borderWidth = 1.2;
     if(i == 3){
-      gb.backgroundColor = [UIColor colorWithRed:.05 green:.40 blue:.20 alpha:1];
-      gb.layer.borderColor = [UIColor colorWithRed:.25 green:.85 blue:.45 alpha:1].CGColor;
+      gb.backgroundColor = [UIColor colorWithRed:.05 green:.45 blue:.22 alpha:1];
+      gb.layer.borderColor = [UIColor colorWithRed:.25 green:.90 blue:.48 alpha:1].CGColor;
       [gb setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     } else {
-      gb.backgroundColor = [UIColor colorWithWhite:.12 alpha:1];
-      gb.layer.borderColor = [UIColor colorWithWhite:.30 alpha:1].CGColor;
-      [gb setTitleColor:[UIColor colorWithWhite:.90 alpha:1] forState:UIControlStateNormal];
+      gb.backgroundColor = [UIColor colorWithWhite:.13 alpha:1];
+      gb.layer.borderColor = [UIColor colorWithWhite:.34 alpha:1].CGColor;
+      [gb setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     }
     [gb addTarget:self action:@selector(gearButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
     [self.gearButtons addObject:gb];
@@ -1353,17 +1361,19 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     UIButton *mb = [UIButton buttonWithType:UIButtonTypeCustom];
     mb.tag = 820 + i;
     [mb setTitle:mNames[i] forState:UIControlStateNormal];
-    mb.titleLabel.font = [UIFont boldSystemFontOfSize:11];
+    mb.titleLabel.font = [UIFont boldSystemFontOfSize:12.5];
+    mb.titleLabel.adjustsFontSizeToFitWidth = YES;
+    mb.titleLabel.minimumScaleFactor = 0.85;
     mb.layer.cornerRadius = 6;
-    mb.layer.borderWidth = 1.0;
+    mb.layer.borderWidth = 1.2;
     if(i == 1){
-      mb.backgroundColor = [UIColor colorWithRed:.03 green:.14 blue:.08 alpha:.9];
-      mb.layer.borderColor = [UIColor colorWithRed:.25 green:.75 blue:.40 alpha:.8].CGColor;
+      mb.backgroundColor = [UIColor colorWithRed:.04 green:.22 blue:.12 alpha:.95];
+      mb.layer.borderColor = [UIColor colorWithRed:.25 green:.85 blue:.45 alpha:.9].CGColor;
       [mb setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     } else {
-      mb.backgroundColor = [UIColor colorWithWhite:.12 alpha:1];
-      mb.layer.borderColor = [UIColor colorWithWhite:.30 alpha:1].CGColor;
-      [mb setTitleColor:[UIColor colorWithWhite:.90 alpha:1] forState:UIControlStateNormal];
+      mb.backgroundColor = [UIColor colorWithWhite:.13 alpha:1];
+      mb.layer.borderColor = [UIColor colorWithWhite:.34 alpha:1].CGColor;
+      [mb setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     }
     [mb addTarget:self action:@selector(driveModePillTapped:) forControlEvents:UIControlEventTouchUpInside];
     [self.driveModePills addObject:mb];
@@ -1371,21 +1381,21 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   }
 
   self.frontMotorBox = [[UIView alloc]init];
-  self.frontMotorBox.backgroundColor = [UIColor colorWithRed:.02 green:.06 blue:.09 alpha:.9];
+  self.frontMotorBox.backgroundColor = [UIColor colorWithRed:.02 green:.06 blue:.09 alpha:.95];
   self.frontMotorBox.layer.cornerRadius = 6;
-  self.frontMotorBox.layer.borderWidth = 1.0;
-  self.frontMotorBox.layer.borderColor = [UIColor colorWithRed:0 green:.75 blue:.85 alpha:.4].CGColor;
-  UILabel *fmL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,172,18)];fmL1.font=[UIFont boldSystemFontOfSize:12.5];fmL1.textColor=[UIColor colorWithWhite:.88 alpha:1];fmL1.text=@"หน้ารถ (ชุดขับเคลื่อนหน้า)";[self.frontMotorBox addSubview:fmL1];
-  UILabel *fmL2 = [[UILabel alloc]initWithFrame:CGRectMake(8,21,172,18)];fmL2.font=[UIFont boldSystemFontOfSize:12.5];fmL2.textColor=[UIColor colorWithRed:0 green:.85 blue:1 alpha:1];fmL2.text=@"⚡ MOTOR MG1 / MG2";[self.frontMotorBox addSubview:fmL2];
+  self.frontMotorBox.layer.borderWidth = 1.2;
+  self.frontMotorBox.layer.borderColor = [UIColor colorWithRed:0 green:.80 blue:.95 alpha:.5].CGColor;
+  UILabel *fmL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,188,20)];fmL1.font=[UIFont boldSystemFontOfSize:13.5];fmL1.adjustsFontSizeToFitWidth=YES;fmL1.minimumScaleFactor=0.85;fmL1.textColor=[UIColor whiteColor];fmL1.text=@"หน้ารถ (ชุดขับเคลื่อนหน้า)";[self.frontMotorBox addSubview:fmL1];
+  UILabel *fmL2 = [[UILabel alloc]initWithFrame:CGRectMake(8,23,188,20)];fmL2.font=[UIFont boldSystemFontOfSize:13.5];fmL2.adjustsFontSizeToFitWidth=YES;fmL2.minimumScaleFactor=0.85;fmL2.textColor=[UIColor colorWithRed:0 green:.90 blue:1 alpha:1];fmL2.text=@"⚡ MOTOR MG1 / MG2";[self.frontMotorBox addSubview:fmL2];
   [self.view addSubview:self.frontMotorBox];
 
   self.rearBatteryBox = [[UIView alloc]init];
-  self.rearBatteryBox.backgroundColor = [UIColor colorWithRed:.02 green:.08 blue:.05 alpha:.9];
+  self.rearBatteryBox.backgroundColor = [UIColor colorWithRed:.02 green:.08 blue:.05 alpha:.95];
   self.rearBatteryBox.layer.cornerRadius = 6;
-  self.rearBatteryBox.layer.borderWidth = 1.0;
-  self.rearBatteryBox.layer.borderColor = [UIColor colorWithRed:.25 green:.75 blue:.40 alpha:.4].CGColor;
-  UILabel *rbL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,172,18)];rbL1.font=[UIFont boldSystemFontOfSize:12.5];rbL1.textColor=[UIColor colorWithWhite:.88 alpha:1];rbL1.textAlignment=NSTextAlignmentRight;rbL1.text=@"ท้ายรถ (แบตเตอรี่ไฮบริด)";[self.rearBatteryBox addSubview:rbL1];
-  UILabel *rbL2 = [[UILabel alloc]initWithFrame:CGRectMake(8,21,172,18)];rbL2.font=[UIFont boldSystemFontOfSize:12.5];rbL2.textColor=[UIColor colorWithRed:.35 green:.92 blue:.45 alpha:1];rbL2.textAlignment=NSTextAlignmentRight;rbL2.text=@"HV BATTERY PACK 🔋";[self.rearBatteryBox addSubview:rbL2];
+  self.rearBatteryBox.layer.borderWidth = 1.2;
+  self.rearBatteryBox.layer.borderColor = [UIColor colorWithRed:.25 green:.85 blue:.45 alpha:.5].CGColor;
+  UILabel *rbL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,188,20)];rbL1.font=[UIFont boldSystemFontOfSize:13.5];rbL1.adjustsFontSizeToFitWidth=YES;rbL1.minimumScaleFactor=0.85;rbL1.textColor=[UIColor whiteColor];rbL1.textAlignment=NSTextAlignmentRight;rbL1.text=@"ท้ายรถ (แบตเตอรี่ไฮบริด)";[self.rearBatteryBox addSubview:rbL1];
+  UILabel *rbL2 = [[UILabel alloc]initWithFrame:CGRectMake(8,23,188,20)];rbL2.font=[UIFont boldSystemFontOfSize:13.5];rbL2.adjustsFontSizeToFitWidth=YES;rbL2.minimumScaleFactor=0.85;rbL2.textColor=[UIColor colorWithRed:.35 green:.98 blue:.50 alpha:1];rbL2.textAlignment=NSTextAlignmentRight;rbL2.text=@"HV BATTERY PACK 🔋";[self.rearBatteryBox addSubview:rbL2];
   [self.view addSubview:self.rearBatteryBox];
 
   self.flowBeamLine = [[UIView alloc]init];
@@ -1428,29 +1438,31 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.homeAiEcoCard.layer.borderColor = [UIColor colorWithRed:.25 green:.75 blue:.40 alpha:.4].CGColor;
   [self.view addSubview:self.homeAiEcoCard];
 
-  UILabel *ecoH = [[UILabel alloc] initWithFrame:CGRectMake(10, 6, 214, 20)];
+  UILabel *ecoH = [[UILabel alloc] initWithFrame:CGRectMake(10, 6, 214, 22)];
   ecoH.tag = 501;
-  ecoH.font = [UIFont boldSystemFontOfSize:12.5];
-  ecoH.textColor = [UIColor colorWithRed:.35 green:.92 blue:.45 alpha:1];
+  ecoH.font = [UIFont boldSystemFontOfSize:13.5];
+  ecoH.adjustsFontSizeToFitWidth = YES;
+  ecoH.minimumScaleFactor = 0.85;
+  ecoH.textColor = [UIColor colorWithRed:.35 green:.95 blue:.50 alpha:1];
   ecoH.text = @"🌱 AI ECO COACH  •  ♻️ +14 Wh";
   [self.homeAiEcoCard addSubview:ecoH];
 
-  UILabel *ecoS = [[UILabel alloc] initWithFrame:CGRectMake(10, 27, 214, 24)];
+  UILabel *ecoS = [[UILabel alloc] initWithFrame:CGRectMake(10, 29, 214, 25)];
   ecoS.tag = 502;
-  ecoS.font = [UIFont boldSystemFontOfSize:15.5];
+  ecoS.font = [UIFont boldSystemFontOfSize:16.0];
   ecoS.adjustsFontSizeToFitWidth = YES;
   ecoS.minimumScaleFactor = 0.85;
   ecoS.textColor = [UIColor whiteColor];
   ecoS.text = @"ECO 92 / 100  [ GRADE A+ ]";
   [self.homeAiEcoCard addSubview:ecoS];
 
-  UILabel *ecoD = [[UILabel alloc] initWithFrame:CGRectMake(10, 52, 214, 118)];
+  UILabel *ecoD = [[UILabel alloc] initWithFrame:CGRectMake(10, 54, 214, 118)];
   ecoD.tag = 503;
   ecoD.numberOfLines = 4;
-  ecoD.font = [UIFont boldSystemFontOfSize:13.5];
+  ecoD.font = [UIFont boldSystemFontOfSize:14.5];
   ecoD.adjustsFontSizeToFitWidth = YES;
   ecoD.minimumScaleFactor = 0.85;
-  ecoD.textColor = [UIColor colorWithWhite:0.94 alpha:1];
+  ecoD.textColor = [UIColor whiteColor];
   ecoD.text = @"• ระบบไฮบริดสมบูรณ์ 100%\n• คันเร่งนุ่มนวล ประหยัดสูงสุด\n• ดึงไฟชาร์จกลับ: ดีเยี่ยม\n• เบรกไฟฟ้า ECB: แรงดันปกติ";
   [self.homeAiEcoCard addSubview:ecoD];
 
@@ -1464,7 +1476,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   UILabel *tRow1 = [[UILabel alloc] initWithFrame:CGRectMake(10, 8, 214, 52)];
   tRow1.tag = 601;
   tRow1.numberOfLines = 2;
-  tRow1.font = [UIFont boldSystemFontOfSize:14.0];
+  tRow1.font = [UIFont boldSystemFontOfSize:14.5];
+  tRow1.adjustsFontSizeToFitWidth = YES;
+  tRow1.minimumScaleFactor = 0.85;
   tRow1.textColor = [UIColor whiteColor];
   tRow1.text = @"🌡️ น้ำหล่อเย็นเครื่องยนต์\n     88 °C (เกณฑ์ปกติ)";
   [self.homeThermalsCard addSubview:tRow1];
@@ -1472,16 +1486,20 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   UILabel *tRow2 = [[UILabel alloc] initWithFrame:CGRectMake(10, 64, 214, 52)];
   tRow2.tag = 602;
   tRow2.numberOfLines = 2;
-  tRow2.font = [UIFont boldSystemFontOfSize:14.0];
-  tRow2.textColor = [UIColor colorWithRed:0.65 green:0.92 blue:1.0 alpha:1];
+  tRow2.font = [UIFont boldSystemFontOfSize:14.5];
+  tRow2.adjustsFontSizeToFitWidth = YES;
+  tRow2.minimumScaleFactor = 0.85;
+  tRow2.textColor = [UIColor colorWithRed:0.65 green:0.94 blue:1.0 alpha:1];
   tRow2.text = @"❄️ แอร์ห้องโดยสาร : 24.5 °C\n     อินเวอร์เตอร์ : 42 °C";
   [self.homeThermalsCard addSubview:tRow2];
 
   UILabel *tRow3 = [[UILabel alloc] initWithFrame:CGRectMake(10, 120, 214, 52)];
   tRow3.tag = 603;
   tRow3.numberOfLines = 2;
-  tRow3.font = [UIFont boldSystemFontOfSize:14.0];
-  tRow3.textColor = [UIColor colorWithRed:.35 green:.95 blue:.50 alpha:1];
+  tRow3.font = [UIFont boldSystemFontOfSize:14.5];
+  tRow3.adjustsFontSizeToFitWidth = YES;
+  tRow3.minimumScaleFactor = 0.85;
+  tRow3.textColor = [UIColor colorWithRed:.35 green:.96 blue:.52 alpha:1];
   tRow3.text = @"🔋 แบตเตอรี่ 12V : 13.84 V\n     สถานะชาร์จไฟปกติ";
   [self.homeThermalsCard addSubview:tRow3];
 
@@ -2239,6 +2257,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self.view bringSubviewToFront:self.radioButton];
     [self.view bringSubviewToFront:self.nowPanel];
     [self.view bringSubviewToFront:self.artwork];
+    [self.view bringSubviewToFront:self.artPlaceholder];
     [self.view bringSubviewToFront:self.song];
     [self.view bringSubviewToFront:self.artist];
     [self.view bringSubviewToFront:self.controls];
@@ -2268,13 +2287,15 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     // Top Bar
     CGFloat barY = 12;
     self.heading.hidden = NO;
-    self.heading.frame = CGRectMake(16, barY, 320, 22);
-    self.heading.font = [UIFont boldSystemFontOfSize:16];
+    self.heading.frame = CGRectMake(16, barY, 340, 22);
+    self.heading.font = [UIFont boldSystemFontOfSize:17.5];
     self.heading.text = @"PRIUS TRD SPORTIVO";
     self.owner.hidden = NO;
-    self.owner.frame = CGRectMake(16, barY + 22, 380, 16);
-    self.owner.font = [UIFont boldSystemFontOfSize:10.5];
-    self.owner.textColor = [UIColor colorWithRed:0 green:.85 blue:1 alpha:1];
+    self.owner.frame = CGRectMake(16, barY + 23, 410, 18);
+    self.owner.font = [UIFont boldSystemFontOfSize:12.0];
+    self.owner.adjustsFontSizeToFitWidth = YES;
+    self.owner.minimumScaleFactor = 0.85;
+    self.owner.textColor = [UIColor colorWithRed:0.15 green:.92 blue:1 alpha:1];
     self.owner.text = @"LUXURY EV SMART COCKPIT \u2022 FULLSCREEN KIOSK READY";
 
     CGFloat curRx = w - 16;
@@ -2310,7 +2331,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveLeftCard.backgroundColor = [UIColor colorWithRed:.04 green:.06 blue:.08 alpha:.95];
 
     self.readyPill.hidden = NO;
-    self.readyPill.frame = CGRectMake(leftX + (leftW - 140)/2, topY + 8, 140, 22);
+    self.readyPill.frame = CGRectMake(leftX + (leftW - 154)/2, topY + 8, 154, 24);
 
     self.homeSpeedoDial.hidden = NO;
     self.gearBadge.hidden = YES;
@@ -2320,7 +2341,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     for (int i = 0; i < self.gearButtons.count; i++) {
       UIButton *gb = self.gearButtons[i];
       gb.hidden = NO;
-      gb.frame = CGRectMake(leftX + 10 + i*(gw + 5), topY + 144, gw, 28);
+      gb.frame = CGRectMake(leftX + 10 + i*(gw + 5), topY + 143, gw, 30);
     }
 
     self.hybridEcoBar.hidden = NO;
@@ -2330,7 +2351,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     for (int i = 0; i < self.driveModePills.count; i++) {
       UIButton *mb = self.driveModePills[i];
       mb.hidden = NO;
-      mb.frame = CGRectMake(leftX + 10 + i*(mw + 6), topY + 210, mw, 28);
+      mb.frame = CGRectMake(leftX + 10 + i*(mw + 6), topY + 209, mw, 30);
     }
 
     self.homeAiEcoCard.hidden = NO;
@@ -2342,7 +2363,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     // 2. CENTER ZONE
     self.energyFlowLabel.hidden = NO;
     self.energyFlowLabel.frame = CGRectMake(centerX + 8, topY + 6, centerW - 16, 32);
-    self.energyFlowLabel.font = [UIFont boldSystemFontOfSize:14.0];
+    self.energyFlowLabel.font = [UIFont boldSystemFontOfSize:14.5];
     self.energyFlowLabel.layer.cornerRadius = 6;
     self.energyFlowLabel.layer.borderWidth = 1;
     self.energyFlowLabel.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
@@ -2350,13 +2371,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.energyFlowLabel.text = @"🍃 โหมดไฟฟ้าล้วน EV (เพลาขับหน้า)  ⚡ ดึงไฟจากแบตไฮบริด";
 
     self.frontMotorBox.hidden = NO;
-    self.frontMotorBox.frame = CGRectMake(centerX + 8, topY + 42, 188, 42);
+    self.frontMotorBox.frame = CGRectMake(centerX + 8, topY + 42, 204, 46);
 
     self.rearBatteryBox.hidden = NO;
-    self.rearBatteryBox.frame = CGRectMake(centerX + centerW - 196, topY + 42, 188, 42);
+    self.rearBatteryBox.frame = CGRectMake(centerX + centerW - 212, topY + 42, 204, 46);
 
     self.carImage.hidden = NO;
-    self.carImage.frame = CGRectMake(centerX + (centerW - 320)/2, topY + 70, 320, 175);
+    self.carImage.frame = CGRectMake(centerX + (centerW - 320)/2, topY + 72, 320, 173);
 
     self.flowBeamLine.hidden = NO;
     self.flowBeamLine.frame = CGRectMake(centerX + 24, topY + 246, centerW - 48, 2);
@@ -2365,16 +2386,16 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
     self.compassLabel.hidden = NO;
     self.compassLabel.frame = CGRectMake(centerX + 8, topY + 252, centerW - 16, 24);
-    self.compassLabel.font = [UIFont boldSystemFontOfSize:14.0];
+    self.compassLabel.font = [UIFont boldSystemFontOfSize:14.5];
     self.compassLabel.adjustsFontSizeToFitWidth = YES;
     self.compassLabel.minimumScaleFactor = 0.85;
-    self.compassLabel.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
+    self.compassLabel.textColor = [UIColor colorWithRed:0 green:.92 blue:1 alpha:1];
     self.compassLabel.textAlignment = NSTextAlignmentCenter;
     self.compassLabel.text = @"⚡ กระแสไฟไฮบริด: ชาร์จไฟเข้าแบตเตอรี่ +14.2 kW (Regen)";
 
     self.carStatus.hidden = NO;
     self.carStatus.frame = CGRectMake(centerX + 8, topY + 280, centerW - 16, 32);
-    self.carStatus.font = [UIFont boldSystemFontOfSize:14.0];
+    self.carStatus.font = [UIFont boldSystemFontOfSize:14.5];
     self.carStatus.adjustsFontSizeToFitWidth = YES;
     self.carStatus.minimumScaleFactor = 0.85;
     self.carStatus.textColor = [UIColor whiteColor];
@@ -2398,39 +2419,45 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.artwork.hidden = NO;
     self.artwork.frame = CGRectMake(centerX + 22, mTop + 20, 148, 148);
     self.artwork.layer.cornerRadius = 12;
+    self.artwork.backgroundColor = [UIColor colorWithRed:.05 green:.09 blue:.14 alpha:1];
+    self.artwork.layer.borderWidth = 1.0;
+    self.artwork.layer.borderColor = [UIColor colorWithWhite:.24 alpha:1].CGColor;
     self.artPlaceholder.frame = self.artwork.frame;
+    self.artPlaceholder.font = [UIFont boldSystemFontOfSize:48];
+    self.artPlaceholder.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
     self.artPlaceholder.hidden = (self.artwork.image != nil);
 
     UILabel *mHead = (UILabel *)[self.nowPanel viewWithTag:750];
     if (!mHead) {
-      mHead = [[UILabel alloc] initWithFrame:CGRectMake(170, 18, centerW - 196, 22)];
+      mHead = [[UILabel alloc] initWithFrame:CGRectMake(170, 18, centerW - 184, 22)];
       mHead.tag = 750;
       mHead.font = [UIFont boldSystemFontOfSize:13.0];
       mHead.adjustsFontSizeToFitWidth = YES;
-      mHead.minimumScaleFactor = 0.85;
-      mHead.textColor = [UIColor colorWithRed:0 green:.88 blue:1 alpha:1];
-      mHead.text = @"🎵 เครื่องเสียงรถยนต์ • 11 เพลงในเครื่อง • JBL SOUND";
+      mHead.minimumScaleFactor = 0.75;
+      mHead.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
+      mHead.text = @"🎵 เครื่องเสียงรถยนต์ • 11 เพลง • JBL SOUND";
       [self.nowPanel addSubview:mHead];
     }
-    mHead.frame = CGRectMake(170, 18, centerW - 196, 22);
+    mHead.frame = CGRectMake(170, 18, centerW - 184, 22);
+    mHead.text = @"🎵 เครื่องเสียงรถยนต์ • 11 เพลง • JBL SOUND";
 
     self.song.hidden = NO;
     self.song.frame = CGRectMake(centerX + 184, mTop + 48, centerW - 204, 34);
-    self.song.font = [UIFont boldSystemFontOfSize:20.0];
+    self.song.font = [UIFont boldSystemFontOfSize:21.0];
     self.song.textColor = [UIColor whiteColor];
 
     self.artist.hidden = NO;
     self.artist.frame = CGRectMake(centerX + 184, mTop + 86, centerW - 204, 24);
-    self.artist.font = [UIFont boldSystemFontOfSize:14.5];
-    self.artist.textColor = [UIColor colorWithWhite:0.72 alpha:1];
+    self.artist.font = [UIFont boldSystemFontOfSize:16.5];
+    self.artist.textColor = [UIColor whiteColor];
 
     self.trackProgress.hidden = NO;
-    self.trackProgress.frame = CGRectMake(centerX + 184, mTop + 128, centerW - 204, 4);
+    self.trackProgress.frame = CGRectMake(centerX + 184, mTop + 128, centerW - 204, 5);
 
     self.trackTime.hidden = NO;
-    self.trackTime.frame = CGRectMake(centerX + 184, mTop + 138, centerW - 204, 20);
-    self.trackTime.font = [UIFont boldSystemFontOfSize:12.0];
-    self.trackTime.textColor = [UIColor colorWithWhite:0.75 alpha:1];
+    self.trackTime.frame = CGRectMake(centerX + 184, mTop + 138, centerW - 204, 22);
+    self.trackTime.font = [UIFont boldSystemFontOfSize:14.0];
+    self.trackTime.textColor = [UIColor whiteColor];
     self.trackTime.textAlignment = NSTextAlignmentRight;
 
     CGFloat btnY = mTop + mH - 76; // 60px high buttons, 16px from card bottom -> bottoms align with side cards!
@@ -2459,8 +2486,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveEQ.layer.borderColor = [UIColor colorWithRed:0 green:.85 blue:1 alpha:.5].CGColor;
     self.driveEQ.backgroundColor = [UIColor colorWithRed:.04 green:.12 blue:.18 alpha:1];
     [self.driveEQ setTitle:@"🎚️ JBL EQ" forState:UIControlStateNormal];
-    [self.driveEQ setTitleColor:[UIColor colorWithRed:0 green:.9 blue:1 alpha:1] forState:UIControlStateNormal];
-    self.driveEQ.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
+    [self.driveEQ setTitleColor:[UIColor colorWithRed:0 green:.92 blue:1 alpha:1] forState:UIControlStateNormal];
+    self.driveEQ.titleLabel.font = [UIFont boldSystemFontOfSize:14.5];
     if(mHead) mHead.hidden = NO;
 
     // 3. RIGHT ZONE
@@ -2483,14 +2510,16 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
       UILabel *pt = [[UILabel alloc] initWithFrame:CGRectMake(10, 6, rightW - 36, 20)];
       pt.tag = 702;
-      pt.font = [UIFont boldSystemFontOfSize:13.0];
-      pt.textColor = [UIColor colorWithRed:0 green:.88 blue:1 alpha:1];
+      pt.font = [UIFont boldSystemFontOfSize:13.5];
+      pt.adjustsFontSizeToFitWidth = YES;
+      pt.minimumScaleFactor = 0.85;
+      pt.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
       pt.text = @"⚡ แบตเตอรี่ไฮบริด HV • 7E3";
       [pCard addSubview:pt];
 
-      UILabel *pb = [[UILabel alloc] initWithFrame:CGRectMake(10, 28, rightW - 36, 62)];
+      UILabel *pb = [[UILabel alloc] initWithFrame:CGRectMake(10, 28, rightW - 36, 66)];
       pb.tag = 703;
-      pb.font = [UIFont boldSystemFontOfSize:13.5];
+      pb.font = [UIFont boldSystemFontOfSize:14.5];
       pb.adjustsFontSizeToFitWidth = YES;
       pb.minimumScaleFactor = 0.85;
       pb.textColor = [UIColor whiteColor];
@@ -2503,21 +2532,21 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     pCard.frame = CGRectMake(rightX + 10, topY + 8, rightW - 20, 172);
 
     self.blockGraphView.hidden = NO;
-    self.blockGraphView.frame = CGRectMake(rightX + 18, topY + 100, rightW - 36, 46);
+    self.blockGraphView.frame = CGRectMake(rightX + 18, topY + 102, rightW - 36, 44);
 
     UILabel *deltaL = (UILabel *)[self.view viewWithTag:706];
     if (!deltaL) {
       deltaL = [[UILabel alloc] init];
       deltaL.tag = 706;
-      deltaL.font = [UIFont boldSystemFontOfSize:12.0];
+      deltaL.font = [UIFont boldSystemFontOfSize:13.0];
       deltaL.adjustsFontSizeToFitWidth = YES;
       deltaL.minimumScaleFactor = 0.85;
-      deltaL.textColor = [UIColor colorWithRed:.35 green:.95 blue:.55 alpha:1];
+      deltaL.textColor = [UIColor colorWithRed:.35 green:.98 blue:.55 alpha:1];
       deltaL.text = @"ΔV: 0.02V (สมดุลดี) • 16.22–16.24V";
       [self.view addSubview:deltaL];
     }
     deltaL.hidden = NO;
-    deltaL.frame = CGRectMake(rightX + 18, topY + 150, rightW - 36, 20);
+    deltaL.frame = CGRectMake(rightX + 18, topY + 150, rightW - 36, 22);
 
     // Right Card 2: 3 Motor Rows
     UIView *mCard = [self.view viewWithTag:707];
@@ -2531,7 +2560,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
       UILabel *ml = [[UILabel alloc] initWithFrame:CGRectMake(10, 8, rightW - 36, 174)];
       ml.tag = 708;
-      ml.font = [UIFont boldSystemFontOfSize:13.5];
+      ml.font = [UIFont boldSystemFontOfSize:14.5];
       ml.adjustsFontSizeToFitWidth = YES;
       ml.minimumScaleFactor = 0.85;
       ml.textColor = [UIColor whiteColor];
@@ -2555,16 +2584,16 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
       UILabel *tt = [[UILabel alloc] initWithFrame:CGRectMake(10, 8, rightW - 36, 20)];
       tt.tag = 712;
-      tt.font = [UIFont boldSystemFontOfSize:13.0];
+      tt.font = [UIFont boldSystemFontOfSize:13.5];
       tt.adjustsFontSizeToFitWidth = YES;
       tt.minimumScaleFactor = 0.85;
-      tt.textColor = [UIColor colorWithRed:1 green:.45 blue:.45 alpha:1];
+      tt.textColor = [UIColor colorWithRed:1 green:.48 blue:.48 alpha:1];
       tt.text = @"📍 ข้อมูลการเดินทาง • TRIP";
       [tCard addSubview:tt];
 
       UILabel *tb = [[UILabel alloc] initWithFrame:CGRectMake(10, 30, rightW - 36, 188)];
       tb.tag = 713;
-      tb.font = [UIFont boldSystemFontOfSize:13.5];
+      tb.font = [UIFont boldSystemFontOfSize:14.5];
       tb.adjustsFontSizeToFitWidth = YES;
       tb.minimumScaleFactor = 0.85;
       tb.textColor = [UIColor whiteColor];
@@ -2585,11 +2614,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       BOOL active = (i == 0);
       b.frame = CGRectMake(12 + i * nw, 9, nw - 4, 60);
       b.backgroundColor = active ? [TRDAccent() colorWithAlphaComponent:.14] : [UIColor clearColor];
-      [b viewWithTag:201].frame = CGRectMake(b.bounds.size.width/2 - 42, 16, 26, 26);
+      [b viewWithTag:201].frame = CGRectMake(b.bounds.size.width/2 - 44, 16, 26, 26);
       UILabel *t = (UILabel *)[b viewWithTag:202];
-      t.font = [UIFont boldSystemFontOfSize:12];
-      t.frame = CGRectMake(b.bounds.size.width/2 - 14, 16, nw - 32, 28);
-      t.textColor = active ? [UIColor whiteColor] : [UIColor lightGrayColor];
+      t.font = [UIFont boldSystemFontOfSize:13.5];
+      t.adjustsFontSizeToFitWidth = YES;
+      t.minimumScaleFactor = 0.85;
+      t.frame = CGRectMake(b.bounds.size.width/2 - 14, 16, nw - 30, 28);
+      t.textColor = active ? [UIColor whiteColor] : [UIColor colorWithWhite:0.90 alpha:1];
       [b viewWithTag:203].backgroundColor = TRDAccent();
       [b viewWithTag:203].hidden = !active;
       [b viewWithTag:203].frame = CGRectMake(14, 56, b.bounds.size.width - 28, 2);
@@ -2622,6 +2653,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self.view bringSubviewToFront:self.carStatus];
     [self.view bringSubviewToFront:self.nowPanel];
     [self.view bringSubviewToFront:self.artwork];
+    [self.view bringSubviewToFront:self.artPlaceholder];
     [self.view bringSubviewToFront:self.song];
     [self.view bringSubviewToFront:self.artist];
     [self.view bringSubviewToFront:self.trackProgress];

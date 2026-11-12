@@ -370,9 +370,9 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
  else if(type.length){route=@"EXTERNAL AUDIO";shortName=@"EXTERNAL";}
  self.audioOutput=route;self.audioOutputShort=shortName;self.audioDevice=name?:@"";self.outputVolume=isfinite(session.outputVolume)?MAX(0,MIN(1,session.outputVolume)):-1;
  NSString *level=self.outputVolume<0?@"VOLUME UNKNOWN":self.outputVolume<.005?@"MUTED":[NSString stringWithFormat:@"VOL %.0f%%",self.outputVolume*100];
- NSString *newCarStatus=[NSString stringWithFormat:@"%@  ·  %@",route,level];
+ NSString *newCarStatus=(self.driveMode||self.carplayMode||self.mapMode||self.tripMode)?[NSString stringWithFormat:@"%@  ·  %@",route,level]:@"🚪 ประตู 5 บาน: ปิดสนิท  •  🔒 เข็มขัดนิรภัย: ล็อคครบทุกจุด";
  if(![self.carStatus.text isEqualToString:newCarStatus]){self.carStatus.text=newCarStatus;self.carStatus.accessibilityLabel=newCarStatus;}
- self.carStatus.textColor=[UIColor colorWithWhite:self.nightMode?.62:.76 alpha:1];
+ self.carStatus.textColor=[UIColor whiteColor];
 }
 -(void)audioOutputSettings{[self refreshAudioRoute];TRDSettingsMenu *m=[self settingsMenu:@"AUDIO OUTPUT" message:[NSString stringWithFormat:@"%@%@\nUse iPad volume buttons or your car stereo.",self.carStatus.text,([self.audioOutput isEqual:@"CAR BLUETOOTH"]||[self.audioOutput isEqual:@"BLUETOOTH AUDIO"]||[self.audioOutput isEqual:@"AIRPLAY"])&&self.audioDevice.length?[@" · "stringByAppendingString:self.audioDevice]:@""]];[m addAction:[TRDSettingAction actionWithTitle:@"Open iPad Settings" style:0 handler:^(TRDSettingAction *a){[self send:@"com.apple.Preferences"];}]];[self presentSettingsMenu:m];}
 -(void)refreshStatusStrip{
