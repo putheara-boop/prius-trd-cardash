@@ -2464,19 +2464,35 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.artPlaceholder.hidden = (self.artwork.image != nil);
 
     CGFloat artRight = 28 + consoleH - 24 + 14;
+    CGFloat textW = 304;
     self.song.hidden = NO;
-    self.song.frame = CGRectMake(artRight, consoleY + 14, 280, 30);
-    self.song.font = [UIFont boldSystemFontOfSize:19.5];
+    self.song.frame = CGRectMake(artRight, consoleY + 8, textW, 24);
+    self.song.font = [UIFont boldSystemFontOfSize:17.5];
+    self.song.adjustsFontSizeToFitWidth = YES;
+    self.song.minimumScaleFactor = 0.85;
     self.song.textColor = [UIColor whiteColor];
 
     self.artist.hidden = NO;
-    self.artist.frame = CGRectMake(artRight, consoleY + 46, 280, 24);
-    self.artist.font = [UIFont boldSystemFontOfSize:15.0];
-    self.artist.textColor = [UIColor whiteColor];
+    self.artist.frame = CGRectMake(artRight, consoleY + 33, textW, 20);
+    self.artist.font = [UIFont boldSystemFontOfSize:14.0];
+    self.artist.adjustsFontSizeToFitWidth = YES;
+    self.artist.minimumScaleFactor = 0.85;
+    self.artist.textColor = [UIColor colorWithWhite:0.90 alpha:1];
+
+    self.trackProgress.hidden = NO;
+    self.trackProgress.frame = CGRectMake(artRight, consoleY + 58, textW, 5);
+
+    self.trackTime.hidden = NO;
+    self.trackTime.frame = CGRectMake(artRight, consoleY + 66, textW, 22);
+    self.trackTime.font = [UIFont boldSystemFontOfSize:13.0];
+    self.trackTime.adjustsFontSizeToFitWidth = YES;
+    self.trackTime.minimumScaleFactor = 0.82;
+    self.trackTime.textColor = [UIColor colorWithRed:0.15 green:0.95 blue:1.0 alpha:1];
+    self.trackTime.textAlignment = NSTextAlignmentLeft;
 
     self.controls.hidden = NO;
-    self.controls.frame = CGRectMake(artRight + 290, consoleY + 18, 220, 60);
-    CGFloat dcw = 210 / 3.0;
+    self.controls.frame = CGRectMake(artRight + textW + 14, consoleY + 18, 214, 60);
+    CGFloat dcw = 204 / 3.0;
     for (int i = 0; i < 3; i++) {
       UIView *b = [self.controls viewWithTag:20 + i];
       b.frame = CGRectMake(i * (dcw + 5), 0, dcw, 60);
@@ -2498,8 +2514,6 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveExitBtn.frame = CGRectMake(w - 36 - 145, consoleY + 22, 138, 52);
     self.driveEQ.hidden = YES;
     self.miniPlayer.hidden = YES;
-    self.trackProgress.hidden = YES;
-    self.trackTime.hidden = YES;
     UIView *mH = [self.nowPanel viewWithTag:750]; if(mH) mH.hidden = YES;
 
     // Bring subviews to front for Drive Mode
@@ -2529,6 +2543,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self.view bringSubviewToFront:self.artPlaceholder];
     [self.view bringSubviewToFront:self.song];
     [self.view bringSubviewToFront:self.artist];
+    [self.view bringSubviewToFront:self.trackProgress];
+    [self.view bringSubviewToFront:self.trackTime];
     [self.view bringSubviewToFront:self.controls];
     [self.view bringSubviewToFront:self.driveEqBtn];
     [self.view bringSubviewToFront:self.driveExitBtn];
@@ -2725,8 +2741,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
     self.trackTime.hidden = NO;
     self.trackTime.frame = CGRectMake(centerX + 184, mTop + 138, centerW - 204, 22);
-    self.trackTime.font = [UIFont boldSystemFontOfSize:14.0];
-    self.trackTime.textColor = [UIColor whiteColor];
+    self.trackTime.font = [UIFont boldSystemFontOfSize:13.5];
+    self.trackTime.adjustsFontSizeToFitWidth = YES;
+    self.trackTime.minimumScaleFactor = 0.80;
+    self.trackTime.textColor = [UIColor colorWithRed:0.15 green:0.95 blue:1.0 alpha:1];
     self.trackTime.textAlignment = NSTextAlignmentRight;
 
     CGFloat btnY = mTop + mH - 76; // 60px high buttons, 16px from card bottom -> bottoms align with side cards!
@@ -3155,7 +3173,35 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)releaseArtwork{self.artwork.image=nil;self.artworkData=nil;self.artPlaceholder.hidden=self.focused;}
 -(void)didReceiveMemoryWarning{[super didReceiveMemoryWarning];self.memoryWarnings++;[self releaseArtwork];[self hideWelcome];[self.settingsSheet dismiss];if(!self.mapMode&&!self.carplayMode&&self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}}
 -(NSString *)trackTimeString:(double)value{if(!isfinite(value)||value<0)return @"--:--";long long n=(long long)value;return n>=3600?[NSString stringWithFormat:@"%lld:%02lld:%02lld",n/3600,n/60%60,n%60]:[NSString stringWithFormat:@"%lld:%02lld",n/60,n%60];}
--(void)refreshTrackProgress{if(self.radioPlayer){if(![self.trackTime.text isEqualToString:@"LIVE STREAM · ON AIR"]){self.trackTime.text=@"LIVE STREAM · ON AIR";self.trackProgress.progress=1.0;}return;}double elapsed=self.mediaElapsed;if(self.hasElapsed&&self.mediaTimestamp&&self.mediaRate>0)elapsed+=MAX(0,-[self.mediaTimestamp timeIntervalSinceNow])*self.mediaRate;if(self.mediaDuration>0)elapsed=MIN(elapsed,self.mediaDuration);NSString *newTime=[NSString stringWithFormat:@"%@ / %@",self.hasElapsed?[self trackTimeString:elapsed]:@"--:--",self.mediaDuration>0?[self trackTimeString:self.mediaDuration]:@"--:--"];if(![self.trackTime.text isEqualToString:newTime]){self.trackTime.text=newTime;self.trackProgress.progress=self.hasElapsed&&self.mediaDuration>0?MAX(0,MIN(1,elapsed/self.mediaDuration)):0;}}
+-(void)refreshTrackProgress{
+ if(self.radioPlayer){
+  if(![self.trackTime.text isEqualToString:@"LIVE STREAM · ON AIR"]){
+   self.trackTime.text=@"LIVE STREAM · ON AIR";
+   self.trackProgress.progress=1.0;
+  }
+  return;
+ }
+ double elapsed=self.mediaElapsed;
+ if(self.hasElapsed&&self.mediaTimestamp&&self.mediaRate>0){
+  elapsed+=MAX(0,-[self.mediaTimestamp timeIntervalSinceNow])*self.mediaRate;
+ }
+ if(self.mediaDuration>0){
+  elapsed=MIN(elapsed,self.mediaDuration);
+ }
+ double remaining=(self.mediaDuration>0)?MAX(0,self.mediaDuration-elapsed):0;
+ NSString *newTime=nil;
+ if(self.hasElapsed&&self.mediaDuration>0){
+  newTime=[NSString stringWithFormat:@"เล่นไป %@ / %@ (เหลือ -%@)",[self trackTimeString:elapsed],[self trackTimeString:self.mediaDuration],[self trackTimeString:remaining]];
+ }else if(self.hasElapsed){
+  newTime=[NSString stringWithFormat:@"เล่นไป %@ / --:--",[self trackTimeString:elapsed]];
+ }else{
+  newTime=@"เวลาเพลง: 0:00 / --:-- (เหลือ -0:00)";
+ }
+ if(![self.trackTime.text isEqualToString:newTime]){
+  self.trackTime.text=newTime;
+  self.trackProgress.progress=self.hasElapsed&&self.mediaDuration>0?MAX(0,MIN(1,elapsed/self.mediaDuration)):0;
+ }
+}
 -(void)applyEQPreset:(NSString *)presetName{
  if(!presetName.length)return;
  NSString *clean=[presetName hasPrefix:@"TRD "]?[presetName substringFromIndex:4]:presetName;
