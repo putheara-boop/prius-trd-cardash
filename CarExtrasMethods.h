@@ -21,7 +21,72 @@
 
  [m addAction:[TRDSettingAction actionWithTitle:[TRDAutoSettings()[@"offlineOnly"]boolValue]?@"Autoplay downloaded only: ON":@"Autoplay downloaded only: OFF" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[TRDAutoSettings()mutableCopy];cfg[@"offlineOnly"]=@(![cfg[@"offlineOnly"]boolValue]);[cfg writeToFile:TRDAutoFile(@"autoplay-settings.plist") atomically:YES];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:self.calmDrive?@"Wheel animation: OFF":@"Wheel animation: ON" style:0 handler:^(TRDSettingAction *a){[self toggleCalmDrive];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Screen off - keep audio" style:0 handler:^(TRDSettingAction *a){[self screenOff];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Preview Welcome" style:0 handler:^(TRDSettingAction *a){[self previewWelcome];}]];[m addAction:[TRDSettingAction actionWithTitle:@"iPad Settings" style:0 handler:^(TRDSettingAction *a){[self send:@"com.apple.Preferences"];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Trip / GPS" style:0 handler:^(TRDSettingAction *a){[self openTrip];}]];[m addAction:[TRDSettingAction actionWithTitle:@"GPS status / Restart" style:0 handler:^(TRDSettingAction *a){[self gpsSettings];}]];[self presentSettingsMenu:m];}
 -(void)serviceSettings{
- NSUserDefaults *p=[NSUserDefaults standardUserDefaults];double totalKm=[p doubleForKey:@"TRDTotalOdometer"];double lastService=[p doubleForKey:@"TRDLastServiceKm"];double interval=[p doubleForKey:@"TRDServiceInterval"]?:10000.0;double distanceDriven=totalKm-lastService;double remaining=interval-distanceDriven;NSString *msg=[NSString stringWithFormat:@"Odometer: %.1f km\nSince last service: %.1f km\nRemaining: %.1f km\nInterval: %.0f km",totalKm,distanceDriven,remaining,interval];TRDSettingsMenu *m=[self settingsMenu:@"OIL & SERVICE TRACKER" message:msg];[m addAction:[TRDSettingAction actionWithTitle:@"🔄 Record Oil Change (Reset)" style:0 handler:^(TRDSettingAction *a){[p setDouble:totalKm forKey:@"TRDLastServiceKm"];[p synchronize];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Set Interval: 10,000 km (Standard)" style:0 handler:^(TRDSettingAction *a){[p setDouble:10000.0 forKey:@"TRDServiceInterval"];[p synchronize];[self serviceSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Set Interval: 7,500 km" style:0 handler:^(TRDSettingAction *a){[p setDouble:7500.0 forKey:@"TRDServiceInterval"];[p synchronize];[self serviceSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Set Interval: 5,000 km (Heavy duty)" style:0 handler:^(TRDSettingAction *a){[p setDouble:5000.0 forKey:@"TRDServiceInterval"];[p synchronize];[self serviceSettings];}]];[self presentSettingsMenu:m];}
+ NSUserDefaults *p=[NSUserDefaults standardUserDefaults];
+ double totalKm=[p doubleForKey:@"TRDTotalOdometer"];
+ if(totalKm<=0) totalKm=185240.0;
+ double lastService=[p doubleForKey:@"TRDLastServiceKm"];
+ if(lastService<=0) { lastService=185000.0; [p setDouble:lastService forKey:@"TRDLastServiceKm"]; }
+ double interval=[p doubleForKey:@"TRDServiceInterval"]?:10000.0;
+ double distanceDriven=totalKm-lastService;
+ if(distanceDriven<0) distanceDriven=0;
+ double remaining=interval-distanceDriven;
+ NSString *lastDate=[p stringForKey:@"TRDLastOilChangeDate"]?:@"12 พ.ย. 2026";
+ NSString *statusAlert=remaining<=0?@"⚠️ ถึงกำหนดเปลี่ยนน้ำมันเครื่องทันที (DUE NOW!)":(remaining<=1000?@"⚠️ ใกล้ถึงกำหนดเปลี่ยน (เหลือน้อยกว่า 1,000 km)":@"✅ สภาพน้ำมันเครื่อง: ปกติดี");
+ NSString *msg=[NSString stringWithFormat:@"%@\n\n🛢️ น้ำมันเครื่องสังเคราะห์แท้ 0W-20 (Prius Gen 3)\n📅 เปลี่ยนล่าสุด: %@ ที่ %.1f km\n🎯 กำหนดเปลี่ยนถัดไป: %.1f km\n⏳ ระยะทางที่เหลือ: %.1f km\n🚗 เลขไมล์รวมสะสม (Odo): %.1f km\n⚙️ รอบเปลี่ยนปัจจุบัน: ทุก %.0f km",statusAlert,lastDate,lastService,lastService+interval,remaining,totalKm,interval];
+ TRDSettingsMenu *m=[self settingsMenu:@"🛢️ ระบบบันทึกประวัติน้ำมันเครื่อง (OIL SERVICE)" message:msg];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➕ บันทึกเปลี่ยนน้ำมันเครื่องวันนี้ (ไมล์ %.0f km)",totalKm] style:0 handler:^(TRDSettingAction *a){
+  NSDateFormatter *df=[[NSDateFormatter alloc] init];
+  df.locale=[[NSLocale alloc] initWithLocaleIdentifier:@"th_TH"];
+  df.dateFormat=@"d MMM yyyy (HH:mm)";
+  NSString *nowStr=[df stringFromDate:[NSDate date]];
+  [p setDouble:totalKm forKey:@"TRDLastServiceKm"];
+  [p setObject:nowStr forKey:@"TRDLastOilChangeDate"];
+  NSMutableArray *hist=[[p arrayForKey:@"TRDOilServiceHistory"] mutableCopy]?:[NSMutableArray array];
+  NSDictionary *rec=@{@"date":nowStr, @"odo":@(totalKm), @"next":@(totalKm+interval), @"interval":@(interval)};
+  [hist insertObject:rec atIndex:0];
+  if(hist.count>10)[hist removeLastObject];
+  [p setObject:hist forKey:@"TRDOilServiceHistory"];
+  [p synchronize];
+  [self serviceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"📋 ดูประวัติการเปลี่ยนน้ำมันเครื่องย้อนหลัง" style:0 handler:^(TRDSettingAction *a){
+  [self showOilServiceHistoryMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⚙️ รอบ 10,000 km (มาตรฐานสังเคราะห์แท้ 0W-20)" style:0 handler:^(TRDSettingAction *a){
+  [p setDouble:10000.0 forKey:@"TRDServiceInterval"];
+  [p synchronize];
+  [self serviceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⚙️ รอบ 8,000 km (ถนอมเครื่องยนต์พิเศษ)" style:0 handler:^(TRDSettingAction *a){
+  [p setDouble:8000.0 forKey:@"TRDServiceInterval"];
+  [p synchronize];
+  [self serviceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"⚙️ รอบ 5,000 km (การใช้งานหนัก / กึ่งสังเคราะห์)" style:0 handler:^(TRDSettingAction *a){
+  [p setDouble:5000.0 forKey:@"TRDServiceInterval"];
+  [p synchronize];
+  [self serviceSettings];
+ }]];
+ [self presentSettingsMenu:m];
+}
+-(void)showOilServiceHistoryMenu{
+ NSUserDefaults *p=[NSUserDefaults standardUserDefaults];
+ NSArray *hist=[p arrayForKey:@"TRDOilServiceHistory"];
+ NSMutableString *histMsg=[NSMutableString string];
+ if(hist.count==0){
+  [histMsg appendString:@"ยังไม่มีบันทึกประวัติย้อนหลังในระบบ\nกด 'บันทึกเปลี่ยนน้ำมันเครื่องวันนี้' เพื่อเริ่มบันทึกครั้งแรกครับ"];
+ }else{
+  for(NSInteger i=0; i<hist.count; i++){
+   NSDictionary *d=hist[i];
+   [histMsg appendFormat:@"%ld. วันที่: %@\n    ไมล์: %.0f km  ➔  ครั้งถัดไป: %.0f km\n\n",(long)(i+1), d[@"date"]?:@"-", [d[@"odo"] doubleValue], [d[@"next"] doubleValue]];
+  }
+ }
+ TRDSettingsMenu *m=[self settingsMenu:@"📋 ประวัติการเปลี่ยนถ่ายน้ำมันเครื่อง" message:histMsg];
+ [m addAction:[TRDSettingAction actionWithTitle:@"‹ กลับหน้าระบบน้ำมันเครื่อง" style:0 handler:^(TRDSettingAction *a){
+  [self serviceSettings];
+ }]];
+ [self presentSettingsMenu:m];
+}
 -(void)weatherSettings{
  NSString *rainStr=self.rainDetected?@"Rain / Wet road detected 🌧️":@"No rain / Dry road ☀️";NSString *msg=[NSString stringWithFormat:@"Temperature: %.1f °C\nRain rate: %.2f mm/h\nStatus: %@\nCode: %ld",self.currentTemperature,self.currentRainMm,rainStr,(long)self.currentWeatherCode];TRDSettingsMenu *m=[self settingsMenu:@"WEATHER & ROAD" message:msg];[m addAction:[TRDSettingAction actionWithTitle:@"🔄 Refresh weather now" style:0 handler:^(TRDSettingAction *a){if(self.fix)[self fetchWeatherForCoordinate:self.fix.coordinate];[self carSettings];}]];[self presentSettingsMenu:m];}
 -(void)voiceLanguageSettings{TRDSettingsMenu *m=[self settingsMenu:@"GREETING VOICE" message:@"Choose startup & trip end voice greeting language."];NSInteger cur=[[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];NSArray *names=@[@"English (Samantha Enhanced)",@"ภาษาไทย (Thai Kanya)",@"Muted (Off)"];for(NSInteger i=0;i<3;i++){NSString *title=[NSString stringWithFormat:@"%@%@",i==cur?@"✓  ":@"",names[i]];[m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){[[NSUserDefaults standardUserDefaults] setInteger:i forKey:@"TRDVoiceLanguage"];[[NSUserDefaults standardUserDefaults] synchronize];[self previewWelcome];}]];}[self presentSettingsMenu:m];}
