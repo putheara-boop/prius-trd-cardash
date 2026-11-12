@@ -94,7 +94,8 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
   }
   @try {
    AVAudioSession *session=[AVAudioSession sharedInstance];
-   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+   [session setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker|AVAudioSessionCategoryOptionAllowBluetooth error:nil];
+   [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
    [session setActive:YES error:nil];
    if(!gTRDWelcomeSynth) gTRDWelcomeSynth=[[AVSpeechSynthesizer alloc]init];
    if([gTRDWelcomeSynth isSpeaking]){
@@ -171,7 +172,8 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
   if(voiceLang==2) return;
   @try {
    AVAudioSession *session=[AVAudioSession sharedInstance];
-   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+   [session setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker|AVAudioSessionCategoryOptionAllowBluetooth error:nil];
+   [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
    [session setActive:YES error:nil];
    if(!gTRDWelcomeSynth) gTRDWelcomeSynth=[[AVSpeechSynthesizer alloc]init];
    if([gTRDWelcomeSynth isSpeaking]){
@@ -338,6 +340,11 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
  [UIView animateWithDuration:.25 animations:^{view.alpha=0;} completion:^(BOOL done){
   [view removeFromSuperview];
   [self.view setNeedsLayout];
+  @try {
+   AVAudioSession *session=[AVAudioSession sharedInstance];
+   [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
+   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+  } @catch(NSException *e){}
  }];
 }
 -(void)previewWelcomeCapture{[self showWelcome];[self.welcome layoutIfNeeded];[self capture];}
@@ -370,7 +377,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
  else if(type.length){route=@"EXTERNAL AUDIO";shortName=@"EXTERNAL";}
  self.audioOutput=route;self.audioOutputShort=shortName;self.audioDevice=name?:@"";self.outputVolume=isfinite(session.outputVolume)?MAX(0,MIN(1,session.outputVolume)):-1;
  NSString *level=self.outputVolume<0?@"VOLUME UNKNOWN":self.outputVolume<.005?@"MUTED":[NSString stringWithFormat:@"VOL %.0f%%",self.outputVolume*100];
- NSString *newCarStatus=(self.carplayMode||self.mapMode||self.tripMode)?[NSString stringWithFormat:@"%@  ·  %@",route,level]:(self.driveMode?@"🛡️ เบรก ECB ปกติ  •  🌡️ น้ำหล่อเย็น 88°C  •  ❄️ แอร์ 24.0°C":@"🚪 ALL 5 DOORS: LOCKED  •  🔒 SEATBELTS: FASTENED");
+ NSString *newCarStatus=(self.carplayMode||self.mapMode||self.tripMode)?[NSString stringWithFormat:@"%@  ·  %@",route,level]:(self.driveMode?@"🛡️ เบรก ECB ปกติ  •  🌡️ น้ำหล่อเย็น 88°C  •  ❄️ แอร์ 24.0°C":@"🚪 DOORS: ปิดสนิทครบ 5 บาน  •  🔒 SEATBELTS: ล็อคครบทุกจุด");
  if(![self.carStatus.text isEqualToString:newCarStatus]){self.carStatus.text=newCarStatus;self.carStatus.accessibilityLabel=newCarStatus;}
  self.carStatus.textColor=[UIColor whiteColor];
 }

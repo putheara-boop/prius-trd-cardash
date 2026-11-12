@@ -1270,9 +1270,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     }
     UILabel *htbL = (UILabel *)[hTripCard viewWithTag:713];
     if(htbL){
-      NSString *slotTitle = (slot == 0) ? @"CURRENT TRIP (A)" : (slot == 1) ? @"TANK TRIP (B)" : @"LONG-TERM (C)";
+      NSString *slotTitle = (slot == 0) ? @"CURRENT TRIP • ทริปปัจจุบัน (A)" : (slot == 1) ? @"TANK TRIP • ถังน้ำมันนี้ (B)" : @"LONG-TERM • สะสมระยะยาว (C)";
       NSString *enTimeStr = [timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@" hrs"];
-      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %.1f km\nFUEL ECONOMY: %.1f km/L\nFUEL COST: ฿ %.2f (GSH95)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@\nEFFICIENCY: EXCELLENT (A+)", slotTitle, dist, kml, cost, avgSpd, enTimeStr];
+      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %.1f km\nECONOMY: %.1f km/L (ประหยัดดีเยี่ยม)\nFUEL COST: ฿ %.2f (ค่าน้ำมัน)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, dist, kml, cost, avgSpd, enTimeStr];
     }
   }
   (void)slotNames;
@@ -1572,7 +1572,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   ecoD.adjustsFontSizeToFitWidth = YES;
   ecoD.minimumScaleFactor = 0.85;
   ecoD.textColor = [UIColor whiteColor];
-  ecoD.text = @"• HYBRID SYSTEM: 100% READY\n• THROTTLE: SMOOTH & OPTIMAL\n• REGEN BRAKING: EXCELLENT\n• ECB BRAKE PRESSURE: NORMAL";
+  ecoD.text = @"• HYBRID SYSTEM: 100% READY\n• THROTTLE: นุ่มนวล ประหยัดสูงสุด\n• REGEN BRAKING: ชาร์จไฟดีเยี่ยม\n• ECB BRAKE: แรงดันเบรกปกติ";
   [self.homeAiEcoCard addSubview:ecoD];
 
   self.homeThermalsCard = [[UIView alloc] initWithFrame:CGRectZero];
@@ -1589,27 +1589,27 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   tRow1.adjustsFontSizeToFitWidth = YES;
   tRow1.minimumScaleFactor = 0.85;
   tRow1.textColor = [UIColor whiteColor];
-  tRow1.text = @"🌡️ ENGINE COOLANT (ECT)\n     88 °C (NORMAL RANGE)";
+  tRow1.text = @"🌡️ ENGINE COOLANT : 88 °C\n     น้ำหล่อเย็นเครื่องยนต์ (ปกติ)";
   [self.homeThermalsCard addSubview:tRow1];
 
-  UILabel *tRow2 = [[UILabel alloc] initWithFrame:CGRectMake(10, 64, 214, 52)];
+  UILabel *tRow2 = [[UILabel alloc] initWithFrame:CGRectMake(10, 66, 214, 52)];
   tRow2.tag = 602;
   tRow2.numberOfLines = 2;
   tRow2.font = [UIFont boldSystemFontOfSize:13.5];
   tRow2.adjustsFontSizeToFitWidth = YES;
   tRow2.minimumScaleFactor = 0.85;
   tRow2.textColor = [UIColor colorWithRed:0.65 green:0.94 blue:1.0 alpha:1];
-  tRow2.text = @"❄️ CABIN A/C : 24.5 °C\n     INVERTER : 42 °C";
+  tRow2.text = @"❄️ CABIN A/C : 24.5 °C\n     INVERTER : 42 °C (อินเวอร์เตอร์)";
   [self.homeThermalsCard addSubview:tRow2];
 
-  UILabel *tRow3 = [[UILabel alloc] initWithFrame:CGRectMake(10, 120, 214, 52)];
+  UILabel *tRow3 = [[UILabel alloc] initWithFrame:CGRectMake(10, 124, 214, 52)];
   tRow3.tag = 603;
   tRow3.numberOfLines = 2;
   tRow3.font = [UIFont boldSystemFontOfSize:13.5];
   tRow3.adjustsFontSizeToFitWidth = YES;
   tRow3.minimumScaleFactor = 0.85;
   tRow3.textColor = [UIColor colorWithRed:.35 green:.96 blue:.52 alpha:1];
-  tRow3.text = @"🔋 AUX 12V BATTERY : 13.84 V\n     CHARGING STATUS : OPTIMAL";
+  tRow3.text = @"🔋 AUX 12V BATTERY : 13.84 V\n     แบตเตอรี่ 12V ชาร์จไฟปกติ";
   [self.homeThermalsCard addSubview:tRow3];
 
   self.driveClockCard = [[UIView alloc] initWithFrame:CGRectZero];
@@ -1872,6 +1872,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   UIView *mCard = [self.view viewWithTag:707]; if (mCard) mCard.hidden = hide;
   UIView *tCard = [self.view viewWithTag:711]; if (tCard) tCard.hidden = hide;
   UIView *mH = [self.nowPanel viewWithTag:750]; if (mH) mH.hidden = hide;
+  UIView *hTopPod = [self.view viewWithTag:790]; if (hTopPod) hTopPod.hidden = hide;
+  UIView *hCenterTopCard = [self.view viewWithTag:791]; if (hCenterTopCard) hCenterTopCard.hidden = hide;
 }
 
 -(void)hideAllDriveWidgets:(BOOL)hide {
@@ -2619,73 +2621,103 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveLeftCard.layer.borderColor = [UIColor colorWithWhite:.18 alpha:1].CGColor;
     self.driveLeftCard.backgroundColor = [UIColor colorWithRed:.04 green:.06 blue:.08 alpha:.95];
 
+    UIView *hTopPod = [self.view viewWithTag:790];
+    if (!hTopPod) {
+      hTopPod = [[UIView alloc] init];
+      hTopPod.tag = 790;
+      hTopPod.userInteractionEnabled = NO;
+      hTopPod.backgroundColor = [UIColor colorWithRed:.02 green:.05 blue:.08 alpha:.94];
+      hTopPod.layer.cornerRadius = 10;
+      hTopPod.layer.borderWidth = 1.0;
+      hTopPod.layer.borderColor = [UIColor colorWithRed:0 green:.75 blue:.85 alpha:.35].CGColor;
+      [self.view addSubview:hTopPod];
+    }
+    hTopPod.hidden = NO;
+    hTopPod.frame = CGRectMake(leftX + 10, topY + 8, leftW - 20, 224);
+
     self.readyPill.hidden = NO;
-    self.readyPill.frame = CGRectMake(leftX + (leftW - 154)/2, topY + 6, 154, 24);
+    self.readyPill.frame = CGRectMake(leftX + (leftW - 154)/2, topY + 14, 154, 22);
 
     self.homeSpeedoDial.hidden = NO;
     self.gearBadge.hidden = YES;
-    self.homeSpeedoDial.frame = CGRectMake(leftX + 6, topY + 30, leftW - 12, 126);
+    self.homeSpeedoDial.frame = CGRectMake(leftX + 12, topY + 36, leftW - 24, 114);
 
-    CGFloat gw = (leftW - 20 - 4*5)/5;
+    CGFloat gw = (leftW - 36 - 4*4)/5.0;
     for (int i = 0; i < self.gearButtons.count; i++) {
       UIButton *gb = self.gearButtons[i];
       gb.hidden = NO;
-      gb.frame = CGRectMake(leftX + 10 + i*(gw + 5), topY + 158, gw, 28);
+      gb.frame = CGRectMake(leftX + 18 + i*(gw + 4), topY + 150, gw, 26);
     }
 
     self.hybridEcoBar.hidden = NO;
-    self.hybridEcoBar.frame = CGRectMake(leftX + 10, topY + 190, leftW - 20, 25);
+    self.hybridEcoBar.frame = CGRectMake(leftX + 14, topY + 178, leftW - 28, 22);
 
-    CGFloat mw = (leftW - 20 - 2*6)/3;
+    CGFloat mw = (leftW - 28 - 2*4)/3.0;
     for (int i = 0; i < self.driveModePills.count; i++) {
       UIButton *mb = self.driveModePills[i];
       mb.hidden = NO;
-      mb.frame = CGRectMake(leftX + 10 + i*(mw + 6), topY + 219, mw, 28);
+      mb.frame = CGRectMake(leftX + 14 + i*(mw + 4), topY + 201, mw, 25);
     }
 
+    // Left Card 2: AI ECO COACH (Exact mirror of Right Card 2 at Y = topY + 240, H = 178!)
     self.homeAiEcoCard.hidden = NO;
-    self.homeAiEcoCard.frame = CGRectMake(leftX + 10, topY + 253, leftW - 20, 170);
+    self.homeAiEcoCard.frame = CGRectMake(leftX + 10, topY + 240, leftW - 20, 178);
     UILabel *ecoD = (UILabel *)[self.homeAiEcoCard viewWithTag:503];
-    if (ecoD) ecoD.frame = CGRectMake(10, 52, leftW - 40, 112);
+    if (ecoD) ecoD.frame = CGRectMake(10, 54, leftW - 40, 116);
 
+    // Left Card 3: THERMALS & 12V (Exact mirror of Right Card 3 at Y = topY + 426, H = 186!)
     self.homeThermalsCard.hidden = NO;
-    self.homeThermalsCard.frame = CGRectMake(leftX + 10, topY + 429, leftW - 20, 179);
+    self.homeThermalsCard.frame = CGRectMake(leftX + 10, topY + 426, leftW - 20, 186);
 
-    // 2. CENTER ZONE
+    // 2. CENTER ZONE (Two Symmetric Cards matching Left & Right Top/Bottom borders!)
+    UIView *hCenterTopCard = [self.view viewWithTag:791];
+    if (!hCenterTopCard) {
+      hCenterTopCard = [[UIView alloc] init];
+      hCenterTopCard.tag = 791;
+      hCenterTopCard.userInteractionEnabled = NO;
+      hCenterTopCard.backgroundColor = [UIColor colorWithRed:.03 green:.055 blue:.08 alpha:.95];
+      hCenterTopCard.layer.cornerRadius = 14;
+      hCenterTopCard.layer.borderWidth = 1.2;
+      hCenterTopCard.layer.borderColor = [UIColor colorWithWhite:.18 alpha:1].CGColor;
+      [self.view addSubview:hCenterTopCard];
+    }
+    hCenterTopCard.hidden = NO;
+    hCenterTopCard.frame = CGRectMake(centerX, topY, centerW, 314);
+
     self.energyFlowLabel.hidden = NO;
-    self.energyFlowLabel.frame = CGRectMake(centerX + 8, topY + 6, centerW - 16, 32);
+    self.energyFlowLabel.frame = CGRectMake(centerX + 12, topY + 10, centerW - 24, 30);
     self.energyFlowLabel.font = [UIFont boldSystemFontOfSize:13.5];
     self.energyFlowLabel.layer.cornerRadius = 6;
     self.energyFlowLabel.layer.borderWidth = 1;
     self.energyFlowLabel.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
     self.energyFlowLabel.backgroundColor = [UIColor colorWithRed:.02 green:.06 blue:.08 alpha:.95];
-    self.energyFlowLabel.text = @"🍃 EV PURE ELECTRIC DRIVE (FWD)  •  ⚡ HV TRACTION POWER";
+    self.energyFlowLabel.text = @"🍃 EV PURE ELECTRIC DRIVE  •  ⚡ โหมดขับขี่ไฟฟ้าล้วน";
 
     self.frontMotorBox.hidden = NO;
-    self.frontMotorBox.frame = CGRectMake(centerX + 8, topY + 42, 204, 46);
+    self.frontMotorBox.frame = CGRectMake(centerX + 12, topY + 46, 206, 46);
 
     self.rearBatteryBox.hidden = NO;
-    self.rearBatteryBox.frame = CGRectMake(centerX + centerW - 212, topY + 42, 204, 46);
+    self.rearBatteryBox.frame = CGRectMake(centerX + centerW - 218, topY + 46, 206, 46);
 
     self.carImage.hidden = NO;
-    self.carImage.frame = CGRectMake(centerX + (centerW - 320)/2, topY + 72, 320, 173);
+    self.carImage.frame = CGRectMake(centerX + (centerW - 320)/2, topY + 74, 320, 168);
 
     self.flowBeamLine.hidden = NO;
-    self.flowBeamLine.frame = CGRectMake(centerX + 24, topY + 246, centerW - 48, 2);
+    self.flowBeamLine.frame = CGRectMake(centerX + 24, topY + 243, centerW - 48, 2);
     UIView *rDot = [self.flowBeamLine viewWithTag:831];
     if (rDot) rDot.frame = CGRectMake(centerW - 48 - 10, -4, 10, 10);
 
     self.compassLabel.hidden = NO;
-    self.compassLabel.frame = CGRectMake(centerX + 8, topY + 252, centerW - 16, 24);
+    self.compassLabel.frame = CGRectMake(centerX + 12, topY + 248, centerW - 24, 22);
     self.compassLabel.font = [UIFont boldSystemFontOfSize:13.5];
     self.compassLabel.adjustsFontSizeToFitWidth = YES;
     self.compassLabel.minimumScaleFactor = 0.85;
     self.compassLabel.textColor = [UIColor colorWithRed:0 green:.92 blue:1 alpha:1];
     self.compassLabel.textAlignment = NSTextAlignmentCenter;
-    self.compassLabel.text = @"⚡ HYBRID ENERGY FLOW: REGEN CHARGING +14.2 kW";
+    self.compassLabel.text = @"⚡ HYBRID ENERGY FLOW: ชาร์จไฟกลับ +14.2 kW (REGEN)";
 
     self.carStatus.hidden = NO;
-    self.carStatus.frame = CGRectMake(centerX + 8, topY + 280, centerW - 16, 32);
+    self.carStatus.frame = CGRectMake(centerX + 12, topY + 274, centerW - 24, 30);
     self.carStatus.font = [UIFont boldSystemFontOfSize:13.5];
     self.carStatus.adjustsFontSizeToFitWidth = YES;
     self.carStatus.minimumScaleFactor = 0.85;
@@ -2695,13 +2727,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.carStatus.layer.borderWidth = 1;
     self.carStatus.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
     self.carStatus.backgroundColor = [UIColor colorWithRed:.03 green:.06 blue:.09 alpha:.92];
-    self.carStatus.text = @"🚪 ALL 5 DOORS: LOCKED  •  🔒 SEATBELTS: FASTENED";
+    self.carStatus.text = @"🚪 DOORS: ปิดสนิทครบ 5 บาน  •  🔒 SEATBELTS: ล็อคครบทุกจุด";
 
-    // Multimedia Console
-    CGFloat mTop = topY + 318;
-    CGFloat mH = colH - 318; // 302px -> bottom is topY + 620, 100% aligned with left & right columns
+    // Multimedia Console (Full Center Width = 472px, Y = topY + 322, H = 298 -> Bottom = topY + 620!)
+    CGFloat mTop = topY + 322;
+    CGFloat mH = colH - 322;
     self.nowPanel.hidden = NO;
-    self.nowPanel.frame = CGRectMake(centerX + 8, mTop, centerW - 16, mH);
+    self.nowPanel.frame = CGRectMake(centerX, mTop, centerW, mH);
     self.nowPanel.layer.cornerRadius = 14;
     self.nowPanel.layer.borderWidth = 1.2;
     self.nowPanel.layer.borderColor = [UIColor colorWithWhite:.18 alpha:1].CGColor;
@@ -2784,7 +2816,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveEQ.titleLabel.font = [UIFont boldSystemFontOfSize:14.5];
     if(mHead) mHead.hidden = NO;
 
-    // 3. RIGHT ZONE
+    // 3. RIGHT ZONE (100% Symmetric with Left Zone: 224 + 8 + 178 + 8 + 186!)
     self.driveRightCard.hidden = NO;
     self.driveRightCard.frame = CGRectMake(rightX, topY, rightW, colH);
     self.driveRightCard.layer.cornerRadius = 14;
@@ -2792,88 +2824,97 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveRightCard.layer.borderColor = [UIColor colorWithWhite:.18 alpha:1].CGColor;
     self.driveRightCard.backgroundColor = [UIColor colorWithRed:.04 green:.06 blue:.08 alpha:.95];
 
-    // Right Card 1: POWERTRAIN & HV • 7E3
+    // Right Card 1: POWERTRAIN & HV • 7E3 (H = 224, exact mirror of hTopPod!)
     UIView *pCard = [self.view viewWithTag:701];
     if (!pCard) {
       pCard = [[UIView alloc] init];
       pCard.tag = 701;
-      pCard.backgroundColor = [UIColor colorWithRed:.02 green:.06 blue:.08 alpha:.92];
+      pCard.backgroundColor = [UIColor colorWithRed:.02 green:.05 blue:.08 alpha:.94];
       pCard.layer.cornerRadius = 10;
       pCard.layer.borderWidth = 1.0;
       pCard.layer.borderColor = [UIColor colorWithRed:0 green:.75 blue:.85 alpha:.35].CGColor;
 
-      UILabel *pt = [[UILabel alloc] initWithFrame:CGRectMake(10, 6, rightW - 36, 20)];
+      UILabel *pt = [[UILabel alloc] initWithFrame:CGRectMake(10, 8, rightW - 36, 22)];
       pt.tag = 702;
-      pt.font = [UIFont boldSystemFontOfSize:13.0];
+      pt.font = [UIFont boldSystemFontOfSize:13.5];
       pt.adjustsFontSizeToFitWidth = YES;
       pt.minimumScaleFactor = 0.85;
       pt.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
       pt.text = @"⚡ POWERTRAIN & HV • 7E3";
       [pCard addSubview:pt];
 
-      UILabel *pb = [[UILabel alloc] initWithFrame:CGRectMake(10, 28, rightW - 36, 66)];
+      UILabel *pb = [[UILabel alloc] initWithFrame:CGRectMake(10, 34, rightW - 36, 74)];
       pb.tag = 703;
       pb.font = [UIFont boldSystemFontOfSize:13.5];
       pb.adjustsFontSizeToFitWidth = YES;
       pb.minimumScaleFactor = 0.85;
       pb.textColor = [UIColor whiteColor];
       pb.numberOfLines = 3;
-      pb.text = @"HV SOC: 64.5% (OPTIMAL)\nPACK: 227.4 V • +12.4 A CHG\n14 BLOCKS (28 NiMH MODULES)";
+      pb.text = @"HV SOC: 64.5% (ระดับไฟปกติ)\nPACK: 227.4 V • ชาร์จ +12.4 A\n14 BLOCKS (28 NiMH MODULES)";
       [pCard addSubview:pb];
       [self.view addSubview:pCard];
     }
     pCard.hidden = NO;
-    pCard.frame = CGRectMake(rightX + 10, topY + 8, rightW - 20, 172);
+    pCard.frame = CGRectMake(rightX + 10, topY + 8, rightW - 20, 224);
     UILabel *ptLbl = (UILabel *)[pCard viewWithTag:702];
-    if (ptLbl) ptLbl.text = @"⚡ POWERTRAIN & HV • 7E3";
+    if (ptLbl) {
+      ptLbl.frame = CGRectMake(10, 8, rightW - 36, 22);
+      ptLbl.text = @"⚡ POWERTRAIN & HV • 7E3";
+    }
     UILabel *pbLbl = (UILabel *)[pCard viewWithTag:703];
-    if (pbLbl) pbLbl.text = @"HV SOC: 64.5% (OPTIMAL)\nPACK: 227.4 V • +12.4 A CHG\n14 BLOCKS (28 NiMH MODULES)";
+    if (pbLbl) {
+      pbLbl.frame = CGRectMake(10, 34, rightW - 36, 74);
+      pbLbl.text = @"HV SOC: 64.5% (ระดับไฟปกติ)\nPACK: 227.4 V • ชาร์จ +12.4 A\n14 BLOCKS (28 NiMH MODULES)";
+    }
 
     self.blockGraphView.hidden = NO;
-    self.blockGraphView.frame = CGRectMake(rightX + 18, topY + 102, rightW - 36, 44);
+    self.blockGraphView.frame = CGRectMake(rightX + 18, topY + 124, rightW - 36, 64);
 
     UILabel *deltaL = (UILabel *)[self.view viewWithTag:706];
     if (!deltaL) {
       deltaL = [[UILabel alloc] init];
       deltaL.tag = 706;
-      deltaL.font = [UIFont boldSystemFontOfSize:12.5];
+      deltaL.font = [UIFont boldSystemFontOfSize:13.0];
       deltaL.adjustsFontSizeToFitWidth = YES;
       deltaL.minimumScaleFactor = 0.85;
       deltaL.textColor = [UIColor colorWithRed:.35 green:.98 blue:.55 alpha:1];
-      deltaL.text = @"ΔV: 0.02V (BALANCED) • 16.22–16.24V";
+      deltaL.text = @"ΔV: 0.02V (สมดุลดี) • 16.22–16.24V";
       [self.view addSubview:deltaL];
     }
     deltaL.hidden = NO;
-    deltaL.text = @"ΔV: 0.02V (BALANCED) • 16.22–16.24V";
-    deltaL.frame = CGRectMake(rightX + 18, topY + 150, rightW - 36, 22);
+    deltaL.text = @"ΔV: 0.02V (สมดุลดี) • 16.22–16.24V";
+    deltaL.frame = CGRectMake(rightX + 18, topY + 196, rightW - 36, 24);
 
-    // Right Card 2: 3 Motor Rows
+    // Right Card 2: 3 Motor Rows (Y = topY + 240, H = 178, exact mirror of homeAiEcoCard!)
     UIView *mCard = [self.view viewWithTag:707];
     if (!mCard) {
       mCard = [[UIView alloc] init];
       mCard.tag = 707;
-      mCard.backgroundColor = [UIColor colorWithRed:.02 green:.04 blue:.06 alpha:.95];
+      mCard.backgroundColor = [UIColor colorWithRed:.02 green:.045 blue:.06 alpha:.95];
       mCard.layer.cornerRadius = 10;
       mCard.layer.borderWidth = 1.0;
       mCard.layer.borderColor = [UIColor colorWithWhite:.20 alpha:1].CGColor;
 
-      UILabel *ml = [[UILabel alloc] initWithFrame:CGRectMake(10, 8, rightW - 36, 174)];
+      UILabel *ml = [[UILabel alloc] initWithFrame:CGRectMake(10, 6, rightW - 36, 166)];
       ml.tag = 708;
       ml.font = [UIFont boldSystemFontOfSize:13.5];
       ml.adjustsFontSizeToFitWidth = YES;
       ml.minimumScaleFactor = 0.85;
       ml.textColor = [UIColor whiteColor];
       ml.numberOfLines = 6;
-      ml.text = @"⚙️ TRACTION MOTOR MG2\n     1,420 RPM  •  18 kW DRIVE\n⚡ GENERATOR MG1\n     980 RPM  •  8 kW CHARGE\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  COOLING FAN: OK";
+      ml.text = @"⚙️ TRACTION MOTOR MG2\n     1,420 RPM  •  กำลังขับ 18 kW\n⚡ GENERATOR MG1\n     980 RPM  •  ปั่นไฟชาร์จ 8 kW\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  พัดลมแบต: ปกติ";
       [mCard addSubview:ml];
       [self.view addSubview:mCard];
     }
     mCard.hidden = NO;
-    mCard.frame = CGRectMake(rightX + 10, topY + 188, rightW - 20, 190);
+    mCard.frame = CGRectMake(rightX + 10, topY + 240, rightW - 20, 178);
     UILabel *mlLbl = (UILabel *)[mCard viewWithTag:708];
-    if (mlLbl) mlLbl.text = @"⚙️ TRACTION MOTOR MG2\n     1,420 RPM  •  18 kW DRIVE\n⚡ GENERATOR MG1\n     980 RPM  •  8 kW CHARGE\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  COOLING FAN: OK";
+    if (mlLbl) {
+      mlLbl.frame = CGRectMake(10, 6, rightW - 36, 166);
+      mlLbl.text = @"⚙️ TRACTION MOTOR MG2\n     1,420 RPM  •  กำลังขับ 18 kW\n⚡ GENERATOR MG1\n     980 RPM  •  ปั่นไฟชาร์จ 8 kW\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  พัดลมแบต: ปกติ";
+    }
 
-    // Right Card 3: GPS Trip Computer & Range (With TRIP A / B / C Tabs!)
+    // Right Card 3: GPS Trip Computer & Range (Y = topY + 426, H = 186, exact mirror of homeThermalsCard!)
     UIView *tCard = [self.view viewWithTag:711];
     if (!tCard) {
       tCard = [[UIView alloc] init];
@@ -2889,7 +2930,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       for (int i = 0; i < 3; i++) {
         UIButton *htb = [UIButton buttonWithType:UIButtonTypeCustom];
         htb.tag = 740 + i;
-        htb.frame = CGRectMake(10 + i * (hTabW + 5), 8, hTabW, 28);
+        htb.frame = CGRectMake(10 + i * (hTabW + 5), 8, hTabW, 26);
         [htb setTitle:htNames[i] forState:UIControlStateNormal];
         htb.titleLabel.font = [UIFont boldSystemFontOfSize:12.0];
         htb.layer.cornerRadius = 6;
@@ -2898,20 +2939,26 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
         [tCard addSubview:htb];
       }
 
-      UILabel *tb = [[UILabel alloc] initWithFrame:CGRectMake(10, 40, rightW - 36, 180)];
+      UILabel *tb = [[UILabel alloc] initWithFrame:CGRectMake(10, 38, rightW - 36, 142)];
       tb.tag = 713;
-      tb.font = [UIFont boldSystemFontOfSize:14.0];
+      tb.font = [UIFont boldSystemFontOfSize:13.5];
       tb.adjustsFontSizeToFitWidth = YES;
-      tb.minimumScaleFactor = 0.85;
+      tb.minimumScaleFactor = 0.82;
       tb.textColor = [UIColor whiteColor];
-      tb.numberOfLines = 7;
+      tb.numberOfLines = 6;
       tb.userInteractionEnabled = YES;
       [tb addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(resetTripMenu)]];
       [tCard addSubview:tb];
       [self.view addSubview:tCard];
     }
     tCard.hidden = NO;
-    tCard.frame = CGRectMake(rightX + 10, topY + 386, rightW - 20, 226);
+    tCard.frame = CGRectMake(rightX + 10, topY + 426, rightW - 20, 186);
+    UILabel *tbLbl = (UILabel *)[tCard viewWithTag:713];
+    if (tbLbl) {
+      tbLbl.frame = CGRectMake(10, 38, rightW - 36, 142);
+      tbLbl.numberOfLines = 6;
+      tbLbl.font = [UIFont boldSystemFontOfSize:13.5];
+    }
     [self refreshDriveTripDisplay];
 
     // Bottom Navigation Bar
@@ -2938,6 +2985,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     // Bring subviews to front for Home Dashboard
     [self.view bringSubviewToFront:self.driveLeftCard];
     [self.view bringSubviewToFront:self.driveRightCard];
+    if (hTopPod) [self.view bringSubviewToFront:hTopPod];
+    if (hCenterTopCard) [self.view bringSubviewToFront:hCenterTopCard];
     [self.view bringSubviewToFront:self.heading];
     [self.view bringSubviewToFront:self.owner];
     [self.view bringSubviewToFront:self.topClockLabel];
