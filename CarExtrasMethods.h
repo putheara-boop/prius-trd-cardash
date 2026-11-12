@@ -370,7 +370,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
  else if(type.length){route=@"EXTERNAL AUDIO";shortName=@"EXTERNAL";}
  self.audioOutput=route;self.audioOutputShort=shortName;self.audioDevice=name?:@"";self.outputVolume=isfinite(session.outputVolume)?MAX(0,MIN(1,session.outputVolume)):-1;
  NSString *level=self.outputVolume<0?@"VOLUME UNKNOWN":self.outputVolume<.005?@"MUTED":[NSString stringWithFormat:@"VOL %.0f%%",self.outputVolume*100];
- NSString *newCarStatus=(self.carplayMode||self.mapMode||self.tripMode)?[NSString stringWithFormat:@"%@  ·  %@",route,level]:(self.driveMode?@"🛡️ เบรก ECB ปกติ  •  🌡️ น้ำหล่อเย็น 88°C  •  ❄️ แอร์ 24.0°C":@"🚪 ประตู 5 บาน: ปิดสนิท  •  🔒 เข็มขัดนิรภัย: ล็อคครบทุกจุด");
+ NSString *newCarStatus=(self.carplayMode||self.mapMode||self.tripMode)?[NSString stringWithFormat:@"%@  ·  %@",route,level]:(self.driveMode?@"🛡️ เบรก ECB ปกติ  •  🌡️ น้ำหล่อเย็น 88°C  •  ❄️ แอร์ 24.0°C":@"🚪 ALL 5 DOORS: LOCKED  •  🔒 SEATBELTS: FASTENED");
  if(![self.carStatus.text isEqualToString:newCarStatus]){self.carStatus.text=newCarStatus;self.carStatus.accessibilityLabel=newCarStatus;}
  self.carStatus.textColor=[UIColor whiteColor];
 }

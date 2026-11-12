@@ -1270,8 +1270,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     }
     UILabel *htbL = (UILabel *)[hTripCard viewWithTag:713];
     if(htbL){
-      NSString *slotTitle = (slot == 0) ? @"ทริปปัจจุบัน (A)" : (slot == 1) ? @"ทริปถังน้ำมันนี้ (B)" : @"ทริปสะสมระยะยาว (C)";
-      htbL.text = [NSString stringWithFormat:@"โหมด: %@\nระยะทางทริป: %.1f km\nอัตราสิ้นเปลือง: %.1f km/L\nค่าน้ำมันทริป: ฿ %.2f (GSH95)\nความเร็วเฉลี่ย: %.1f km/h\nเวลาขับขี่: %@\nความประหยัด: ดีเยี่ยม (A+)", slotTitle, dist, kml, cost, avgSpd, timeStr];
+      NSString *slotTitle = (slot == 0) ? @"CURRENT TRIP (A)" : (slot == 1) ? @"TANK TRIP (B)" : @"LONG-TERM (C)";
+      NSString *enTimeStr = [timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@" hrs"];
+      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %.1f km\nFUEL ECONOMY: %.1f km/L\nFUEL COST: ฿ %.2f (GSH95)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@\nEFFICIENCY: EXCELLENT (A+)", slotTitle, dist, kml, cost, avgSpd, enTimeStr];
     }
   }
   (void)slotNames;
@@ -1380,9 +1381,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.dayNightPill.layer.cornerRadius = 6;
   self.dayNightPill.layer.borderWidth = 1.0;
   self.dayNightPill.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
-  [self.dayNightPill setTitle:self.nightMode?@"🌙 กลางคืน":@"☀️ กลางวัน" forState:UIControlStateNormal];
+  [self.dayNightPill setTitle:self.nightMode?@"🌙 NIGHT":@"☀️ DAY" forState:UIControlStateNormal];
   [self.dayNightPill setTitleColor:[UIColor colorWithRed:1.0 green:.82 blue:.25 alpha:1] forState:UIControlStateNormal];
-  self.dayNightPill.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
+  self.dayNightPill.titleLabel.font = [UIFont boldSystemFontOfSize:13.0];
   [self.dayNightPill addTarget:self action:@selector(toggleNight) forControlEvents:UIControlEventTouchUpInside];
   [self.view addSubview:self.dayNightPill];
 
@@ -1391,9 +1392,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.thaiVoicePill.layer.cornerRadius = 6;
   self.thaiVoicePill.layer.borderWidth = 1.0;
   self.thaiVoicePill.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
-  [self.thaiVoicePill setTitle:@"🔊 เสียงไทย" forState:UIControlStateNormal];
+  [self.thaiVoicePill setTitle:@"🔊 THAI VOICE" forState:UIControlStateNormal];
   [self.thaiVoicePill setTitleColor:[UIColor colorWithRed:0 green:.85 blue:1 alpha:1] forState:UIControlStateNormal];
-  self.thaiVoicePill.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
+  self.thaiVoicePill.titleLabel.font = [UIFont boldSystemFontOfSize:12.5];
   [self.thaiVoicePill addTarget:self action:@selector(voiceLanguageSettings) forControlEvents:UIControlEventTouchUpInside];
   [self.view addSubview:self.thaiVoicePill];
 
@@ -1402,9 +1403,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.settingsPill.layer.cornerRadius = 6;
   self.settingsPill.layer.borderWidth = 1.0;
   self.settingsPill.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
-  [self.settingsPill setTitle:@"⚙️ iPad ตั้งค่า" forState:UIControlStateNormal];
+  [self.settingsPill setTitle:@"⚙️ SETTINGS" forState:UIControlStateNormal];
   [self.settingsPill setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-  self.settingsPill.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
+  self.settingsPill.titleLabel.font = [UIFont boldSystemFontOfSize:12.5];
   [self.settingsPill addTarget:self action:@selector(carSettings) forControlEvents:UIControlEventTouchUpInside];
   [self.view addSubview:self.settingsPill];
 
@@ -1493,8 +1494,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.frontMotorBox.layer.cornerRadius = 6;
   self.frontMotorBox.layer.borderWidth = 1.2;
   self.frontMotorBox.layer.borderColor = [UIColor colorWithRed:0 green:.80 blue:.95 alpha:.5].CGColor;
-  UILabel *fmL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,188,20)];fmL1.font=[UIFont boldSystemFontOfSize:13.5];fmL1.adjustsFontSizeToFitWidth=YES;fmL1.minimumScaleFactor=0.85;fmL1.textColor=[UIColor whiteColor];fmL1.text=@"หน้ารถ (ชุดขับเคลื่อนหน้า)";[self.frontMotorBox addSubview:fmL1];
-  UILabel *fmL2 = [[UILabel alloc]initWithFrame:CGRectMake(8,23,188,20)];fmL2.font=[UIFont boldSystemFontOfSize:13.5];fmL2.adjustsFontSizeToFitWidth=YES;fmL2.minimumScaleFactor=0.85;fmL2.textColor=[UIColor colorWithRed:0 green:.90 blue:1 alpha:1];fmL2.text=@"⚡ MOTOR MG1 / MG2";[self.frontMotorBox addSubview:fmL2];
+  UILabel *fmL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,188,20)];fmL1.font=[UIFont boldSystemFontOfSize:13.0];fmL1.adjustsFontSizeToFitWidth=YES;fmL1.minimumScaleFactor=0.85;fmL1.textColor=[UIColor whiteColor];fmL1.text=@"FRONT AXLE (TRANSAXLE)";[self.frontMotorBox addSubview:fmL1];
+  UILabel *fmL2 = [[UILabel alloc]initWithFrame:CGRectMake(8,23,188,20)];fmL2.font=[UIFont boldSystemFontOfSize:13.0];fmL2.adjustsFontSizeToFitWidth=YES;fmL2.minimumScaleFactor=0.85;fmL2.textColor=[UIColor colorWithRed:0 green:.90 blue:1 alpha:1];fmL2.text=@"⚡ MOTOR MG1 / MG2";[self.frontMotorBox addSubview:fmL2];
   [self.view addSubview:self.frontMotorBox];
 
   self.rearBatteryBox = [[UIView alloc]init];
@@ -1502,8 +1503,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.rearBatteryBox.layer.cornerRadius = 6;
   self.rearBatteryBox.layer.borderWidth = 1.2;
   self.rearBatteryBox.layer.borderColor = [UIColor colorWithRed:.25 green:.85 blue:.45 alpha:.5].CGColor;
-  UILabel *rbL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,188,20)];rbL1.font=[UIFont boldSystemFontOfSize:13.5];rbL1.adjustsFontSizeToFitWidth=YES;rbL1.minimumScaleFactor=0.85;rbL1.textColor=[UIColor whiteColor];rbL1.textAlignment=NSTextAlignmentRight;rbL1.text=@"ท้ายรถ (แบตเตอรี่ไฮบริด)";[self.rearBatteryBox addSubview:rbL1];
-  UILabel *rbL2 = [[UILabel alloc]initWithFrame:CGRectMake(8,23,188,20)];rbL2.font=[UIFont boldSystemFontOfSize:13.5];rbL2.adjustsFontSizeToFitWidth=YES;rbL2.minimumScaleFactor=0.85;rbL2.textColor=[UIColor colorWithRed:.35 green:.98 blue:.50 alpha:1];rbL2.textAlignment=NSTextAlignmentRight;rbL2.text=@"HV BATTERY PACK 🔋";[self.rearBatteryBox addSubview:rbL2];
+  UILabel *rbL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,188,20)];rbL1.font=[UIFont boldSystemFontOfSize:13.0];rbL1.adjustsFontSizeToFitWidth=YES;rbL1.minimumScaleFactor=0.85;rbL1.textColor=[UIColor whiteColor];rbL1.textAlignment=NSTextAlignmentRight;rbL1.text=@"REAR AXLE (HYBRID PACK)";[self.rearBatteryBox addSubview:rbL1];
+  UILabel *rbL2 = [[UILabel alloc]initWithFrame:CGRectMake(8,23,188,20)];rbL2.font=[UIFont boldSystemFontOfSize:13.0];rbL2.adjustsFontSizeToFitWidth=YES;rbL2.minimumScaleFactor=0.85;rbL2.textColor=[UIColor colorWithRed:.35 green:.98 blue:.50 alpha:1];rbL2.textAlignment=NSTextAlignmentRight;rbL2.text=@"HV BATTERY PACK 🔋";[self.rearBatteryBox addSubview:rbL2];
   [self.view addSubview:self.rearBatteryBox];
 
   self.flowBeamLine = [[UIView alloc]init];
@@ -1567,11 +1568,11 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   UILabel *ecoD = [[UILabel alloc] initWithFrame:CGRectMake(10, 54, 214, 118)];
   ecoD.tag = 503;
   ecoD.numberOfLines = 4;
-  ecoD.font = [UIFont boldSystemFontOfSize:14.5];
+  ecoD.font = [UIFont boldSystemFontOfSize:13.5];
   ecoD.adjustsFontSizeToFitWidth = YES;
   ecoD.minimumScaleFactor = 0.85;
   ecoD.textColor = [UIColor whiteColor];
-  ecoD.text = @"• ระบบไฮบริดสมบูรณ์ 100%\n• คันเร่งนุ่มนวล ประหยัดสูงสุด\n• ดึงไฟชาร์จกลับ: ดีเยี่ยม\n• เบรกไฟฟ้า ECB: แรงดันปกติ";
+  ecoD.text = @"• HYBRID SYSTEM: 100% READY\n• THROTTLE: SMOOTH & OPTIMAL\n• REGEN BRAKING: EXCELLENT\n• ECB BRAKE PRESSURE: NORMAL";
   [self.homeAiEcoCard addSubview:ecoD];
 
   self.homeThermalsCard = [[UIView alloc] initWithFrame:CGRectZero];
@@ -1584,31 +1585,31 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   UILabel *tRow1 = [[UILabel alloc] initWithFrame:CGRectMake(10, 8, 214, 52)];
   tRow1.tag = 601;
   tRow1.numberOfLines = 2;
-  tRow1.font = [UIFont boldSystemFontOfSize:14.5];
+  tRow1.font = [UIFont boldSystemFontOfSize:13.5];
   tRow1.adjustsFontSizeToFitWidth = YES;
   tRow1.minimumScaleFactor = 0.85;
   tRow1.textColor = [UIColor whiteColor];
-  tRow1.text = @"🌡️ น้ำหล่อเย็นเครื่องยนต์\n     88 °C (เกณฑ์ปกติ)";
+  tRow1.text = @"🌡️ ENGINE COOLANT (ECT)\n     88 °C (NORMAL RANGE)";
   [self.homeThermalsCard addSubview:tRow1];
 
   UILabel *tRow2 = [[UILabel alloc] initWithFrame:CGRectMake(10, 64, 214, 52)];
   tRow2.tag = 602;
   tRow2.numberOfLines = 2;
-  tRow2.font = [UIFont boldSystemFontOfSize:14.5];
+  tRow2.font = [UIFont boldSystemFontOfSize:13.5];
   tRow2.adjustsFontSizeToFitWidth = YES;
   tRow2.minimumScaleFactor = 0.85;
   tRow2.textColor = [UIColor colorWithRed:0.65 green:0.94 blue:1.0 alpha:1];
-  tRow2.text = @"❄️ แอร์ห้องโดยสาร : 24.5 °C\n     อินเวอร์เตอร์ : 42 °C";
+  tRow2.text = @"❄️ CABIN A/C : 24.5 °C\n     INVERTER : 42 °C";
   [self.homeThermalsCard addSubview:tRow2];
 
   UILabel *tRow3 = [[UILabel alloc] initWithFrame:CGRectMake(10, 120, 214, 52)];
   tRow3.tag = 603;
   tRow3.numberOfLines = 2;
-  tRow3.font = [UIFont boldSystemFontOfSize:14.5];
+  tRow3.font = [UIFont boldSystemFontOfSize:13.5];
   tRow3.adjustsFontSizeToFitWidth = YES;
   tRow3.minimumScaleFactor = 0.85;
   tRow3.textColor = [UIColor colorWithRed:.35 green:.96 blue:.52 alpha:1];
-  tRow3.text = @"🔋 แบตเตอรี่ 12V : 13.84 V\n     สถานะชาร์จไฟปกติ";
+  tRow3.text = @"🔋 AUX 12V BATTERY : 13.84 V\n     CHARGING STATUS : OPTIMAL";
   [self.homeThermalsCard addSubview:tRow3];
 
   self.driveClockCard = [[UIView alloc] initWithFrame:CGRectZero];
@@ -2589,10 +2590,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     curRx -= 118;
     self.settingsPill.hidden = NO;
     self.settingsPill.frame = CGRectMake(curRx, barY + 4, 118, pillH);
+    [self.settingsPill setTitle:@"⚙️ SETTINGS" forState:UIControlStateNormal];
 
     curRx -= 106;
     self.thaiVoicePill.hidden = NO;
     self.thaiVoicePill.frame = CGRectMake(curRx, barY + 4, 98, pillH);
+    [self.thaiVoicePill setTitle:@"🔊 THAI VOICE" forState:UIControlStateNormal];
 
     curRx -= 70;
     self.topClockLabel.hidden = NO;
@@ -2602,6 +2605,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     curRx -= 104;
     self.dayNightPill.hidden = NO;
     self.dayNightPill.frame = CGRectMake(curRx, barY + 4, 96, pillH);
+    [self.dayNightPill setTitle:self.nightMode?@"🌙 NIGHT":@"☀️ DAY" forState:UIControlStateNormal];
 
     curRx -= 154;
     self.obdStatusPill.hidden = NO;
@@ -2648,12 +2652,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     // 2. CENTER ZONE
     self.energyFlowLabel.hidden = NO;
     self.energyFlowLabel.frame = CGRectMake(centerX + 8, topY + 6, centerW - 16, 32);
-    self.energyFlowLabel.font = [UIFont boldSystemFontOfSize:14.5];
+    self.energyFlowLabel.font = [UIFont boldSystemFontOfSize:13.5];
     self.energyFlowLabel.layer.cornerRadius = 6;
     self.energyFlowLabel.layer.borderWidth = 1;
     self.energyFlowLabel.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
     self.energyFlowLabel.backgroundColor = [UIColor colorWithRed:.02 green:.06 blue:.08 alpha:.95];
-    self.energyFlowLabel.text = @"🍃 โหมดไฟฟ้าล้วน EV (เพลาขับหน้า)  ⚡ ดึงไฟจากแบตไฮบริด";
+    self.energyFlowLabel.text = @"🍃 EV PURE ELECTRIC DRIVE (FWD)  •  ⚡ HV TRACTION POWER";
 
     self.frontMotorBox.hidden = NO;
     self.frontMotorBox.frame = CGRectMake(centerX + 8, topY + 42, 204, 46);
@@ -2671,16 +2675,16 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
     self.compassLabel.hidden = NO;
     self.compassLabel.frame = CGRectMake(centerX + 8, topY + 252, centerW - 16, 24);
-    self.compassLabel.font = [UIFont boldSystemFontOfSize:14.5];
+    self.compassLabel.font = [UIFont boldSystemFontOfSize:13.5];
     self.compassLabel.adjustsFontSizeToFitWidth = YES;
     self.compassLabel.minimumScaleFactor = 0.85;
     self.compassLabel.textColor = [UIColor colorWithRed:0 green:.92 blue:1 alpha:1];
     self.compassLabel.textAlignment = NSTextAlignmentCenter;
-    self.compassLabel.text = @"⚡ กระแสไฟไฮบริด: ชาร์จไฟเข้าแบตเตอรี่ +14.2 kW (Regen)";
+    self.compassLabel.text = @"⚡ HYBRID ENERGY FLOW: REGEN CHARGING +14.2 kW";
 
     self.carStatus.hidden = NO;
     self.carStatus.frame = CGRectMake(centerX + 8, topY + 280, centerW - 16, 32);
-    self.carStatus.font = [UIFont boldSystemFontOfSize:14.5];
+    self.carStatus.font = [UIFont boldSystemFontOfSize:13.5];
     self.carStatus.adjustsFontSizeToFitWidth = YES;
     self.carStatus.minimumScaleFactor = 0.85;
     self.carStatus.textColor = [UIColor whiteColor];
@@ -2689,7 +2693,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.carStatus.layer.borderWidth = 1;
     self.carStatus.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
     self.carStatus.backgroundColor = [UIColor colorWithRed:.03 green:.06 blue:.09 alpha:.92];
-    self.carStatus.text = @"🚪 ประตู 5 บาน: ปิดสนิท  •  🔒 เข็มขัดนิรภัย: ล็อคครบทุกจุด";
+    self.carStatus.text = @"🚪 ALL 5 DOORS: LOCKED  •  🔒 SEATBELTS: FASTENED";
 
     // Multimedia Console
     CGFloat mTop = topY + 318;
@@ -2714,17 +2718,18 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
     UILabel *mHead = (UILabel *)[self.nowPanel viewWithTag:750];
     if (!mHead) {
-      mHead = [[UILabel alloc] initWithFrame:CGRectMake(170, 18, centerW - 184, 22)];
+      mHead = [[UILabel alloc] initWithFrame:CGRectMake(170, 18, centerW - 196, 22)];
       mHead.tag = 750;
-      mHead.font = [UIFont boldSystemFontOfSize:13.0];
+      mHead.font = [UIFont boldSystemFontOfSize:12.5];
       mHead.adjustsFontSizeToFitWidth = YES;
       mHead.minimumScaleFactor = 0.75;
       mHead.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
-      mHead.text = @"🎵 เครื่องเสียงรถยนต์ • 11 เพลง • JBL SOUND";
+      mHead.text = @"🎵 CAR MULTIMEDIA • 11 TRACKS • JBL SOUND";
       [self.nowPanel addSubview:mHead];
     }
-    mHead.frame = CGRectMake(170, 18, centerW - 184, 22);
-    mHead.text = @"🎵 เครื่องเสียงรถยนต์ • 11 เพลง • JBL SOUND";
+    mHead.frame = CGRectMake(170, 18, centerW - 196, 22);
+    mHead.font = [UIFont boldSystemFontOfSize:12.5];
+    mHead.text = @"🎵 CAR MULTIMEDIA • 11 TRACKS • JBL SOUND";
 
     self.song.hidden = NO;
     self.song.frame = CGRectMake(centerX + 184, mTop + 48, centerW - 204, 34);
@@ -2797,26 +2802,30 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
       UILabel *pt = [[UILabel alloc] initWithFrame:CGRectMake(10, 6, rightW - 36, 20)];
       pt.tag = 702;
-      pt.font = [UIFont boldSystemFontOfSize:13.5];
+      pt.font = [UIFont boldSystemFontOfSize:13.0];
       pt.adjustsFontSizeToFitWidth = YES;
       pt.minimumScaleFactor = 0.85;
       pt.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
-      pt.text = @"⚡ แบตเตอรี่ไฮบริด HV • 7E3";
+      pt.text = @"⚡ POWERTRAIN & HV • 7E3";
       [pCard addSubview:pt];
 
       UILabel *pb = [[UILabel alloc] initWithFrame:CGRectMake(10, 28, rightW - 36, 66)];
       pb.tag = 703;
-      pb.font = [UIFont boldSystemFontOfSize:14.5];
+      pb.font = [UIFont boldSystemFontOfSize:13.5];
       pb.adjustsFontSizeToFitWidth = YES;
       pb.minimumScaleFactor = 0.85;
       pb.textColor = [UIColor whiteColor];
       pb.numberOfLines = 3;
-      pb.text = @"ระดับไฟ (SOC): 64.5% (ปกติ)\nแรงดัน: 227.4 V • ชาร์จ +12.4 A\n14 บล็อก (28 โมดูล NiMH)";
+      pb.text = @"HV SOC: 64.5% (OPTIMAL)\nPACK: 227.4 V • +12.4 A CHG\n14 BLOCKS (28 NiMH MODULES)";
       [pCard addSubview:pb];
       [self.view addSubview:pCard];
     }
     pCard.hidden = NO;
     pCard.frame = CGRectMake(rightX + 10, topY + 8, rightW - 20, 172);
+    UILabel *ptLbl = (UILabel *)[pCard viewWithTag:702];
+    if (ptLbl) ptLbl.text = @"⚡ POWERTRAIN & HV • 7E3";
+    UILabel *pbLbl = (UILabel *)[pCard viewWithTag:703];
+    if (pbLbl) pbLbl.text = @"HV SOC: 64.5% (OPTIMAL)\nPACK: 227.4 V • +12.4 A CHG\n14 BLOCKS (28 NiMH MODULES)";
 
     self.blockGraphView.hidden = NO;
     self.blockGraphView.frame = CGRectMake(rightX + 18, topY + 102, rightW - 36, 44);
@@ -2825,14 +2834,15 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     if (!deltaL) {
       deltaL = [[UILabel alloc] init];
       deltaL.tag = 706;
-      deltaL.font = [UIFont boldSystemFontOfSize:13.0];
+      deltaL.font = [UIFont boldSystemFontOfSize:12.5];
       deltaL.adjustsFontSizeToFitWidth = YES;
       deltaL.minimumScaleFactor = 0.85;
       deltaL.textColor = [UIColor colorWithRed:.35 green:.98 blue:.55 alpha:1];
-      deltaL.text = @"ΔV: 0.02V (สมดุลดี) • 16.22–16.24V";
+      deltaL.text = @"ΔV: 0.02V (BALANCED) • 16.22–16.24V";
       [self.view addSubview:deltaL];
     }
     deltaL.hidden = NO;
+    deltaL.text = @"ΔV: 0.02V (BALANCED) • 16.22–16.24V";
     deltaL.frame = CGRectMake(rightX + 18, topY + 150, rightW - 36, 22);
 
     // Right Card 2: 3 Motor Rows
@@ -2847,17 +2857,19 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
       UILabel *ml = [[UILabel alloc] initWithFrame:CGRectMake(10, 8, rightW - 36, 174)];
       ml.tag = 708;
-      ml.font = [UIFont boldSystemFontOfSize:14.5];
+      ml.font = [UIFont boldSystemFontOfSize:13.5];
       ml.adjustsFontSizeToFitWidth = YES;
       ml.minimumScaleFactor = 0.85;
       ml.textColor = [UIColor whiteColor];
       ml.numberOfLines = 6;
-      ml.text = @"⚙️ มอเตอร์ขับเคลื่อน MG2\n     1,420 RPM  •  กำลัง 18 kW\n⚡ มอเตอร์ปั่นไฟ MG1\n     980 RPM  •  ชาร์จ 8 kW\n🌡️ อุณหภูมิแบตไฮบริด (HV)\n     35.0 °C  •  พัดลมแบต: ปกติ";
+      ml.text = @"⚙️ TRACTION MOTOR MG2\n     1,420 RPM  •  18 kW DRIVE\n⚡ GENERATOR MG1\n     980 RPM  •  8 kW CHARGE\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  COOLING FAN: OK";
       [mCard addSubview:ml];
       [self.view addSubview:mCard];
     }
     mCard.hidden = NO;
     mCard.frame = CGRectMake(rightX + 10, topY + 188, rightW - 20, 190);
+    UILabel *mlLbl = (UILabel *)[mCard viewWithTag:708];
+    if (mlLbl) mlLbl.text = @"⚙️ TRACTION MOTOR MG2\n     1,420 RPM  •  18 kW DRIVE\n⚡ GENERATOR MG1\n     980 RPM  •  8 kW CHARGE\n🌡️ HV BATTERY TEMP\n     35.0 °C  •  COOLING FAN: OK";
 
     // Right Card 3: GPS Trip Computer & Range (With TRIP A / B / C Tabs!)
     UIView *tCard = [self.view viewWithTag:711];
@@ -2989,7 +3001,11 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self.obdStatusPill setTitle:live?@"● OBD-II: LIVE":@"● OBD-II: DEMO SIM" forState:UIControlStateNormal];
   }
   if(self.dayNightPill && !self.dayNightPill.hidden){
-    [self.dayNightPill setTitle:self.nightMode?@"🌙 กลางคืน":@"☀️ กลางวัน" forState:UIControlStateNormal];
+    if(self.driveMode){
+      [self.dayNightPill setTitle:self.nightMode?@"🌙 กลางคืน":@"☀️ กลางวัน" forState:UIControlStateNormal];
+    }else{
+      [self.dayNightPill setTitle:self.nightMode?@"🌙 NIGHT":@"☀️ DAY" forState:UIControlStateNormal];
+    }
   }
 
  NSDate *now=[NSDate date];
@@ -3190,12 +3206,22 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }
  double remaining=(self.mediaDuration>0)?MAX(0,self.mediaDuration-elapsed):0;
  NSString *newTime=nil;
- if(self.hasElapsed&&self.mediaDuration>0){
-  newTime=[NSString stringWithFormat:@"เล่นไป %@ / %@ (เหลือ -%@)",[self trackTimeString:elapsed],[self trackTimeString:self.mediaDuration],[self trackTimeString:remaining]];
- }else if(self.hasElapsed){
-  newTime=[NSString stringWithFormat:@"เล่นไป %@ / --:--",[self trackTimeString:elapsed]];
+ if(self.driveMode){
+  if(self.hasElapsed&&self.mediaDuration>0){
+   newTime=[NSString stringWithFormat:@"เล่นไป %@ / %@ (เหลือ -%@)",[self trackTimeString:elapsed],[self trackTimeString:self.mediaDuration],[self trackTimeString:remaining]];
+  }else if(self.hasElapsed){
+   newTime=[NSString stringWithFormat:@"เล่นไป %@ / --:--",[self trackTimeString:elapsed]];
+  }else{
+   newTime=@"เวลาเพลง: 0:00 / --:-- (เหลือ -0:00)";
+  }
  }else{
-  newTime=@"เวลาเพลง: 0:00 / --:-- (เหลือ -0:00)";
+  if(self.hasElapsed&&self.mediaDuration>0){
+   newTime=[NSString stringWithFormat:@"ELAPSED %@ / %@ (-%@ LEFT)",[self trackTimeString:elapsed],[self trackTimeString:self.mediaDuration],[self trackTimeString:remaining]];
+  }else if(self.hasElapsed){
+   newTime=[NSString stringWithFormat:@"ELAPSED %@ / --:--",[self trackTimeString:elapsed]];
+  }else{
+   newTime=@"TRACK TIME: 0:00 / --:-- (-0:00 LEFT)";
+  }
  }
  if(![self.trackTime.text isEqualToString:newTime]){
   self.trackTime.text=newTime;
