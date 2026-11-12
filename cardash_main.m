@@ -741,17 +741,16 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self addSubview:self.progressBar];
 
     // Time labels
-    self.timeCurLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 158, 100, 16)];
-    self.timeCurLabel.font = [UIFont boldSystemFontOfSize:10.5];
-    self.timeCurLabel.textColor = [UIColor colorWithWhite:0.65 alpha:1];
-    self.timeCurLabel.text = @"0:19";
+    self.timeCurLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 156, 334, 18)];
+    self.timeCurLabel.font = [UIFont boldSystemFontOfSize:11.5];
+    self.timeCurLabel.adjustsFontSizeToFitWidth = YES;
+    self.timeCurLabel.minimumScaleFactor = 0.80;
+    self.timeCurLabel.textColor = [UIColor colorWithRed:0.15 green:0.95 blue:1.0 alpha:1];
+    self.timeCurLabel.text = @"TRACK TIME: 0:00 / --:-- (-0:00 LEFT)";
     [self addSubview:self.timeCurLabel];
 
     self.timeTotalLabel = [[UILabel alloc] initWithFrame:CGRectMake(254, 158, 100, 16)];
-    self.timeTotalLabel.font = [UIFont boldSystemFontOfSize:10.5];
-    self.timeTotalLabel.textColor = [UIColor colorWithWhite:0.65 alpha:1];
-    self.timeTotalLabel.textAlignment = NSTextAlignmentRight;
-    self.timeTotalLabel.text = @"3:20";
+    self.timeTotalLabel.hidden = YES;
     [self addSubview:self.timeTotalLabel];
 
     // Transport buttons (Prev, Play, Next)
@@ -761,8 +760,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.btnPrev.layer.cornerRadius = 12;
     self.btnPrev.layer.borderWidth = 1.0;
     self.btnPrev.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
-    [self.btnPrev setTitle:@"\u23ee" forState:UIControlStateNormal];
-    self.btnPrev.titleLabel.font = [UIFont systemFontOfSize:24];
+    [self.btnPrev setTitle:@"⏮ PREV" forState:UIControlStateNormal];
+    self.btnPrev.titleLabel.font = [UIFont boldSystemFontOfSize:14];
+    [self.btnPrev setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [self addSubview:self.btnPrev];
 
     self.btnPlay = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -771,8 +771,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.btnPlay.layer.cornerRadius = 12;
     self.btnPlay.layer.borderWidth = 1.2;
     self.btnPlay.layer.borderColor = [UIColor colorWithRed:.2 green:.9 blue:.5 alpha:1].CGColor;
-    [self.btnPlay setTitle:@"\u275a\u275a" forState:UIControlStateNormal];
-    self.btnPlay.titleLabel.font = [UIFont boldSystemFontOfSize:22];
+    [self.btnPlay setTitle:@"▶  PLAY" forState:UIControlStateNormal];
+    self.btnPlay.titleLabel.font = [UIFont boldSystemFontOfSize:18];
     [self.btnPlay setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [self addSubview:self.btnPlay];
 
@@ -782,8 +782,9 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.btnNext.layer.cornerRadius = 12;
     self.btnNext.layer.borderWidth = 1.0;
     self.btnNext.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
-    [self.btnNext setTitle:@"\u23ed" forState:UIControlStateNormal];
-    self.btnNext.titleLabel.font = [UIFont systemFontOfSize:24];
+    [self.btnNext setTitle:@"NEXT ⏭" forState:UIControlStateNormal];
+    self.btnNext.titleLabel.font = [UIFont boldSystemFontOfSize:14];
+    [self.btnNext setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [self addSubview:self.btnNext];
 
     // Quick Audio buttons
@@ -3325,6 +3326,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }
  if(![button.accessibilityLabel isEqualToString:targetLabel]){
   button.accessibilityLabel=targetLabel;
+ }
+ if(self.carplayMediaWidget && self.carplayMediaWidget.btnPlay){
+  NSString *cpPlayTitle = (targetKind == 14) ? @"❚❚  PAUSE" : @"▶  PLAY";
+  if(![self.carplayMediaWidget.btnPlay.currentTitle isEqualToString:cpPlayTitle]){
+   [self.carplayMediaWidget.btnPlay setTitle:cpPlayTitle forState:UIControlStateNormal];
+  }
  }
  [self refreshMini];
 }

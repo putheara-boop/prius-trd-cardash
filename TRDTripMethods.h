@@ -65,7 +65,14 @@
  NSString *newLabel=self.radioPlayer?((self.radioPlayer.rate>0)?@"Pause":@"Play"):(self.hasPlaybackRate?(self.mediaRate>0?@"Pause":@"Play"):@"Play or pause");
  if(![self.miniPlayer.play.accessibilityLabel isEqualToString:newLabel])self.miniPlayer.play.accessibilityLabel=newLabel;
 }
--(void)miniPlay{[self media:(UIButton *)[self.controls viewWithTag:21]];}
+-(void)miniPlay{
+  if(!self.radioPlayer){
+    self.hasPlaybackRate = YES;
+    self.mediaRate = (self.mediaRate > 0) ? 0.0 : 1.0;
+    [self refreshTransportState];
+  }
+  [self media:(UIButton *)[self.controls viewWithTag:21]];
+}
 -(void)miniPrev{[self media:(UIButton *)[self.controls viewWithTag:20]];}
 -(void)miniNext{[self media:(UIButton *)[self.controls viewWithTag:22]];}
 -(void)miniOpen{[self.settingsSheet dismiss];[self openMusic];}
