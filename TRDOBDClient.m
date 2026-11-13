@@ -25,6 +25,7 @@ static NSString * const kSerialCharUUID_FFF1    = @"FFF1";
 static NSString * const kSerialCharUUID_FFF2    = @"FFF2";
 
 static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.log";
+static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/obd-debug.prev.log";
 
 @interface TRDOBDClient ()
 @property (nonatomic, strong) CBCentralManager *centralManager;
@@ -36,6 +37,8 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
 @property (nonatomic, copy) NSString *connectionStatus;
 @property (nonatomic, copy) NSString *connectedDeviceName;
 @property (nonatomic, copy) NSString *lastScanSummary;
+@property (nonatomic, assign) NSUInteger emptyBLEScanCount;
+@property (nonatomic, strong) NSDate *lastEmptyBLEScanLogAt;
 
 // Metrics
 @property (nonatomic, assign) NSInteger engineRPM;
@@ -226,7 +229,12 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
     NSFileManager *fm = [NSFileManager defaultManager];
     NSDictionary *attrs = [fm attributesOfItemAtPath:kTRDOBDDebugLogPath error:nil];
     if (attrs && [attrs fileSize] > 48 * 1024) {
-        [@"[LOG ROTATED]\n" writeToFile:kTRDOBDDebugLogPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        // Keep one complete previous log. If rotation fails, append to the current
+        // file instead of truncating it and losing the in-car capture.
+        if (![fm fileExistsAtPath:kTRDOBDPreviousDebugLogPath] ||
+            [fm removeItemAtPath:kTRDOBDPreviousDebugLogPath error:nil]) {
+            [fm moveItemAtPath:kTRDOBDDebugLogPath toPath:kTRDOBDPreviousDebugLogPath error:nil];
+        }
     }
     if (![fm fileExistsAtPath:kTRDOBDDebugLogPath]) {
         [line writeToFile:kTRDOBDDebugLogPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
@@ -359,8 +367,10 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
 
     NSArray *already = [self.centralManager retrieveConnectedPeripheralsWithServices:[self knownOBDServiceCBUUIDs]];
     BOOL unfiltered = (gen % 2 == 0);
-    [self obdLog:@"beginBLEScan gen=%lu mode=%@ state=%ld alreadyConnected=%lu",
-     (unsigned long)gen, unfiltered ? @"all" : @"18F0", (long)self.centralManager.state, (unsigned long)already.count];
+    if (self.emptyBLEScanCount == 0 || already.count > 0) {
+        [self obdLog:@"beginBLEScan gen=%lu mode=%@ state=%ld alreadyConnected=%lu",
+         (unsigned long)gen, unfiltered ? @"all" : @"18F0", (long)self.centralManager.state, (unsigned long)already.count];
+    }
 
     for (CBPeripheral *p in already) {
         if ([self isOBDPeripheralName:p.name]) {
@@ -402,7 +412,20 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
                 self.lastScanSummary = [NSString stringWithFormat:@"Seen %lu BLE: %@", (unsigned long)self.seenDeviceSummaries.count, [self.seenDeviceSummaries componentsJoinedByString:@", "]];
                 self.connectionStatus = [NSString stringWithFormat:@"Scanning (%lu BLE seen, no OBD)", (unsigned long)self.seenDeviceSummaries.count];
             }
-            [self obdLog:@"Scan 5s summary gen=%lu: %@", (unsigned long)gen, self.lastScanSummary];
+            if (self.seenDeviceSummaries.count == 0) {
+                self.emptyBLEScanCount++;
+                NSDate *now = [NSDate date];
+                // Log the first empty scan, then a heartbeat at most once a minute.
+                if (!self.lastEmptyBLEScanLogAt || [now timeIntervalSinceDate:self.lastEmptyBLEScanLogAt] >= 60.0) {
+                    self.lastEmptyBLEScanLogAt = now;
+                    [self obdLog:@"Scan 5s summary gen=%lu: %@ (consecutive empty scans=%lu)",
+                     (unsigned long)gen, self.lastScanSummary, (unsigned long)self.emptyBLEScanCount];
+                }
+            } else {
+                self.emptyBLEScanCount = 0;
+                self.lastEmptyBLEScanLogAt = nil;
+                [self obdLog:@"Scan 5s summary gen=%lu: %@", (unsigned long)gen, self.lastScanSummary];
+            }
             [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
 
             if (self.pendingScan && self.centralManager.state == CBCentralManagerStatePoweredOn) {
@@ -658,6 +681,8 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
 }
 
 - (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary *)advertisementData RSSI:(NSNumber *)RSSI {
+    self.emptyBLEScanCount = 0;
+    self.lastEmptyBLEScanLogAt = nil;
     NSString *name = peripheral.name ?: advertisementData[CBAdvertisementDataLocalNameKey] ?: @"";
     NSString *uuidStr = peripheral.identifier.UUIDString ?: @"unknown";
     NSArray *advUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey];
