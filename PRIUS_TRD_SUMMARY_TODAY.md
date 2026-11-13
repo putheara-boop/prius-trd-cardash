@@ -322,3 +322,19 @@ ldid -S /Applications/CarDash.app/CarDash
   - `build_cardash.sh` ผ่าน `CARDASH_BUILD_OK` (0 errors, มี warning เดิม 1 จุดที่ line 4507)
   - ทดสอบรันจริง: `HOME_COLD` (`driveMode = false`, `navigationVisible = 1`, `gpsLive = true`, `speed = 0`), `DRIVE_HELD` ตอนจอดในอาคาร 4 วินาที (`driveMode = true`, `navigationVisible = 0`, `driveCameraVisible = 1`, `driveTripVisible = 1`, `memoryWarnings = 0`), และ `BACK_HOME` (`driveMode = false`, `driveCameraVisible = 0`, `navigationVisible = 1`, `memoryWarnings = 0`, RSS `40,240 KB` หรือ ~`39.3 MB`); ส่วนจังหวะวิ่งจริง `>= 20 km/h` แล้วจอดนิ่ง `<= 4.5 km/h` เป็นการตรวจจากเงื่อนไขโค้ด (ทดสอบในอาคารที่ GPS speed `0`, รอลองขับจริงบนถนน)
 
+### 7. ป้องกัน Ghost Touch, ยืนยัน 2 ชั้นใน CAR SETTINGS, และเคลียร์พื้นที่ระบบบน `/` (13 Nov 2026)
+- **เกราะกัน Ghost Touch บนเมนู Settings และ Quick Cards (`TRDSettingsMenu.h`, `cardash_main.m`):**
+  - เพิ่ม `openedAt`, `actionLocked`, `exclusiveTouch = YES` บน panel/backdrop/closeButton/ปุ่มทุกแถว, ตั้ง `scroll.delaysContentTouches = YES` / `canCancelContentTouches = YES` และบล็อกทัชจริง (`event != nil`) ภายใน `0.35s` หลังเปิดเมนูใน `choose:event:` และ `dismissFromTouch:event:`
+  - เพิ่ม `lastCardTime` debounce `0.45s` ใน `card:` (`cardash_main.m`) ให้ตรงกับ `navigate:`
+- **ยืนยัน 2 ชั้น (2-Step Confirmation Modals) สำหรับปุ่มเสี่ยงเด้งออก/ดับจอ (`CarExtrasMethods.h`):**
+  - เพิ่มเมธอด `confirmSettingsActionTitle:message:confirmTitle:onConfirm:` ครอบ 4 ปุ่มเสี่ยงใน `carSettings`: `⛽ Find Gas Station`, `☕ Find Rest Area / Coffee`, `Screen off - keep audio` และ `iPad Settings` (พร้อมปุ่ม `↩️ Back to CAR SETTINGS (ยกเลิก)`)
+  - เชื่อม `📍 Trip A/B/C & GPS (จัดการทริป)` จาก `carSettings` เข้ากับ `resetTripMenu` (`TRDTripMethods.h`) และเพิ่มปุ่ม `⏱️ เปิดหน้าจอวัดความเร็ว GPS เต็มจอ (Trip / GPS)` (`openTrip`) ในเมนูทริป เพิ่มความชัดเจนและไม่หลุดหน้าอื่นโดยไม่ตั้งใจ
+- **ปลดล็อกพื้นที่พาร์ติชันระบบ `/` (`/dev/disk0s1s1`):**
+  - ย้าย `/Library/Wallpaper` และ `/Library/Ringtones` ไปเก็บใน `/var/mobile/codex-car/stashed-root/` แล้วทำ symlink กลับ, ย้าย `/Applications/CarDash.app/TRDRealPrius.png` ไป `/var/mobile/codex-car/cardash-archived-assets/` พร้อม symlink กลับ, ลบ `CarDashBrowseReturn.dylib.bak` และล้าง `.ips*` เก่าใน `/var/mobile/Library/Logs/CrashReporter/`
+  - เพิ่มพื้นที่ว่างบน `/` จาก **`89 MB` (`96%` used)** เป็น **`143 MB` (`94%` used)** โดยรักษาไฟล์ระบบ Apple ครบ 100%
+- **ผลตรวจบน iPad Mini 1 จริงหลังบิลด์ล่าสุด (`CARDASH_BUILD_OK`):**
+  - เปิด `CarDash` (`PID 858`, RSS `36,876 KB` หรือ ~`36.0 MB`, ไม่พบ `/var/mobile/cardash_crash.txt`, `memoryWarnings = 0`)
+  - กด `iPad Settings` (`testsettings/23`) -> ขึ้นหน้าต่าง `EXIT TO IPAD SETTINGS?` (ไม่เด้งออกจากแอป) -> กด `Back` กลับมาหน้า `CAR SETTINGS` ได้ปกติ
+  - กด `⛽ Find Gas Station` (`testsettings/7`) -> ขึ้นหน้าต่าง `CONFIRM NAVIGATION` (ไม่เด้งไป Maps ทันที)
+  - กด `📍 Trip A/B/C & GPS (จัดการทริป)` (`testsettings/24`) -> ขึ้นเมนู `📍 จัดการข้อมูลทริป (TRIP A / B / C)` พร้อมตัวเลือก `⏱️ เปิดหน้าจอวัดความเร็ว GPS เต็มจอ (Trip / GPS)` ครบถ้วน และกลับมา `HOME` (`navigationVisible = 1`, `settingsVisible = 0`) สมบูรณ์
+

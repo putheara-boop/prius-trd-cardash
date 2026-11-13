@@ -1128,6 +1128,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)soundProfileSettings;
 -(void)chooseProfile:(NSString *)bundle title:(NSString *)title;
 -(void)screenOff;
+-(void)confirmSettingsActionTitle:(NSString *)title message:(NSString *)message confirmTitle:(NSString *)confirmTitle onConfirm:(void(^)(void))onConfirm;
 -(void)restoreDisplayBrightness;
 
 @property UIView *navigation;
@@ -4620,6 +4621,10 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  [self presentSettingsMenu:menu];
 }
 -(void)card:(UIButton *)button{
+ static NSTimeInterval lastCardTime=0;
+ NSTimeInterval now=[NSDate timeIntervalSinceReferenceDate];
+ if(now-lastCardTime<0.45)return;
+ lastCardTime=now;
  if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
  if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
@@ -5181,6 +5186,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  if([url.host isEqualToString:@"explain"])[v carStatusTapped];
  if([url.host isEqualToString:@"oil"])[v serviceSettings];
  if([url.host isEqualToString:@"capture"])[v capture];
+ if([url.host isEqualToString:@"testsettings"]&&url.path.length>1)[v testSettingsAction:@([[url.path substringFromIndex:1] integerValue])];
  return YES;
 }
 -(BOOL)application:(UIApplication *)app openURL:(NSURL *)url sourceApplication:(NSString *)source annotation:(id)annotation{return [self application:app openURL:url options:@{}];}

@@ -24,6 +24,9 @@
   [menu addAction:[TRDSettingAction actionWithTitle:@"📊 เปิดหน้าจอสรุปทริปแบบเต็มจอ (Trip Summary)" style:0 handler:^(TRDSettingAction *a){
     [self showTripSummary];
   }]];
+  [menu addAction:[TRDSettingAction actionWithTitle:@"⏱️ เปิดหน้าจอวัดความเร็ว GPS เต็มจอ (Trip / GPS)" style:0 handler:^(TRDSettingAction *a){
+    [self openTrip];
+  }]];
   [self presentSettingsMenu:menu];
 }
 -(void)refreshTrip{
