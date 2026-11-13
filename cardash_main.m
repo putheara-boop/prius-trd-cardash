@@ -1083,6 +1083,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property UIView *statusStrip;
 @property NSString *statusWiFi,*statusCar,*statusPower;
 -(void)openCamera;
+-(void)prepareForExternalAppLaunch;
 -(BOOL)launchBundleApp:(NSString *)identifier;
 -(void)captureLifecycle;
 -(void)applyMotionPolicy;
@@ -4511,20 +4512,23 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)carplayGridTrip{self.carplayMode=NO;self.carplayGridMode=NO;[self openTrip];}
 -(void)carplayGridSettings{[self carSettings];}
 -(void)handleEdgePan:(UIScreenEdgePanGestureRecognizer *)gesture{if(gesture.state==UIGestureRecognizerStateBegan||gesture.state==UIGestureRecognizerStateRecognized){if(self.carplayMode)[self homePage];}}
--(void)openYouTubeSource{
+-(void)prepareForExternalAppLaunch{
  if(self.welcome)[self hideWelcome];
  [self.settingsSheet dismiss];
  [self releaseArtwork];
  if(self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}
  self.mapContainer.hidden=YES;
  [[NSURLCache sharedURLCache] removeAllCachedResponses];
- if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
- Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
  NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];
  [ud setBool:YES forKey:@"TRDSkipNextLaunchWelcome"];
  [ud setDouble:[[NSDate date] timeIntervalSince1970] forKey:@"TRDLastActiveTimestamp"];
  [ud synchronize];
  system("sync; purge 2>/dev/null &");
+}
+-(void)openYouTubeSource{
+ [self prepareForExternalAppLaunch];
+ if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
+ Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
  notify_post("com.codex.trd.network.internet");
  [self send:@"com.himais0giiiin.ytnine"];
 }
@@ -4998,6 +5002,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)handleReverseEngaged{
  if(self.isReverseActive)return;
  self.isReverseActive=YES;
+ [self prepareForExternalAppLaunch];
  notify_post("com.codex.trd.network.camera");
  if(![self launchBundleApp:@"com.codex.h109viewer"]){
   [self launchBundleApp:@"com.apple.camera"];
@@ -5020,6 +5025,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  }
  notify_post("com.codex.trd.network.internet");
  [self homePage];
+ [self launchBundleApp:@"com.codex.cardash"];
 }
 
 -(void)playReverseBeep{
