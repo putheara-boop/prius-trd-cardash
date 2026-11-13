@@ -2050,8 +2050,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   // 1. CARPLAY MODE LAYOUT
   self.carplayDock.hidden = !self.carplayMode;
   self.carplayTurnBanner.hidden = YES;
-  self.carplayMediaCard.hidden = !(self.carplayMode && !self.carplayGridMode);
-  self.carplayTelemetryCard.hidden = !(self.carplayMode && !self.carplayGridMode);
+  self.carplayMediaCard.hidden = YES;
+  self.carplayTelemetryCard.hidden = YES;
   self.carplayAppGrid.hidden = !(self.carplayMode && self.carplayGridMode);
 
   if (self.carplayMode) {
@@ -2067,16 +2067,6 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.miniPlayer.hidden = YES;
     self.tripButton.hidden = YES;
 
-    self.carplayDock.frame = CGRectMake(0, 0, 80, fullH);
-    self.carplayHomeBtn.frame = CGRectMake(13, 14, 54, 54);
-    for (int i = 0; i < self.carplayDockButtons.count; i++) {
-      UIView *db = self.carplayDockButtons[i];
-      db.frame = CGRectMake(13, 85 + i * 66, 54, 54);
-    }
-    self.carplayClock.frame = CGRectMake(4, fullH - 76, 72, 20);
-    self.carplayBattery.frame = CGRectMake(4, fullH - 54, 72, 18);
-    self.carplayWifi.frame = CGRectMake(8, fullH - 32, 64, 18);
-
     // Hide raw legacy media controls from self.view to avoid stray overlays
     self.artwork.hidden = YES;
     self.artPlaceholder.hidden = YES;
@@ -2085,8 +2075,6 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.trackTime.hidden = YES;
     self.trackProgress.hidden = YES;
     self.controls.hidden = YES;
-    self.carplayMediaCard.hidden = YES;
-    self.carplayTelemetryCard.hidden = YES;
 
     // Left Dock (Width: 76)
     self.carplayDock.hidden = NO;
@@ -2134,7 +2122,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       self.mapContainer.layer.borderWidth = 1.2;
       self.mapContainer.layer.borderColor = [UIColor colorWithWhite:0.2 alpha:1].CGColor;
       self.mapContainer.clipsToBounds = YES;
-      if (self.mapWebView) { self.mapWebView.frame = self.mapContainer.bounds; [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"]; }
+      if (self.mapWebView && !CGRectEqualToRect(self.mapWebView.frame, self.mapContainer.bounds)) {
+        self.mapWebView.frame = self.mapContainer.bounds;
+        [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];
+      }
       self.carplayTurnBanner.frame = CGRectMake(12, 12, mapW - 24, 54);
 
       // Section B: Right Stack (Width: 376, X: 642, Y: 10)
@@ -2162,6 +2153,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   }
 
   // Hide legacy/unused items
+  self.carplayMediaWidget.hidden = YES;
+  self.carplayTelemetryWidget.hidden = YES;
   self.nightButton.hidden = YES;
   self.modeButton.hidden = YES;
   self.driveButton.hidden = YES;
@@ -2237,7 +2230,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.mapContainer.layer.borderWidth = 1.2;
     self.mapContainer.layer.borderColor = [UIColor colorWithWhite:0.2 alpha:1].CGColor;
     self.mapContainer.clipsToBounds = YES;
-    if (self.mapWebView) self.mapWebView.frame = self.mapContainer.bounds;
+    if (self.mapWebView && !CGRectEqualToRect(self.mapWebView.frame, self.mapContainer.bounds)) {
+      self.mapWebView.frame = self.mapContainer.bounds;
+      [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];
+    }
 
     // Bottom Navigation Bar
     self.navigation.frame = CGRectMake(14, fullH - navH - 6, w - 28, navH);
@@ -3359,7 +3355,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   if(![self.carplayCompass.text isEqualToString:compass])self.carplayCompass.text=compass;
   NSString *cTrip=[NSString stringWithFormat:@"TRIP  %.1f km",self.trip.meters/1000.0];
   if(![self.carplayTrip.text isEqualToString:cTrip])self.carplayTrip.text=cTrip;
-  if(!self.carplayGridMode)[self updateMapCar];
+  if(!self.carplayGridMode&&(self.ticks%2==0))[self updateMapCar];
+  if(!self.carplayGridMode&&self.carplayTelemetryWidget){
+   if(![self.carplayTelemetryWidget.speedLabel.text isEqualToString:speedVal])self.carplayTelemetryWidget.speedLabel.text=speedVal;
+   if(![self.carplayTelemetryWidget.speedUnitLabel.text isEqualToString:speedUnit])self.carplayTelemetryWidget.speedUnitLabel.text=speedUnit;
+   if(![self.carplayTelemetryWidget.compassLabel.text isEqualToString:compass])self.carplayTelemetryWidget.compassLabel.text=compass;
+   if(![self.carplayTelemetryWidget.tripMetricsLabel.text isEqualToString:cTrip])self.carplayTelemetryWidget.tripMetricsLabel.text=cTrip;
+  }
  }
  self.ticks++;if(self.ticks%60==1)[self applyDisplaySchedule];if(self.ticks%30==0)[self saveTrip];[self refreshSpeed];[self refreshTrackProgress];if(self.mapMode)[self updateMapCar];
  if(self.ticks%5==1){NSDictionary *net=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));float level=[UIDevice currentDevice].batteryLevel;UIDeviceBatteryState power=currentPower;NSString *battery=level<0?@"—":[NSString stringWithFormat:@"%.0f%%",level*100];BOOL bt=[self.bluetooth respondsToSelector:@selector(enabled)]?[self.bluetooth enabled]:NO;
@@ -3372,7 +3374,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   if(![self.carplayWifi.text isEqualToString:self.statusWiFi])self.carplayWifi.text=self.statusWiFi;
  }
  self.statusPower=level<0?@"UNKNOWN":[NSString stringWithFormat:@"%@ %.0f%%",(power==UIDeviceBatteryStateCharging)?@"CHG":(power==UIDeviceBatteryStateFull)?@"FULL":@"BAT",level*100];[self refreshCarStatus];
-  if (self.carplayMediaWidget) {
+  if (self.carplayMode && !self.carplayGridMode && self.carplayMediaWidget) {
     self.carplayMediaWidget.titleLabel.text = self.song.text.length ? self.song.text : @"Select Music";
     self.carplayMediaWidget.artistLabel.text = self.artist.text.length ? self.artist.text : @"audioNINJA / YouTube";
     self.carplayMediaWidget.artworkView.image = self.artwork.image;
@@ -3609,7 +3611,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  [self refreshSpeed];
 }
 -(void)cycleDriveMode{NSInteger next=(TRDTheme+1)%3;[self setThemeNumber:@(next)];}
--(void)toggleDrive{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;self.manualDriveActive=NO;}else{double curSpd=(self.fix&&self.fix.speed>=0)?(self.fix.speed*3.6):0;self.manualDriveActive=(curSpd<15.0);}self.driveMode=!self.driveMode;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:self.driveMode?@"‹ DASHBOARD":@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)toggleDrive{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];if(self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}self.mapContainer.hidden=YES;self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;self.manualDriveActive=NO;}else{double curSpd=(self.fix&&self.fix.speed>=0)?(self.fix.speed*3.6):0;self.manualDriveActive=(curSpd<15.0);}self.driveMode=!self.driveMode;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:self.driveMode?@"‹ DASHBOARD":@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)toggleNight{
  NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];
  if(!self.nightMode){CGFloat observed=[UIScreen mainScreen].brightness;if(observed>=.15)self.dayBrightness=observed;if(self.dayBrightness<.15)self.dayBrightness=.6;[prefs setDouble:self.dayBrightness forKey:@"dayBrightness"];[UIScreen mainScreen].brightness=MIN(self.dayBrightness,.12);self.nightMode=YES;}
@@ -4499,7 +4501,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  __weak Dashboard *weak=self;dispatch_async(queue,^{@autoreleasepool{char *args[]={(char *)"/usr/bin/activator",(char *)"send",(char *)identifier.UTF8String,NULL};BOOL ok=TRDRun(args[0],args,5,NULL,NULL);
  dispatch_async(dispatch_get_main_queue(),^{Dashboard *v=weak;if(!v)return;if(v.commandsPending)v.commandsPending--;if(!ok){v.notice=@"Command unavailable. Tap to retry.";v.noticeUntil=[NSDate dateWithTimeIntervalSinceNow:4];v.song.text=v.notice;}else [v refreshNowPlaying];});}});
 }
--(UIWebView *)ensureMapWebView{if(!self.mapWebView){self.mapWebView=[[UIWebView alloc]initWithFrame:self.mapContainer.bounds];self.mapWebView.backgroundColor=[UIColor clearColor];self.mapWebView.opaque=NO;self.mapWebView.scalesPageToFit=YES;self.mapWebView.scrollView.bounces=NO;self.mapWebView.delegate=self;[self.mapContainer addSubview:self.mapWebView];}return self.mapWebView;}
+-(UIWebView *)ensureMapWebView{if(!self.mapWebView){[NSURLCache sharedURLCache].memoryCapacity=4*1024*1024;self.mapWebView=[[UIWebView alloc]initWithFrame:self.mapContainer.bounds];self.mapWebView.backgroundColor=[UIColor clearColor];self.mapWebView.opaque=NO;self.mapWebView.scalesPageToFit=YES;self.mapWebView.scrollView.bounces=NO;self.mapWebView.delegate=self;[self.mapContainer addSubview:self.mapWebView];}return self.mapWebView;}
 -(void)openCarPlay{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.carplayMode=YES;self.carplayGridMode=NO;[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];[self.view setNeedsLayout];[self update];}
 -(void)toggleCarPlayGrid{self.carplayGridMode=!self.carplayGridMode;[self.view setNeedsLayout];}
 -(void)carplayTapMap{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}else{[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.recenter)window.recenter();"];}}
@@ -4549,7 +4551,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)syncMapAppearance:(BOOL)initial{if(!self.mapWebView)return;NSString *mode=self.nightMode?@"night":@"traffic";NSString *js=initial?[NSString stringWithFormat:@"if(window.setMode && !window.__trdInitialThemeDone){window.__trdInitialThemeDone=true;window.setMode('%@');}",mode]:[NSString stringWithFormat:@"if(window.setMode){window.setMode('%@');}",mode];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
 -(void)webViewDidFinishLoad:(UIWebView *)webView{if(webView==self.mapWebView)[self syncMapAppearance:YES];}
 -(void)loadMapHTML{[self ensureMapWebView];NSString *path=@"/Applications/CarDash.app/map.html";if([[NSFileManager defaultManager]fileExistsAtPath:path])[self.mapWebView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:path]]];}
--(void)updateMapCar{if((!self.mapMode&&!self.carplayMode)||!self.mapWebView)return;if(!self.fix)return;CLLocationDegrees lat=self.fix.coordinate.latitude;CLLocationDegrees lng=self.fix.coordinate.longitude;double kmh=(self.fix.speed>=0)?(self.fix.speed*3.6):-1;BOOL courseValid=self.fix.course>=0&&self.fix.course<360&&kmh>=5&&self.fix.horizontalAccuracy>=0&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;double course=courseValid?self.fix.course:-1;NSString *js=[NSString stringWithFormat:@"if(window.updateCar){window.updateCar(%f,%f,%f,%f);}",lat,lng,course,kmh];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
+-(void)updateMapCar{if((!self.mapMode&&!self.carplayMode)||!self.mapWebView)return;if(!self.fix)return;static CLLocationDegrees lastLat=0,lastLng=0;static NSTimeInterval lastMapJs=0;NSTimeInterval now=[NSDate timeIntervalSinceReferenceDate];CLLocationDegrees lat=self.fix.coordinate.latitude;CLLocationDegrees lng=self.fix.coordinate.longitude;double kmh=(self.fix.speed>=0)?(self.fix.speed*3.6):-1;if(fabs(lat-lastLat)<0.00001&&fabs(lng-lastLng)<0.00001&&kmh<1.0&&(now-lastMapJs)<5.0)return;lastLat=lat;lastLng=lng;lastMapJs=now;BOOL courseValid=self.fix.course>=0&&self.fix.course<360&&kmh>=5&&self.fix.horizontalAccuracy>=0&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;double course=courseValid?self.fix.course:-1;NSString *js=[NSString stringWithFormat:@"if(window.updateCar){window.updateCar(%f,%f,%f,%f);}",lat,lng,course,kmh];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
 -(BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)type{NSString *scheme=request.URL.scheme;if([scheme isEqualToString:@"cardash-route"]){NSString *coords=[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""];[self fetchRouteWithCoords:coords];return NO;}if([scheme isEqualToString:@"cardash-search"]){NSString *query=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchSearchWithQuery:query];return NO;}return YES;}
 -(void)fetchRouteWithCoords:(NSString *)coords{NSString *urlStr=[NSString stringWithFormat:@"http://router.project-osrm.org/route/v1/driving/%@?overview=full&geometries=geojson&steps=true",coords];NSURL *url=[NSURL URLWithString:urlStr];if(!url)return;NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url];[req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6)" forHTTPHeaderField:@"User-Agent"];__weak Dashboard *weak=self;[[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){if(data&&!err){NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];if(json){dispatch_async(dispatch_get_main_queue(),^{[weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}",json]];});}}}]resume];}
 -(void)fetchSearchWithQuery:(NSString *)query{if(!query.length)return;NSString *encoded=[query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];CLLocationDegrees lat=self.fix?self.fix.coordinate.latitude:13.7563;CLLocationDegrees lng=self.fix?self.fix.coordinate.longitude:100.5018;NSString *viewbox=[NSString stringWithFormat:@"%.3f,%.3f,%.3f,%.3f",lng-.4,lat+.4,lng+.4,lat-.4];NSString *urlStr=[NSString stringWithFormat:@"http://nominatim.openstreetmap.org/search?q=%@&format=json&countrycodes=th&limit=5&viewbox=%@",encoded,viewbox];NSURL *url=[NSURL URLWithString:urlStr];if(!url)return;NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url];[req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6; Prius)" forHTTPHeaderField:@"User-Agent"];__weak Dashboard *weak=self;[[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){if(data&&!err){NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];if(json){dispatch_async(dispatch_get_main_queue(),^{[weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window._onNominatimResult){window._onNominatimResult(%@);}",json]];});}}}]resume];}
