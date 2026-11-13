@@ -76,6 +76,7 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
 @property (nonatomic, assign) BOOL doorRearLeftOpen;
 @property (nonatomic, assign) BOOL doorRearRightOpen;
 @property (nonatomic, assign) BOOL trunkOpen;
+@property (nonatomic, assign) BOOL doorSensorsLive;
 @property (nonatomic, assign) CGFloat cabinTempC;
 @property (nonatomic, assign) CGFloat exteriorTempC;
 
@@ -118,6 +119,9 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
 @property (nonatomic, assign) BOOL can127AbortSent;
 @property (nonatomic, copy) NSString *lastLoggedCAN127Gear;
 @property (nonatomic, strong) NSDate *lastCAN127At;
+@property (nonatomic, copy) NSString *canMonitorTargetID;
+@property (nonatomic, copy) NSString *lastLoggedCAN620Hex;
+@property (nonatomic, assign) NSUInteger can620Misses;
 @property (nonatomic, strong) NSArray *activePollSchedule;
 @property (nonatomic, assign) NSInteger fastCycleCount;
 @property (nonatomic, assign) NSUInteger consecutiveTimeouts;
@@ -283,6 +287,15 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
     self.activePollSchedule = nil;
     self.lastCAN127At = nil;
     self.lastLoggedCAN127Gear = nil;
+    self.canMonitorTargetID = @"127";
+    self.lastLoggedCAN620Hex = nil;
+    self.can620Misses = 0;
+    self.doorSensorsLive = NO;
+    self.doorFrontLeftOpen = NO;
+    self.doorFrontRightOpen = NO;
+    self.doorRearLeftOpen = NO;
+    self.doorRearRightOpen = NO;
+    self.trunkOpen = NO;
     self.lastLoggedFuelLiters = -1.0;
     self.lastLoggedCabinTempC = -999.0;
     self.lastLoggedExteriorTempC = -999.0;
@@ -893,6 +906,15 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
     self.activePollSchedule = nil;
     self.lastCAN127At = nil;
     self.lastLoggedCAN127Gear = nil;
+    self.canMonitorTargetID = @"127";
+    self.lastLoggedCAN620Hex = nil;
+    self.can620Misses = 0;
+    self.doorSensorsLive = NO;
+    self.doorFrontLeftOpen = NO;
+    self.doorFrontRightOpen = NO;
+    self.doorRearLeftOpen = NO;
+    self.doorRearRightOpen = NO;
+    self.trunkOpen = NO;
     self.lastLoggedFuelLiters = -1.0;
     self.lastLoggedCabinTempC = -999.0;
     self.lastLoggedExteriorTempC = -999.0;
@@ -940,7 +962,11 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
                 return;
             }
             if (elapsed < 0.90) return;
-            [self obdLog:@"CAN 0x127 monitor timeout; restoring normal ELM state"];
+            NSString *monID = self.canMonitorTargetID ?: @"127";
+            [self obdLog:@"CAN 0x%@ monitor timeout; restoring normal ELM state", monID];
+            if ([monID isEqualToString:@"620"] && !self.can127FrameCaptured) {
+                self.can620Misses++;
+            }
             [self.rxBuffer setString:@""];
             self.waitingForResponse = NO;
             self.canMonitorPhase = 5;
@@ -963,12 +989,12 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
         }
     }
 
-    // CAN 0x127 (GEAR_PACKET) snapshot sequence at the end of every cycle
+    // CAN 0x127 (GEAR_PACKET) / 0x620 (SEATS_DOORS) passive snapshot sequence at end of cycle
     if (self.canMonitorPhase > 0) {
         switch (self.canMonitorPhase) {
             case 1: [self sendCommand:@"AT CAF0"]; return;
             case 2: [self sendCommand:@"AT H1"]; return;
-            case 3: [self sendCommand:@"AT CRA 127"]; return;
+            case 3: [self sendCommand:[NSString stringWithFormat:@"AT CRA %@", self.canMonitorTargetID ?: @"127"]]; return;
             case 4:
                 self.can127FrameCaptured = NO;
                 self.can127AbortSent = NO;
@@ -1021,6 +1047,7 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
             self.pollIndex = 0;
             self.fastCycleCount++;
             self.activePollSchedule = nil;
+            self.canMonitorTargetID = (self.fastCycleCount % 3 == 0 && self.can620Misses < 4) ? @"620" : @"127";
             self.canMonitorPhase = 1;
             [self sendCommand:@"AT CAF0"];
             return;
@@ -1043,10 +1070,9 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
     [self sendCommand:cmd];
 }
 
-- (BOOL)parseCAN127Line:(NSString *)line {
-    if (![line hasPrefix:@"127"] || line.length != 19) return NO;
-    NSString *hex = [line substringFromIndex:3];
-    uint8_t raw[8];
+- (BOOL)parseCANFrameLine:(NSString *)line expectedPrefix:(NSString *)prefix outBytes:(uint8_t *)raw {
+    if (![line hasPrefix:prefix] || line.length != 19) return NO;
+    NSString *hex = [line substringFromIndex:prefix.length];
     for (int i = 0; i < 8; i++) {
         unichar c0 = [hex characterAtIndex:i * 2];
         unichar c1 = [hex characterAtIndex:i * 2 + 1];
@@ -1057,6 +1083,12 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
         [[NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(i * 2, 2)]] scanHexInt:&val];
         raw[i] = (uint8_t)val;
     }
+    return YES;
+}
+
+- (BOOL)parseCAN127Line:(NSString *)line {
+    uint8_t raw[8];
+    if (![self parseCANFrameLine:line expectedPrefix:@"127" outBytes:raw]) return NO;
     // Toyota CAN checksum = (CAN_ID_H + CAN_ID_L + DLC + sum(b[0..6])) & 0xFF
     uint8_t sum = (uint8_t)(0x01 + 0x27 + 0x08);
     for (int i = 0; i < 7; i++) {
@@ -1091,6 +1123,40 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
     return YES;
 }
 
+- (BOOL)parseCAN620Line:(NSString *)line {
+    uint8_t raw[8];
+    if (![self parseCANFrameLine:line expectedPrefix:@"620" outBytes:raw]) return NO;
+
+    // Toyota ZVW30 BO_ 1568 (0x620) SEATS_DOORS: b[5] bits 5..2 = FL/FR/RR/RL
+    BOOL fl = (raw[5] & 0x20) != 0;
+    BOOL fr = (raw[5] & 0x10) != 0;
+    BOOL rr = (raw[5] & 0x08) != 0;
+    BOOL rl = (raw[5] & 0x04) != 0;
+    BOOL trunk = (raw[5] & 0x02) != 0;
+    self.can620Misses = 0;
+
+    if (!self.lastLoggedCAN620Hex || ![self.lastLoggedCAN620Hex isEqualToString:line]) {
+        self.lastLoggedCAN620Hex = line;
+        [self obdLog:@"CAN_620 -> FL=%d FR=%d RL=%d RR=%d T?=%d b5=0x%02X raw=%@",
+         fl ? 1 : 0, fr ? 1 : 0, rl ? 1 : 0, rr ? 1 : 0, trunk ? 1 : 0, raw[5], line];
+    }
+
+    BOOL changed = (!self.doorSensorsLive ||
+                    fl != self.doorFrontLeftOpen || fr != self.doorFrontRightOpen ||
+                    rl != self.doorRearLeftOpen || rr != self.doorRearRightOpen ||
+                    trunk != self.trunkOpen);
+    self.doorSensorsLive = YES;
+    self.doorFrontLeftOpen = fl;
+    self.doorFrontRightOpen = fr;
+    self.doorRearLeftOpen = rl;
+    self.doorRearRightOpen = rr;
+    self.trunkOpen = trunk;
+    if (changed) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+    }
+    return YES;
+}
+
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
     if (error || !characteristic.value) return;
     NSString *chunk = [[NSString alloc] initWithData:characteristic.value encoding:NSASCIIStringEncoding];
@@ -1103,12 +1169,14 @@ static NSString * const kTRDOBDDebugLogPath = @"/var/mobile/codex-car/obd-debug.
         return;
     }
 
-    // While AT MA is streaming CAN 0x127, catch the first complete checksum-valid frame and abort cleanly
+    // While AT MA is streaming CAN 0x127 / 0x620, catch first complete frame and abort cleanly
     if (self.canMonitorPhase == 4 && !self.can127FrameCaptured) {
         NSArray *parts = [self.rxBuffer componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"\r\n"]];
+        BOOL target620 = [self.canMonitorTargetID isEqualToString:@"620"];
         for (NSUInteger i = 0; i + 1 < parts.count; i++) {
             NSString *candidate = [[parts[i] stringByReplacingOccurrencesOfString:@" " withString:@""] uppercaseString];
-            if ([self parseCAN127Line:candidate]) {
+            BOOL matched = target620 ? [self parseCAN620Line:candidate] : [self parseCAN127Line:candidate];
+            if (matched) {
                 self.can127FrameCaptured = YES;
                 if ([self.rxBuffer rangeOfString:@"STOPPED"].location == NSNotFound &&
                     [self.rxBuffer rangeOfString:@">"].location == NSNotFound) {

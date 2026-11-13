@@ -66,6 +66,7 @@ extern NSString * const TRDOBDGearChangedNotification;
 @property (nonatomic, assign, readonly) BOOL doorRearLeftOpen;       // Rear Left Door
 @property (nonatomic, assign, readonly) BOOL doorRearRightOpen;      // Rear Right Door
 @property (nonatomic, assign, readonly) BOOL trunkOpen;              // Hatch / Trunk
+@property (nonatomic, assign, readonly) BOOL doorSensorsLive;        // YES when CAN 0x620 body frame received
 @property (nonatomic, assign, readonly) CGFloat cabinTempC;          // A/C Inside Temp °C
 @property (nonatomic, assign, readonly) CGFloat exteriorTempC;       // Outside Ambient Temp °C
 

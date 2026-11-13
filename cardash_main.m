@@ -1220,6 +1220,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property UIView *controls;
 @property NSTimer *timer;
 @property BOOL focused;
+@property NSTimeInterval navTouchDownAt;
+@property NSInteger navTouchDownTag;
+@property NSTimeInterval navGuardUntil;
+-(void)confirmOpenMapDestination:(BOOL)isCarPlay;
 @property UILabel *sourceBadge;
 -(void)openActiveSourceApp;
 @property UIView *clockHud;
@@ -1864,7 +1868,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.cards=[NSMutableArray array];NSArray *names=@[@"YouTube",@"audioNINJA",@"Maps",@"Camera",@"Settings",@"Full Clock"];
  for(int i=0;i<6;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeCustom];b.tag=i+1;b.backgroundColor=[UIColor colorWithRed:.065 green:.065 blue:.075 alpha:1];b.layer.cornerRadius=7;b.layer.borderWidth=1;b.layer.borderColor=[UIColor colorWithRed:.25 green:.12 blue:.14 alpha:1].CGColor;UILabel *title=[UILabel new];title.tag=100;title.text=names[i];title.font=[UIFont boldSystemFontOfSize:24];title.textColor=i==0?blue:[UIColor whiteColor];[b addSubview:title];DashIcon *icon=[[DashIcon alloc]init];icon.kind=i+1;icon.tag=104;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];b.accessibilityLabel=names[i];UIView *accent=[[UIView alloc]init];accent.tag=102;accent.backgroundColor=blue;accent.userInteractionEnabled=NO;[b addSubview:accent];title.userInteractionEnabled=NO;[b addTarget:self action:@selector(card:) forControlEvents:UIControlEventTouchUpInside];[self.cards addObject:b];[self.view addSubview:b];}
  self.controls=[UIView new];[self.view addSubview:self.controls];NSArray *commands=@[@"Previous",@"Play / Pause",@"Next",@"Equalizer"];for(int i=0;i<4;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];b.tag=20+i;b.backgroundColor=[UIColor colorWithRed:.11 green:.055 blue:.065 alpha:1];b.layer.cornerRadius=7;b.layer.borderWidth=1;b.layer.borderColor=[UIColor colorWithRed:.35 green:.10 blue:.13 alpha:1].CGColor;b.accessibilityLabel=commands[i];if(i<3){DashIcon *icon=[[DashIcon alloc]init];icon.kind=7+i;icon.tag=105;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];}else [b setTitle:commands[i] forState:UIControlStateNormal];[b setTitleColor:blue forState:UIControlStateNormal];b.titleLabel.font=[UIFont boldSystemFontOfSize:22];[b addTarget:self action:@selector(media:) forControlEvents:UIControlEventTouchUpInside];[self.controls addSubview:b];}
- self.navigation=[UIView new];self.navigation.backgroundColor=[UIColor colorWithWhite:.035 alpha:1];self.navigation.layer.borderWidth=1;self.navigation.layer.borderColor=[UIColor colorWithWhite:.16 alpha:1].CGColor;[self.view addSubview:self.navigation];NSMutableArray *nav=[NSMutableArray array];NSArray *navNames=@[@"HOME",@"CARPLAY",@"MAPS",@"YOUTUBE",@"audioNINJA",@"CAMERA",@"SETTINGS"];NSInteger kinds[]={10,15,3,1,2,4,5};NSInteger tags[]={60,66,62,67,61,65,68};for(int i=0;i<7;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeCustom];b.tag=tags[i];b.accessibilityLabel=navNames[i];b.layer.cornerRadius=8;DashIcon *icon=[DashIcon new];icon.kind=kinds[i];icon.tag=201;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];UILabel *text=[UILabel new];text.tag=202;text.text=navNames[i];text.textColor=[UIColor lightGrayColor];text.font=[UIFont boldSystemFontOfSize:13];text.userInteractionEnabled=NO;[b addSubview:text];UIView *line=[UIView new];line.tag=203;line.backgroundColor=blue;line.userInteractionEnabled=NO;[b addSubview:line];[b addTarget:self action:@selector(navigate:) forControlEvents:UIControlEventTouchUpInside];[self.navigation addSubview:b];[nav addObject:b];}self.navButtons=nav;
+ self.navigation=[UIView new];self.navigation.backgroundColor=[UIColor colorWithWhite:.035 alpha:1];self.navigation.layer.borderWidth=1;self.navigation.layer.borderColor=[UIColor colorWithWhite:.16 alpha:1].CGColor;[self.view addSubview:self.navigation];NSMutableArray *nav=[NSMutableArray array];NSArray *navNames=@[@"HOME",@"CARPLAY",@"MAPS",@"YOUTUBE",@"audioNINJA",@"CAMERA",@"SETTINGS"];NSInteger kinds[]={10,15,3,1,2,4,5};NSInteger tags[]={60,66,62,67,61,65,68};for(int i=0;i<7;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeCustom];b.tag=tags[i];b.exclusiveTouch=YES;b.clipsToBounds=YES;b.accessibilityLabel=navNames[i];b.layer.cornerRadius=8;DashIcon *icon=[DashIcon new];icon.kind=kinds[i];icon.tag=201;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];UILabel *text=[UILabel new];text.tag=202;text.text=navNames[i];text.textColor=[UIColor lightGrayColor];text.font=[UIFont boldSystemFontOfSize:13];text.userInteractionEnabled=NO;[b addSubview:text];UIView *line=[UIView new];line.tag=203;line.backgroundColor=blue;line.userInteractionEnabled=NO;[b addSubview:line];[b addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[b addTarget:self action:@selector(navigate:forEvent:) forControlEvents:UIControlEventTouchUpInside];[self.navigation addSubview:b];[nav addObject:b];}self.navButtons=nav;
  self.musicHeading=[self label:16 color:blue];self.musicHeading.text=@"NOW PLAYING";self.musicHeading.font=[UIFont boldSystemFontOfSize:16];self.musicHeading.hidden=YES;self.browseMusic=[UIButton buttonWithType:UIButtonTypeCustom];[self.browseMusic setTitle:@"Browse music" forState:UIControlStateNormal];self.browseMusic.titleLabel.font=[UIFont boldSystemFontOfSize:16];self.browseMusic.backgroundColor=[UIColor colorWithWhite:.09 alpha:1];self.browseMusic.layer.cornerRadius=7;self.browseMusic.layer.borderWidth=1;self.browseMusic.layer.borderColor=[UIColor colorWithWhite:.25 alpha:1].CGColor;[self.browseMusic addTarget:self action:@selector(showMusicSources:) forControlEvents:UIControlEventTouchUpInside];self.browseMusic.hidden=YES;[self.view addSubview:self.browseMusic];[self.nowPanel addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(openMusic)]];
  self.tripView=[TRDTripView new];self.tripView.hidden=YES;[self.view addSubview:self.tripView];[self.tripView.run addTarget:self action:@selector(toggleTrip) forControlEvents:UIControlEventTouchUpInside];[self.tripView.reset addTarget:self action:@selector(resetTripMenu) forControlEvents:UIControlEventTouchUpInside];[self.tripView.close addTarget:self action:@selector(homePage) forControlEvents:UIControlEventTouchUpInside];self.driveTripButton=[UIButton buttonWithType:UIButtonTypeCustom];self.driveTripButton.titleLabel.font=[UIFont boldSystemFontOfSize:14];self.driveTripButton.titleLabel.adjustsFontSizeToFitWidth=YES;self.driveTripButton.titleLabel.minimumScaleFactor=.8;self.driveTripButton.backgroundColor=[UIColor colorWithWhite:.055 alpha:1];self.driveTripButton.layer.cornerRadius=8;self.driveTripButton.layer.borderWidth=1;self.driveTripButton.layer.borderColor=[UIColor colorWithWhite:.2 alpha:1].CGColor;self.driveTripButton.accessibilityLabel=@"Open GPS trip summary";UIGraphicsBeginImageContextWithOptions(CGSizeMake(24,24),NO,0);[[UIColor whiteColor]setStroke];UIBezierPath *pin=[UIBezierPath bezierPath];pin.lineWidth=1.8;[pin moveToPoint:CGPointMake(12,22)];[pin addCurveToPoint:CGPointMake(4,9) controlPoint1:CGPointMake(10,18) controlPoint2:CGPointMake(4,13)];[pin addArcWithCenter:CGPointMake(12,9) radius:8 startAngle:M_PI endAngle:0 clockwise:YES];[pin addCurveToPoint:CGPointMake(12,22) controlPoint1:CGPointMake(20,13) controlPoint2:CGPointMake(14,18)];[pin stroke];UIBezierPath *pinCenter=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(9,6,6,6)];pinCenter.lineWidth=1.6;[pinCenter stroke];UIImage *tripIcon=UIGraphicsGetImageFromCurrentImageContext();UIGraphicsEndImageContext();[self.driveTripButton setImage:[tripIcon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];self.driveTripButton.imageEdgeInsets=UIEdgeInsetsMake(0,-8,0,0);self.driveTripButton.titleEdgeInsets=UIEdgeInsetsMake(0,5,0,0);[self.driveTripButton addTarget:self action:@selector(openTrip) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveTripButton];
  self.driveCameraButton=[UIButton buttonWithType:UIButtonTypeCustom];[self.driveCameraButton setTitle:@"CAMERA" forState:0];self.driveCameraButton.titleLabel.font=[UIFont boldSystemFontOfSize:22];self.driveCameraButton.backgroundColor=[TRDAccent()colorWithAlphaComponent:.20];self.driveCameraButton.layer.cornerRadius=8;self.driveCameraButton.layer.borderWidth=1.5;self.driveCameraButton.layer.borderColor=[TRDAccent()colorWithAlphaComponent:.8].CGColor;self.driveCameraButton.accessibilityLabel=@"Open live camera";self.driveCameraButton.accessibilityHint=@"View blind spots and follow the main camera";[self.driveCameraButton addTarget:self action:@selector(openCamera) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveCameraButton];
@@ -3260,6 +3264,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     for (int i = 0; i < self.navButtons.count; i++) {
       UIButton *b = self.navButtons[i];
       BOOL active = (i == 0);
+      b.exclusiveTouch = YES;
+      b.clipsToBounds = YES;
       b.frame = CGRectMake(12 + i * nw, 9, nw - 4, 60);
       b.backgroundColor = active ? [TRDAccent() colorWithAlphaComponent:.14] : [UIColor clearColor];
       [b viewWithTag:201].frame = CGRectMake(b.bounds.size.width/2 - 44, 16, 26, 26);
@@ -3267,7 +3273,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       t.font = [UIFont boldSystemFontOfSize:13.5];
       t.adjustsFontSizeToFitWidth = YES;
       t.minimumScaleFactor = 0.85;
-      t.frame = CGRectMake(b.bounds.size.width/2 - 14, 16, nw - 30, 28);
+      t.frame = CGRectMake(b.bounds.size.width/2 - 14, 16, MAX(40, b.bounds.size.width/2 + 8), 28);
       t.textColor = active ? [UIColor whiteColor] : [UIColor colorWithWhite:0.90 alpha:1];
       [b viewWithTag:203].backgroundColor = TRDAccent();
       [b viewWithTag:203].hidden = !active;
@@ -4258,7 +4264,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [ud setDouble:[[NSDate date] timeIntervalSince1970] forKey:@"TRDLastActiveTimestamp"];
   [ud synchronize];
 
-  // Power plugged: 0.5s digitizer touch guard to absorb transient electrical ripple & avoid ghost touches
+  // Power plugged: 0.5s digitizer touch guard + 0.85s bottom dock guard to absorb electrical ripple
+  self.navGuardUntil = [NSDate timeIntervalSinceReferenceDate] + 0.85;
   self.view.userInteractionEnabled = NO;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
    self.view.userInteractionEnabled = YES;
@@ -4557,7 +4564,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 }
 -(void)teardownMapWebView{if(self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;[[NSURLCache sharedURLCache] removeAllCachedResponses];}self.mapContainer.hidden=YES;}
 -(UIWebView *)ensureMapWebView{if(!self.mapWebView){[NSURLCache sharedURLCache].memoryCapacity=4*1024*1024;self.mapWebView=[[UIWebView alloc]initWithFrame:self.mapContainer.bounds];self.mapWebView.backgroundColor=[UIColor clearColor];self.mapWebView.opaque=NO;self.mapWebView.scalesPageToFit=YES;self.mapWebView.scrollView.bounces=NO;self.mapWebView.delegate=self;[self.mapContainer addSubview:self.mapWebView];}return self.mapWebView;}
--(void)openCarPlay{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.carplayMode=YES;self.carplayGridMode=NO;[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];[self.view setNeedsLayout];[self update];}
+-(void)openCarPlay{self.navGuardUntil=[NSDate timeIntervalSinceReferenceDate]+0.55;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.carplayMode=YES;self.carplayGridMode=NO;[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];[self.view setNeedsLayout];[self update];}
 -(void)toggleCarPlayGrid{self.carplayGridMode=!self.carplayGridMode;[self.view setNeedsLayout];}
 -(void)carplayTapMap{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}else{[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.recenter)window.recenter();"];}}
 -(void)carplayTapMusic{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}[self showMusicSources:nil];}
@@ -4585,16 +4592,73 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  notify_post("com.codex.trd.network.internet");
  [self send:@"com.himais0giiiin.ytnine"];
 }
--(void)navigate:(UIButton *)button{
- static NSTimeInterval lastNavTime = 0;
+-(void)navTouchDown:(UIButton *)button forEvent:(UIEvent *)event{
+ if(event && event.allTouches.count > 1){
+  self.navTouchDownTag = 0;
+  return;
+ }
+ self.navTouchDownTag = button.tag;
+ self.navTouchDownAt = [NSDate timeIntervalSinceReferenceDate];
+}
+-(void)confirmOpenMapDestination:(BOOL)isCarPlay{
+ NSString *title = isCarPlay ? @"🚘 เปิดหน้า CarPlay & แผนที่?" : @"🗺️ เปิดหน้าจอแผนที่ (Maps)?";
+ NSString *msg = @"ป้องกันการเผลอแตะหรือจอสัมผัสลั่น (ปิดอัตโนมัติใน 5 วินาทีหากไม่ยืนยัน)";
+ NSString *okTitle = isCarPlay ? @"✅ ยืนยัน: เข้า CarPlay" : @"✅ ยืนยัน: เปิดแผนที่ Maps";
+ TRDSettingsMenu *confirm = [self settingsMenu:title message:msg];
+ [confirm addAction:[TRDSettingAction actionWithTitle:okTitle style:0 handler:^(TRDSettingAction *a){
+  if(isCarPlay) [self openCarPlay]; else [self openMap];
+ }]];
+ [confirm addAction:[TRDSettingAction actionWithTitle:@"↩️ อยู่หน้า Dashboard ต่อ (ยกเลิก)" style:0 handler:^(TRDSettingAction *a){}]];
+ [self presentSettingsMenu:confirm];
+ __weak Dashboard *weak = self;
+ __weak TRDSettingsMenu *weakConfirm = confirm;
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+  Dashboard *v = weak;
+  if(v && weakConfirm && v.settingsSheet == weakConfirm){
+   [v.settingsSheet dismiss];
+  }
+ });
+}
+-(void)navigate:(UIButton *)button forEvent:(UIEvent *)event{
+ if(self.navigation.hidden || self.welcome || self.tripSummaryCard || self.settingsSheet || self.featureExplanationBanner){
+  self.navTouchDownTag = 0;
+  return;
+ }
  NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
- if (now - lastNavTime < 0.45) return; // Ghost-touch shield: block high-frequency noise spikes
+ if(now < self.navGuardUntil){
+  self.navTouchDownTag = 0;
+  return;
+ }
+ if(event && event.allTouches.count > 0){
+  if(event.allTouches.count > 1){
+   self.navTouchDownTag = 0;
+   return;
+  }
+  UITouch *t = [event.allTouches anyObject];
+  CGPoint pt = [t locationInView:button];
+  CGRect safeRect = CGRectInset(button.bounds, 5, 5);
+  if(!CGRectContainsPoint(safeRect, pt) || self.navTouchDownTag != button.tag || (now - self.navTouchDownAt) < 0.045){
+   self.navTouchDownTag = 0;
+   return;
+  }
+ }
+ self.navTouchDownTag = 0;
+ static NSTimeInterval lastNavTime = 0;
+ if (now - lastNavTime < 0.55) return; // Ghost-touch shield: block high-frequency noise spikes
  lastNavTime = now;
+ NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+ BOOL mapConfirmGuard = [ud objectForKey:@"TRDMapConfirmGuard"] ? [ud boolForKey:@"TRDMapConfirmGuard"] : YES;
  switch(button.tag){
   case 60:[self homePage];break;
-  case 66:[self openCarPlay];break;
+  case 66:
+   if(self.carplayMode) return;
+   if(mapConfirmGuard){ [self confirmOpenMapDestination:YES]; break; }
+   [self openCarPlay];break;
   case 61:if(self.musicMode){[self showMusicSources:button];}else{[self openMusic];}break;
-  case 62:[self openMap];break;
+  case 62:
+   if(self.mapMode) return;
+   if(mapConfirmGuard){ [self confirmOpenMapDestination:NO]; break; }
+   [self openMap];break;
   case 63:[self openDriveEQ];break;
   case 64:[self screenOff];break;
   case 65:[self openCamera];break;
@@ -4602,9 +4666,9 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   case 68:[self carSettings];break;
  }
 }
--(void)homePage{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];[self teardownMapWebView];system("(killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null) >/dev/null 2>&1 &");self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)homePage{self.navGuardUntil=[NSDate timeIntervalSinceReferenceDate]+0.55;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];[self teardownMapWebView];system("(killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null) >/dev/null 2>&1 &");self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)openMusic{system("killall -9 YTNine 2>/dev/null; sync; purge 2>/dev/null &");if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
--(void)openMap{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self ensureMapWebView];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];else [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];[self updateMapCar];}
+-(void)openMap{self.navGuardUntil=[NSDate timeIntervalSinceReferenceDate]+0.55;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self ensureMapWebView];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];else [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];[self updateMapCar];}
 -(void)syncMapAppearance:(BOOL)initial{if(!self.mapWebView)return;NSString *mode=self.nightMode?@"night":@"traffic";NSString *js=initial?[NSString stringWithFormat:@"if(window.setMode && !window.__trdInitialThemeDone){window.__trdInitialThemeDone=true;window.setMode('%@');}",mode]:[NSString stringWithFormat:@"if(window.setMode){window.setMode('%@');}",mode];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
 -(void)webViewDidFinishLoad:(UIWebView *)webView{if(webView==self.mapWebView)[self syncMapAppearance:YES];}
 -(void)loadMapHTML{[self ensureMapWebView];NSString *path=@"/Applications/CarDash.app/map.html";if([[NSFileManager defaultManager]fileExistsAtPath:path])[self.mapWebView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:path]]];}
@@ -4649,6 +4713,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  [self presentSettingsMenu:menu];
 }
 -(void)card:(UIButton *)button{
+ if(button.hidden)return;
  static NSTimeInterval lastCardTime=0;
  NSTimeInterval now=[NSDate timeIntervalSinceReferenceDate];
  if(now-lastCardTime<0.45)return;
@@ -4767,33 +4832,47 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   [closeBtn addTarget:self action:@selector(hideFeatureExplanation) forControlEvents:UIControlEventTouchUpInside];
   [card addSubview:closeBtn];
 
+  TRDOBDClient *obd = [TRDOBDClient sharedClient];
+  BOOL doorsLive = obd.doorSensorsLive;
+  BOOL doorOpenFlags[5] = {
+    obd.doorFrontLeftOpen,
+    obd.doorFrontRightOpen,
+    obd.doorRearLeftOpen,
+    obd.doorRearRightOpen,
+    obd.trunkOpen
+  };
   NSArray *doorTitles = @[
-    @"🚪 ประตูหน้าซ้าย (DRIVER FL)",
-    @"🚪 ประตูหน้าขวา (PASSENGER FR)",
-    @"🚪 ประตูหลังซ้าย (REAR LEFT)",
-    @"🚪 ประตูหลังขวา (REAR RIGHT)",
+    @"🚪 ประตูหน้าซ้าย (DOOR FL)",
+    @"🚪 ประตูหน้าขวา (DOOR FR)",
+    @"🚪 ประตูหลังซ้าย (DOOR RL)",
+    @"🚪 ประตูหลังขวา (DOOR RR)",
     @"🚙 ฝาท้ายสัมภาระ (TRUNK / HATCH)"
   ];
   
   for(int i=0; i<5; i++){
+    BOOL isOpen = doorsLive && doorOpenFlags[i];
     CGFloat bY = 70 + (i * 54);
     UIView *doorRow = [[UIView alloc] initWithFrame:CGRectMake(24, bY, w - 48, 46)];
     doorRow.backgroundColor = [UIColor colorWithWhite:0.07 alpha:1];
     doorRow.layer.cornerRadius = 8;
     doorRow.layer.borderWidth = 1.2;
-    doorRow.layer.borderColor = [UIColor colorWithRed:0.1 green:0.8 blue:0.4 alpha:0.5].CGColor;
+    doorRow.layer.borderColor = doorsLive
+      ? (isOpen ? [UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:0.9].CGColor : [UIColor colorWithRed:0.1 green:0.8 blue:0.4 alpha:0.5].CGColor)
+      : [UIColor colorWithWhite:0.28 alpha:0.8].CGColor;
     
-    UILabel *dLbl = [[UILabel alloc] initWithFrame:CGRectMake(16, 8, 380, 30)];
+    UILabel *dLbl = [[UILabel alloc] initWithFrame:CGRectMake(16, 8, 360, 30)];
     dLbl.font = [UIFont boldSystemFontOfSize:17];
     dLbl.textColor = [UIColor whiteColor];
     dLbl.text = doorTitles[i];
     [doorRow addSubview:dLbl];
     
-    UILabel *sLbl = [[UILabel alloc] initWithFrame:CGRectMake(w - 48 - 220, 8, 204, 30)];
+    UILabel *sLbl = [[UILabel alloc] initWithFrame:CGRectMake(w - 48 - 250, 8, 234, 30)];
     sLbl.font = [UIFont boldSystemFontOfSize:16];
-    sLbl.textColor = [UIColor colorWithRed:0.2 green:0.95 blue:0.45 alpha:1];
+    sLbl.textColor = doorsLive
+      ? (isOpen ? [UIColor colorWithRed:1.0 green:0.35 blue:0.35 alpha:1] : [UIColor colorWithRed:0.2 green:0.95 blue:0.45 alpha:1])
+      : [UIColor colorWithWhite:0.65 alpha:1];
     sLbl.textAlignment = NSTextAlignmentRight;
-    sLbl.text = @"🟢 ปิดสนิท (CLOSED - OK)";
+    sLbl.text = doorsLive ? (isOpen ? @"🚨 เปิดอยู่ (OPEN!)" : @"🟢 ปิดสนิท (CLOSED)") : @"⚪ รอสัญญาณ CAN 0x620";
     [doorRow addSubview:sLbl];
     
     [card addSubview:doorRow];
@@ -4803,12 +4882,16 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   beltRow.backgroundColor = [UIColor colorWithRed:0.02 green:0.14 blue:0.08 alpha:0.95];
   beltRow.layer.cornerRadius = 8;
   beltRow.layer.borderWidth = 1.2;
-  beltRow.layer.borderColor = [UIColor colorWithRed:0.2 green:0.85 blue:0.45 alpha:0.7].CGColor;
+  beltRow.layer.borderColor = doorsLive
+    ? [UIColor colorWithRed:0.2 green:0.85 blue:0.45 alpha:0.7].CGColor
+    : [UIColor colorWithWhite:0.3 alpha:0.7].CGColor;
   
   UILabel *bLbl = [[UILabel alloc] initWithFrame:CGRectMake(16, 10, w - 80, 28)];
   bLbl.font = [UIFont boldSystemFontOfSize:16];
-  bLbl.textColor = [UIColor colorWithRed:0.35 green:0.98 blue:0.55 alpha:1];
-  bLbl.text = @"🔒 SEATBELTS: ล็อคครบทุกตำแหน่ง • พร้อมออกตัวปลอดภัย 100%";
+  bLbl.textColor = doorsLive ? [UIColor colorWithRed:0.35 green:0.98 blue:0.55 alpha:1] : [UIColor colorWithWhite:0.78 alpha:1];
+  bLbl.text = doorsLive
+    ? @"🔒 CAN 0x620 LIVE • แสดงสถานะประตูจากกล่องรถยนต์จริง"
+    : @"ℹ️ กำลังรอเฟรม CAN 0x620 จากรถยนต์ (ต้องทดสอบเปิดประตูบนรถ)";
   [beltRow addSubview:bLbl];
   [card addSubview:beltRow];
 
