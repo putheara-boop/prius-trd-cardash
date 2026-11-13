@@ -270,3 +270,43 @@ ldid -S /Applications/CarDash.app/CarDash
 ---
 
 > 🏁 **สรุปผลงาน:** ระบบทั้งหมดได้รับการบิลด์ ติดตั้ง ลงนาม และทดสอบยืนยันผลการทำงานสดบน iPad Mini 1 เรียบร้อย พร้อมทั้งบันทึกซอร์สโค้ดขึ้น GitHub (`main`) เรียบร้อยสมบูรณ์แบบ 100% ครับ! 🚀
+
+---
+
+## 📅 บันทึกอัปเดตงานเสถียรภาพระบบ & แก้บั๊ก (13 Nov 2026)
+
+> รอบนี้โฟกัส **เคลียร์บั๊กแต่ละหน้าให้เสถียรที่สุดบน iPad Mini 1 (iOS 9.3.6, RAM 512 MB)** โดยไม่เพิ่มฟีเจอร์หนักเกินความจำเป็น
+
+### 1. โหมดขับขี่ & การสลับหน้า Dashboard ↔ Drive Mode (Commit `6a65442`)
+- **แก้บั๊กเด้งออกจาก Drive Mode ตอนรถจอด:** กู้คืน `self.manualDriveActive = NO` เมื่อความเร็ว `>= 15 km/h` และเพิ่มเงื่อนไข `!self.manualDriveActive` ก่อนสั่ง auto-return (`parkedDuration >= 3.0`) ทำให้กดเข้า Drive Mode ตอนจอดแล้วค้างนิ่ง ไม่เด้งกลับ Home
+- **คุมหน่วยความจำข้ามหน้าจอ:** แยก helper `-(void)teardownMapWebView` ไปใช้ร่วมกันใน `toggleDrive`, `prepareForExternalAppLaunch`, `homePage`, `openTrip` (`TRDTripMethods.h`) และ `card:` tag 6 (`Full Clock`) เพื่อคืน RAM จาก `UIWebView` / cache ทันทีเมื่อออกจาก Maps
+- **ทางลัดบน Dashboard:** เชื่อม `readyPill` → `toggleDrive` และ `card:` tag 1 → `openYouTubeSource` พร้อม sync ไฟล์ `car_dash_live_main.m` ตรงกับ `cardash_main.m`
+- **ผลวัดสดบน iPad (6a65442):** `HOME` `38,928 KB` (~`38.0 MB`) → `MAPS` `60,276 KB` → `CARPLAY` `66,292 KB` → `DRIVE` (ค้าง 4 วินาทีขณะจอด) `60,804 KB` (`driveMode = true`) → `TRIP` `61,408 KB` → `BACK HOME` `61,380 KB` (`memoryWarnings = 0`, `welcomeVisible = 0`)
+
+### 2. หน้า CarPlay — ปุ่มเลือกเพลง & ตัดอัปเดตส่วนเกิน (`cardash_main.m`, `TRDTripMethods.h`)
+- **แก้กด `Choose your music` ไม่ตอบสนอง:** เพิ่ม `btnChooseMusic` (`accessibilityLabel = @"Choose your music"`) บน `TRDCarPlayMediaWidget` ครอบบริเวณปกเพลง/ชื่อเพลง/source badge แล้วเชื่อมเข้า `showMusicSources:`
+- **ปรับปุ่ม Music Dock & Grid:** ให้ `carplayTapMusic` และ `carplayGridMusic` เรียก `[self showMusicSources:nil]` เปิดแผ่นเลือกแหล่งเสียง (`AUDIO & MUSIC SOURCES`) แทนการชี้ไป `com.legacymusic.app` และให้ตัวเลือก `▶️ YouTube` เรียก `[self openYouTubeSource]`
+- **ลดภาระ UI Loop หน้า CarPlay:** ย้ายการอัปเดต `carplayMediaWidget` มาอัปเดตทันทีเมื่อเข้า `carplayMode` พร้อมตรวจค่าซ้ำก่อนเซ็ต และลบโค้ดอัปเดต label เก่าที่ซ่อนอยู่ 4 จุด (`carplaySpeedVal`, `carplaySpeedUnit`, `carplayCompass`, `carplayTrip`) รวมถึงลบ block ซ้ำในลูป `ticks%5`
+- **จัดการหน่วยความจำตอนเปิดแอปเพลงภายนอก:** เปลี่ยน `browseSource:` ใน `TRDTripMethods.h` ให้เรียก `prepareForExternalAppLaunch` แทน `openMusic`
+
+### 3. หน้า Dashboard — แก้บั๊กกดรูปเพลง (`♫` / ปกเพลง) แล้วเด้งไป YouTube ทันที (`cardash_main.m`)
+- **สาเหตุ:** ก่อนหน้านี้ `self.nowPanel` (ฝั่งตัวอักษร) เรียก `@selector(openMusic)` เพื่อเปิดหน้าต่างเลือกหลายแหล่งเพลง (`AUDIO & MUSIC SOURCES`) แต่ `self.sourceBadge`, `self.artwork` และ `self.artPlaceholder` (`♫`) ดันผูกไว้กับ `@selector(openActiveSourceApp)` ซึ่งเปิดแอปที่จำไว้ล่าสุด (YouTube) ทันที
+- **แก้ไข:** เปลี่ยนทั้ง `sourceBadge`, `artwork` และ `artPlaceholder` (`♫`) ให้เรียก `@selector(openMusic)` เหมือนกันทั้งการ์ด
+
+### 4. ผลบิลด์และทดสอบสดบน iPad Mini 1 หลังแก้งานทั้งหมด (13 Nov 2026)
+- **Build:** `sh /var/mobile/h109-build/build_cardash.sh` → `CARDASH_BUILD_OK` (0 errors)
+- **Live State Flow Verification (`uiopen` + `cardash-state.plist`):**
+  - `HOME_COLD`: `welcomeVisible = 0`, `navigationVisible = 1`, `song = Choose your music`, `memoryWarnings = 0`
+  - `CARPLAY`: `navigationVisible = 0`, `song = Choose your music`, `memoryWarnings = 0`
+  - `CARPLAY_SOURCES` (`cardash://sources`): `settingsVisible = 1`, `settingsTitle = AUDIO & MUSIC SOURCES`, แสดงครบ 5 แหล่ง (`Search Music`, `Live Radio & Music`, `Offline Music`, `audioNINJA Player`, `YouTube`)
+  - `DRIVE` (ค้าง 4 วินาทีขณะจอด): `driveMode = true`, `settingsVisible = 0`, `mapMode = false`, `memoryWarnings = 0`
+  - `BACK_HOME`: `driveMode = false`, `mapMode = false`, `settingsVisible = 0`, `memoryWarnings = 0`
+  - **Final RSS (`ps aux`):** `65,304 KB` (~`63.8 MB` บนเครื่อง 512 MB RAM)
+
+### 5. เช็กลิสต์เตรียมจูน OBD-II (`Vgate vLinker MC+` / `TRDOBDClient.m`) รอบหน้า
+- **สิ่งที่พร้อมทำงานอัตโนมัติทันทีบน iPad (ไม่ต้องต่อคอมจูนก่อนขับ):** ระบบสแกน CoreBluetooth BLE หาชื่อ `vLinker` / `Vgate` / `OBD` / `IOS-VLINK` และส่งชุดคำสั่งเริ่มต้น `ATZ`, `ATE0`, `ATL0`, `ATS0`, `ATSP6` เพื่อโพล PID มาตรฐาน (`010C` RPM, `0110` MAF, `0105` Coolant, `0142` 12V, `012F` Fuel Level) อัตโนมัติ (GPS/Maps/กล้อง/เพลง ใช้ได้เต็มระบบโดยไม่ต้องรอ OBD-II)
+- **จุดที่ต้องเช็กกับรถ Prius ZVW30 จริงเมื่อได้ตัวเสียบมาแล้ว:**
+  1. ต้องใช้รุ่น BLE (CoreBluetooth บน iOS ไม่เห็น Classic BT 2.0/3.0 หรือ Wi-Fi)
+  2. `didDiscoverCharacteristicsForService` ยังเลือก write/notify characteristic ตัวท้ายที่พบโดยไม่ได้กรอง Service/Char UUID เฉพาะของ BLE UART (`FFE0`/`FFF0`/`6E40...`) — ถ้าเสียบจริงแล้วยังไม่อ่านค่าให้ล็อก UUID มาจูนตรงนี้ก่อน
+  3. `pollNextOBD` ยังไม่ได้สลับ CAN Header (`ATSH 7E2`/`7E3`) ก่อนถาม PID เฉพาะของ Prius (`2101` HV SOC และ `2182` เกียร์/ถอยหลัง) และการ์ดตัวอย่างบางจุดบนหน้า Dashboard ยังเป็นข้อความแสดงผลรอผูกค่าจริงจาก `obdDataUpdated:`
+

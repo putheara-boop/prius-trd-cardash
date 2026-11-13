@@ -737,6 +737,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property (nonatomic, strong) UILabel *timeCurLabel, *timeTotalLabel;
 @property (nonatomic, strong) UIButton *btnPrev, *btnPlay, *btnNext;
 @property (nonatomic, strong) UIButton *btnEQ, *btnRadio;
+@property (nonatomic, strong) UIButton *btnChooseMusic;
 @end
 
 @implementation TRDCarPlayMediaWidget
@@ -874,6 +875,15 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.btnRadio.titleLabel.font = [UIFont boldSystemFontOfSize:11];
     [self.btnRadio setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [self addSubview:self.btnRadio];
+
+    // Transparent tap target across artwork + song title + source badge to choose music
+    self.btnChooseMusic = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.btnChooseMusic.frame = CGRectMake(12, 8, 346, 136);
+    self.btnChooseMusic.backgroundColor = [UIColor clearColor];
+    self.btnChooseMusic.layer.cornerRadius = 14;
+    self.btnChooseMusic.showsTouchWhenHighlighted = YES;
+    self.btnChooseMusic.accessibilityLabel = @"Choose your music";
+    [self addSubview:self.btnChooseMusic];
   }
   return self;
 }
@@ -1822,8 +1832,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  self.clock=[self label:160 color:[UIColor whiteColor]];self.clock.font=[UIFont fontWithName:@"HelveticaNeue-UltraLight" size:160]?:[UIFont systemFontOfSize:160];self.clock.textAlignment=NSTextAlignmentCenter;self.clock.adjustsFontSizeToFitWidth=YES;
  self.date=[self label:22 color:[UIColor colorWithWhite:.72 alpha:1]];self.date.textAlignment=NSTextAlignmentCenter;
  self.nowPanel=[[UIView alloc]init];self.nowPanel.backgroundColor=[UIColor colorWithWhite:.055 alpha:.95];self.nowPanel.layer.cornerRadius=6;self.nowPanel.layer.borderWidth=1;self.nowPanel.layer.borderColor=[UIColor colorWithWhite:.17 alpha:1].CGColor;[self.view addSubview:self.nowPanel];
- self.sourceBadge=[[UILabel alloc]init];self.sourceBadge.font=[UIFont boldSystemFontOfSize:10];self.sourceBadge.textAlignment=NSTextAlignmentCenter;self.sourceBadge.layer.cornerRadius=4;self.sourceBadge.clipsToBounds=YES;self.sourceBadge.textColor=[UIColor whiteColor];self.sourceBadge.backgroundColor=[blue colorWithAlphaComponent:.28];self.sourceBadge.layer.borderWidth=1;self.sourceBadge.layer.borderColor=[blue colorWithAlphaComponent:.6].CGColor;self.sourceBadge.text=@"MUSIC";self.sourceBadge.userInteractionEnabled=YES;UITapGestureRecognizer *btap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(openActiveSourceApp)];[self.sourceBadge addGestureRecognizer:btap];[self.nowPanel addSubview:self.sourceBadge];
- self.artwork=[[UIImageView alloc]init];self.artwork.contentMode=UIViewContentModeScaleAspectFill;self.artwork.clipsToBounds=YES;self.artwork.layer.cornerRadius=4;self.artwork.userInteractionEnabled=YES;[self.artwork addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(openActiveSourceApp)]];[self.view addSubview:self.artwork];self.artPlaceholder=[self label:28 color:blue];self.artPlaceholder.text=@"♫";self.artPlaceholder.textAlignment=NSTextAlignmentCenter;self.artPlaceholder.userInteractionEnabled=YES;[self.artPlaceholder addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(openActiveSourceApp)]];
+ self.sourceBadge=[[UILabel alloc]init];self.sourceBadge.font=[UIFont boldSystemFontOfSize:10];self.sourceBadge.textAlignment=NSTextAlignmentCenter;self.sourceBadge.layer.cornerRadius=4;self.sourceBadge.clipsToBounds=YES;self.sourceBadge.textColor=[UIColor whiteColor];self.sourceBadge.backgroundColor=[blue colorWithAlphaComponent:.28];self.sourceBadge.layer.borderWidth=1;self.sourceBadge.layer.borderColor=[blue colorWithAlphaComponent:.6].CGColor;self.sourceBadge.text=@"MUSIC";self.sourceBadge.userInteractionEnabled=YES;UITapGestureRecognizer *btap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(openMusic)];[self.sourceBadge addGestureRecognizer:btap];[self.nowPanel addSubview:self.sourceBadge];
+ self.artwork=[[UIImageView alloc]init];self.artwork.contentMode=UIViewContentModeScaleAspectFill;self.artwork.clipsToBounds=YES;self.artwork.layer.cornerRadius=4;self.artwork.userInteractionEnabled=YES;[self.artwork addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(openMusic)]];[self.view addSubview:self.artwork];self.artPlaceholder=[self label:28 color:blue];self.artPlaceholder.text=@"♫";self.artPlaceholder.textAlignment=NSTextAlignmentCenter;self.artPlaceholder.userInteractionEnabled=YES;[self.artPlaceholder addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(openMusic)]];
  self.trackTime=[self label:10 color:[UIColor colorWithWhite:.65 alpha:1]];self.trackTime.textAlignment=NSTextAlignmentRight;self.trackTime.adjustsFontSizeToFitWidth=YES;self.trackTime.text=@"--:-- / --:--";self.trackProgress=[[UIProgressView alloc]initWithProgressViewStyle:UIProgressViewStyleDefault];self.trackProgress.progressTintColor=blue;self.trackProgress.trackTintColor=[UIColor colorWithWhite:.18 alpha:1];self.trackProgress.userInteractionEnabled=NO;[self.view addSubview:self.trackProgress];
  self.artist=[self label:12 color:[UIColor lightGrayColor]];self.artist.adjustsFontSizeToFitWidth=YES;
  self.carStatus=[self label:13 color:[UIColor lightGrayColor]];self.carStatus.textAlignment=NSTextAlignmentCenter;self.carStatus.text=@"CAR DISCONNECTED";self.carStatus.font=[UIFont boldSystemFontOfSize:13];self.carStatus.userInteractionEnabled=YES;[self.carStatus addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(carStatusTapped)]];
@@ -1895,6 +1905,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self.carplayMediaWidget.btnNext addTarget:self action:@selector(miniNext) forControlEvents:UIControlEventTouchUpInside];
   [self.carplayMediaWidget.btnEQ addTarget:self action:@selector(openDriveEQ) forControlEvents:UIControlEventTouchUpInside];
   [self.carplayMediaWidget.btnRadio addTarget:self action:@selector(openRadioStationsMenu) forControlEvents:UIControlEventTouchUpInside];
+  [self.carplayMediaWidget.btnChooseMusic addTarget:self action:@selector(showMusicSources:) forControlEvents:UIControlEventTouchUpInside];
   [self.view addSubview:self.carplayMediaWidget];
 
   self.carplayTelemetryWidget = [[TRDCarPlayTelemetryWidget alloc] initWithFrame:CGRectZero];
@@ -3350,21 +3361,29 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  previousPower=currentPower;
  if(self.carplayMode){
   if(![self.carplayClock.text isEqualToString:self.clock.text])self.carplayClock.text=self.clock.text;
-  NSString *speedVal=(self.gpsLive&&self.speed.text.length&&![self.speed.text isEqualToString:@"--"])?self.speed.text:@"--";
-  if(![self.carplaySpeedVal.text isEqualToString:speedVal])self.carplaySpeedVal.text=speedVal;
-  NSString *speedUnit=self.gpsLive?@"km/h  •  GPS LIVE":@"km/h  •  WAITING FOR GPS";
-  if(![self.carplaySpeedUnit.text isEqualToString:speedUnit])self.carplaySpeedUnit.text=speedUnit;
-  BOOL courseKnown=self.gpsLive&&self.fix.course>=0&&self.fix.course<360&&self.fix.speed>=1.4&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;
-  NSString *compass=courseKnown?[NSString stringWithFormat:@"COURSE  %.0f°",self.fix.course]:@"COURSE  --";
-  if(![self.carplayCompass.text isEqualToString:compass])self.carplayCompass.text=compass;
-  NSString *cTrip=[NSString stringWithFormat:@"TRIP  %.1f km",self.trip.meters/1000.0];
-  if(![self.carplayTrip.text isEqualToString:cTrip])self.carplayTrip.text=cTrip;
   if(!self.carplayGridMode&&(self.ticks%2==0))[self updateMapCar];
   if(!self.carplayGridMode&&self.carplayTelemetryWidget){
+   NSString *speedVal=(self.gpsLive&&self.speed.text.length&&![self.speed.text isEqualToString:@"--"])?self.speed.text:@"--";
+   NSString *speedUnit=self.gpsLive?@"km/h  •  GPS LIVE":@"km/h  •  WAITING FOR GPS";
+   BOOL courseKnown=self.gpsLive&&self.fix.course>=0&&self.fix.course<360&&self.fix.speed>=1.4&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;
+   NSString *compass=courseKnown?[NSString stringWithFormat:@"COURSE  %.0f°",self.fix.course]:@"COURSE  --";
+   NSString *cTrip=[NSString stringWithFormat:@"TRIP  %.1f km",self.trip.meters/1000.0];
    if(![self.carplayTelemetryWidget.speedLabel.text isEqualToString:speedVal])self.carplayTelemetryWidget.speedLabel.text=speedVal;
    if(![self.carplayTelemetryWidget.speedUnitLabel.text isEqualToString:speedUnit])self.carplayTelemetryWidget.speedUnitLabel.text=speedUnit;
    if(![self.carplayTelemetryWidget.compassLabel.text isEqualToString:compass])self.carplayTelemetryWidget.compassLabel.text=compass;
    if(![self.carplayTelemetryWidget.tripMetricsLabel.text isEqualToString:cTrip])self.carplayTelemetryWidget.tripMetricsLabel.text=cTrip;
+  }
+  if(!self.carplayGridMode&&self.carplayMediaWidget){
+   NSString *cpTitle=self.song.text.length?self.song.text:@"Choose your music";
+   NSString *cpArtist=self.artist.text.length?self.artist.text:@"Tap here to choose music / Radio / YouTube";
+   NSString *cpBadge=[NSString stringWithFormat:@"%@ ▾",self.sourceBadge.text.length?self.sourceBadge.text:@"MUSIC"];
+   if(![self.carplayMediaWidget.titleLabel.text isEqualToString:cpTitle])self.carplayMediaWidget.titleLabel.text=cpTitle;
+   if(![self.carplayMediaWidget.artistLabel.text isEqualToString:cpArtist])self.carplayMediaWidget.artistLabel.text=cpArtist;
+   if(![self.carplayMediaWidget.sourceBadge.text isEqualToString:cpBadge])self.carplayMediaWidget.sourceBadge.text=cpBadge;
+   if(self.carplayMediaWidget.artworkView.image!=self.artwork.image)self.carplayMediaWidget.artworkView.image=self.artwork.image;
+   self.carplayMediaWidget.artPlaceholder.hidden=(self.artwork.image!=nil);
+   self.carplayMediaWidget.progressBar.progress=self.trackProgress.progress;
+   if(![self.carplayMediaWidget.timeCurLabel.text isEqualToString:self.trackTime.text])self.carplayMediaWidget.timeCurLabel.text=self.trackTime.text;
   }
  }
  self.ticks++;if(self.ticks%60==1)[self applyDisplaySchedule];if(self.ticks%30==0)[self saveTrip];[self refreshSpeed];[self refreshTrackProgress];if(self.mapMode)[self updateMapCar];
@@ -3378,14 +3397,6 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   if(![self.carplayWifi.text isEqualToString:self.statusWiFi])self.carplayWifi.text=self.statusWiFi;
  }
  self.statusPower=level<0?@"UNKNOWN":[NSString stringWithFormat:@"%@ %.0f%%",(power==UIDeviceBatteryStateCharging)?@"CHG":(power==UIDeviceBatteryStateFull)?@"FULL":@"BAT",level*100];[self refreshCarStatus];
-  if (self.carplayMode && !self.carplayGridMode && self.carplayMediaWidget) {
-    self.carplayMediaWidget.titleLabel.text = self.song.text.length ? self.song.text : @"Select Music";
-    self.carplayMediaWidget.artistLabel.text = self.artist.text.length ? self.artist.text : @"audioNINJA / YouTube";
-    self.carplayMediaWidget.artworkView.image = self.artwork.image;
-    self.carplayMediaWidget.artPlaceholder.hidden = (self.artwork.image != nil);
-    self.carplayMediaWidget.progressBar.progress = self.trackProgress.progress;
-    self.carplayMediaWidget.timeCurLabel.text = self.trackTime.text;
-  }
   [self refreshNowPlaying];
   [self refreshAudioRoute];
   [self refreshStatusStrip];
@@ -4512,8 +4523,8 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)openCarPlay{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.carplayMode=YES;self.carplayGridMode=NO;[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];[self.view setNeedsLayout];[self update];}
 -(void)toggleCarPlayGrid{self.carplayGridMode=!self.carplayGridMode;[self.view setNeedsLayout];}
 -(void)carplayTapMap{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}else{[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.recenter)window.recenter();"];}}
--(void)carplayTapMusic{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}[self browseSource:@"com.legacymusic.app"];}
--(void)carplayGridMusic{self.carplayGridMode=NO;[self.view setNeedsLayout];[self browseSource:@"com.legacymusic.app"];}
+-(void)carplayTapMusic{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}[self showMusicSources:nil];}
+-(void)carplayGridMusic{self.carplayGridMode=NO;[self.view setNeedsLayout];[self showMusicSources:nil];}
 -(void)carplayGridMap{self.carplayGridMode=NO;[self.view setNeedsLayout];}
 -(void)carplayGridTrip{self.carplayMode=NO;self.carplayGridMode=NO;[self openTrip];}
 -(void)carplayGridSettings{[self carSettings];}
@@ -4571,7 +4582,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  [menu addAction:[TRDSettingAction actionWithTitle:@"📻 Live Radio & Music (วิทยุออนไลน์)" style:0 handler:^(TRDSettingAction *a){[self openRadioStationsMenu];}]];
  [menu addAction:[TRDSettingAction actionWithTitle:@"💾 Offline Music (เพลงที่โหลดไว้)" style:0 handler:^(TRDSettingAction *a){[self openOfflineMusicMenu];}]];
  [menu addAction:[TRDSettingAction actionWithTitle:@"🎵 audioNINJA Player" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.legacymusic.app"];}]];
- [menu addAction:[TRDSettingAction actionWithTitle:@"▶️ YouTube" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.himais0giiiin.ytnine"];}]];
+ [menu addAction:[TRDSettingAction actionWithTitle:@"▶️ YouTube" style:0 handler:^(TRDSettingAction *a){[self openYouTubeSource];}]];
  [self presentSettingsMenu:menu];
 }
 -(void)openSearchMusic{[self browseSource:@"com.legacymusic.app"];}

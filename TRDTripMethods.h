@@ -93,7 +93,7 @@
  if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
  if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
- [self openMusic];
+ [self prepareForExternalAppLaunch];
  if([bundle isEqualToString:@"com.legacymusic.app"]){
   NSDictionary *arm=@{@"bundle":bundle,@"token":[NSUUID UUID].UUIDString,@"pending":@YES,@"created":[NSDate date],@"expires":[NSDate dateWithTimeIntervalSinceNow:180],@"baselineTitle":self.song.text?:@""};
   if(![arm writeToFile:@"/var/mobile/codex-car/browse-return.plist" atomically:YES]){self.notice=@"Automatic return unavailable. Return to TRD manually.";self.noticeUntil=[NSDate dateWithTimeIntervalSinceNow:5];}
