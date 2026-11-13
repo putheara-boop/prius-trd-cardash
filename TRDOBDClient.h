@@ -19,6 +19,7 @@ extern NSString * const TRDOBDGearChangedNotification;
 @property (nonatomic, readonly) BOOL isConnected;
 @property (nonatomic, copy, readonly) NSString *connectionStatus;
 @property (nonatomic, copy, readonly) NSString *connectedDeviceName;
+@property (nonatomic, copy, readonly) NSString *lastScanSummary;
 
 // Live Powertrain Metrics
 @property (nonatomic, assign, readonly) NSInteger engineRPM;         // 0 - 5500 RPM
@@ -26,7 +27,21 @@ extern NSString * const TRDOBDGearChangedNotification;
 @property (nonatomic, assign, readonly) CGFloat hybridBatterySOC;    // 0.0% - 100.0%
 @property (nonatomic, assign, readonly) CGFloat inverterTempC;       // Inverter Coolant °C
 @property (nonatomic, assign, readonly) CGFloat auxBatteryVoltage;    // 12V Battery Volts
-@property (nonatomic, assign, readonly) CGFloat currentSpeedKmh;     // Speed from Wheel Sensors
+@property (nonatomic, assign, readonly) CGFloat currentSpeedKmh;     // Speed from Wheel / OBD Sensors
+@property (nonatomic, assign, readonly) CGFloat hvPackVoltage;       // 200-245V HV Battery Pack
+@property (nonatomic, assign, readonly) CGFloat hvPackCurrent;       // Signed Amps (-200..+200A)
+@property (nonatomic, assign, readonly) CGFloat hvDeltaSOC;          // Block SOC imbalance %
+@property (nonatomic, assign, readonly) CGFloat hvBatteryTempC;      // HV Battery Avg Temp °C
+@property (nonatomic, assign, readonly) CGFloat hvIntakeTempC;       // HV Cooling Intake °C
+@property (nonatomic, assign, readonly) NSInteger mg1RPM;            // Generator MG1 RPM
+@property (nonatomic, assign, readonly) NSInteger mg2RPM;            // Traction Motor MG2 RPM
+@property (nonatomic, assign, readonly) CGFloat mg1TempC;            // MG1 Temp °C
+@property (nonatomic, assign, readonly) CGFloat mg2TempC;            // MG2 Temp °C
+@property (nonatomic, copy, readonly) NSArray<NSNumber *> *hvBlockVoltages;     // 14 Block Voltages
+@property (nonatomic, copy, readonly) NSArray<NSNumber *> *hvBlockResistances;  // 14 Block mOhm
+@property (nonatomic, assign, readonly) CGFloat hvBlockMinV;
+@property (nonatomic, assign, readonly) CGFloat hvBlockMaxV;
+@property (nonatomic, assign, readonly) BOOL parkSwitchEngaged;
 
 // Fuel & Trip Cost Metrics
 @property (nonatomic, assign, readonly) CGFloat fuelLevelPercent;     // 0% - 100%
@@ -63,6 +78,8 @@ extern NSString * const TRDOBDGearChangedNotification;
 // Controls
 - (void)startScanning;
 - (void)stopScanning;
+- (void)ensureConnectedOrScan;
+- (void)forceReconnect;
 - (void)setCustomFuelPrice:(CGFloat)price;
 - (void)selectFuelTypeIndex:(NSInteger)index;
 - (void)fetchLiveOilPrices;
