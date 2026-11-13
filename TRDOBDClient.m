@@ -118,6 +118,8 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 @property (nonatomic, strong) NSDate *connectStartedAt;
 @property (nonatomic, assign) NSInteger canMonitorPhase;
 @property (nonatomic, assign) BOOL obdInitScheduled;
+@property (nonatomic, assign) BOOL obdInitInProgress;
+@property (nonatomic, assign) NSUInteger obdInitCommandIndex;
 @property (nonatomic, assign) BOOL can127FrameCaptured;
 @property (nonatomic, assign) BOOL can127AbortSent;
 @property (nonatomic, copy) NSString *lastLoggedCAN127Gear;
@@ -125,6 +127,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 @property (nonatomic, copy) NSString *canMonitorTargetID;
 @property (nonatomic, copy) NSString *lastLoggedCAN620Hex;
 @property (nonatomic, assign) NSUInteger can620Misses;
+@property (nonatomic, strong) NSDate *lastCAN620At;
 @property (nonatomic, strong) NSArray *activePollSchedule;
 @property (nonatomic, assign) NSInteger fastCycleCount;
 @property (nonatomic, assign) NSUInteger consecutiveTimeouts;
@@ -278,6 +281,9 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)resetConnectionStateWithStatus:(NSString *)status {
+    self.obdInitInProgress = NO;
+    self.obdInitCommandIndex = 0;
+    self.lastCAN620At = nil;
     self.connectGeneration++;
     self.connectStartedAt = nil;
     self.isConnected = NO;
@@ -726,6 +732,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)centralManager:(CBCentralManager *)central didConnectPeripheral:(CBPeripheral *)peripheral {
+    if (peripheral != self.activePeripheral) return;
     NSUInteger connGen = self.connectGeneration;
     self.isConnected = YES;
     self.obdInitialized = NO;
@@ -746,7 +753,8 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (connGen == self.connectGeneration && self.activePeripheral == peripheral && self.isConnected && (!self.writeCharacteristic || !self.notifyCharacteristic)) {
+        if (connGen == self.connectGeneration && self.activePeripheral == peripheral && self.isConnected &&
+            (!self.writeCharacteristic || !self.notifyCharacteristic || !self.notifyCharacteristic.isNotifying || (!self.obdInitInProgress && !self.obdInitialized))) {
             [self obdLog:@"GATT discovery timeout (6s) for '%@'; forcing reconnect", label];
             [self forceReconnect];
         }
@@ -754,24 +762,28 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)centralManager:(CBCentralManager *)central didFailToConnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
+    if (peripheral != self.activePeripheral) return;
     [self obdLog:@"didFailToConnectPeripheral: %@", error.localizedDescription ?: @"unknown"];
     [self resetConnectionStateWithStatus:@"BLE Connect Failed. Retrying..."];
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
+    NSUInteger connGen = self.connectGeneration;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (self.pendingScan) {
+        if (connGen == self.connectGeneration && self.pendingScan) {
             [self startScanning];
         }
     });
 }
 
 - (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
+    if (peripheral != self.activePeripheral) return;
     [self obdLog:@"didDisconnectPeripheral: err=%@", error.localizedDescription ?: @"none"];
     [self resetConnectionStateWithStatus:@"Disconnected. Auto-reconnecting..."];
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
+    NSUInteger connGen = self.connectGeneration;
 
     // Auto-reconnect promptly when OBD adapter sleeps or car restarts
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (self.pendingScan) {
+        if (connGen == self.connectGeneration && self.pendingScan) {
             [self startScanning];
         }
     });
@@ -780,11 +792,13 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 #pragma mark - CBPeripheralDelegate
 
 - (void)peripheral:(CBPeripheral *)peripheral didDiscoverServices:(NSError *)error {
+    if (peripheral != self.activePeripheral) return;
     if (error || peripheral.services.count == 0) {
+        NSUInteger connGen = self.connectGeneration;
         [self obdLog:@"didDiscoverServices failed (count=%lu err=%@); scheduling reconnect",
          (unsigned long)peripheral.services.count, error.localizedDescription ?: @"none"];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if (self.activePeripheral == peripheral && (!self.writeCharacteristic || !self.notifyCharacteristic)) {
+            if (connGen == self.connectGeneration && self.activePeripheral == peripheral && (!self.writeCharacteristic || !self.notifyCharacteristic)) {
                 [self forceReconnect];
             }
         });
@@ -799,6 +813,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didDiscoverCharacteristicsForService:(CBService *)service error:(NSError *)error {
+    if (peripheral != self.activePeripheral) return;
     if (self.servicesPending > 0) self.servicesPending--;
     if (error) {
         [self obdLog:@"didDiscoverCharacteristics error for %@: %@", service.UUID.UUIDString, error.localizedDescription];
@@ -856,23 +871,27 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         [self obdLog:@"Selected GATT write=%@ notify=%@ (prios w=%ld n=%ld)",
          self.writeCharacteristic.UUID.UUIDString, self.notifyCharacteristic.UUID.UUIDString,
          (long)self.writePriority, (long)self.notifyPriority];
-        [peripheral setNotifyValue:YES forCharacteristic:self.notifyCharacteristic];
         self.obdInitScheduled = YES;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self startOBDInitializationSequence];
-        });
+        // Start only after CoreBluetooth confirms the selected RX subscription.
+        [peripheral setNotifyValue:YES forCharacteristic:self.notifyCharacteristic];
     }
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateNotificationStateForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
-    if (error) {
-        [self obdLog:@"didUpdateNotificationState error for %@: %@", characteristic.UUID.UUIDString, error.localizedDescription];
-    } else {
-        [self obdLog:@"didUpdateNotificationState ch=%@ isNotifying=%d", characteristic.UUID.UUIDString, characteristic.isNotifying ? 1 : 0];
+    if (peripheral != self.activePeripheral || characteristic != self.notifyCharacteristic || !self.isConnected) return;
+    if (error || !characteristic.isNotifying) {
+        [self obdLog:@"OBD RX subscription failed: %@", error.localizedDescription ?: @"notifications disabled"];
+        [self forceReconnect];
+        return;
+    }
+    [self obdLog:@"didUpdateNotificationState ch=%@ isNotifying=1", characteristic.UUID.UUIDString];
+    if (self.obdInitScheduled && !self.obdInitInProgress && !self.obdInitialized) {
+        [self startOBDInitializationSequence];
     }
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didWriteValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
+    if (peripheral != self.activePeripheral) return;
     if (error) {
         [self obdLog:@"didWriteValue error for %@: %@", characteristic.UUID.UUIDString, error.localizedDescription];
     }
@@ -905,7 +924,9 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 - (void)scheduleImmediatePoll {
     if (self.pollDispatchPending || !self.isConnected || !self.obdInitialized) return;
     self.pollDispatchPending = YES;
+    NSUInteger connGen = self.connectGeneration;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(12 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+        if (connGen != self.connectGeneration) return;
         self.pollDispatchPending = NO;
         if (self.isConnected && self.obdInitialized && !self.waitingForResponse) {
             [self pollNextOBD];
@@ -914,7 +935,8 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)startOBDInitializationSequence {
-    if (!self.isConnected || !self.writeCharacteristic) return;
+    if (!self.isConnected || !self.writeCharacteristic || !self.notifyCharacteristic.isNotifying ||
+        self.obdInitInProgress || self.obdInitialized) return;
     self.connectionStatus = @"Configuring CAN-Bus...";
     [self.rxBuffer setString:@""];
     self.obdInitialized = NO;
@@ -945,41 +967,101 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     self.lastLoggedExteriorTempC = -999.0;
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
 
-    // vLinker MC+ (STN chip) needs ~0.9-1.1s after ATZ reset before accepting subsequent AT commands
+    self.obdInitInProgress = YES;
+    self.obdInitCommandIndex = 0;
+    self.lastCAN620At = nil;
+    if (self.pollingTimer) [self.pollingTimer invalidate];
+    // The same watchdog covers initialization and normal polling.
+    self.pollingTimer = [NSTimer scheduledTimerWithTimeInterval:0.15 target:self selector:@selector(pollNextOBD) userInfo:nil repeats:YES];
     [self sendCommand:@"ATZ"];
-    NSArray *cmds = @[@"ATE0", @"ATL0", @"ATS0", @"ATH0", @"ATSP6"];
-    for (int i = 0; i < (int)cmds.count; i++) {
-        double delaySec = 1.2 + (0.22 * i);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delaySec * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if (self.isConnected && self.writeCharacteristic) {
-                [self sendCommand:cmds[i]];
-            }
-        });
+}
+
+- (NSArray *)obdInitializationCommands {
+    return @[@"ATZ", @"ATE0", @"ATL0", @"ATS0", @"ATH0", @"ATSP6"];
+}
+
+- (void)handleOBDInitializationFrame:(NSString *)frame {
+    if (!self.obdInitInProgress || self.obdInitCommandIndex >= [self obdInitializationCommands].count) return;
+    NSString *upper = [frame uppercaseString];
+    NSArray *lines = [upper componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+    BOOL ok = NO;
+    for (NSString *line in lines) {
+        if ([[line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]] isEqualToString:@"OK"]) ok = YES;
+    }
+    if (self.obdInitCommandIndex == 0) {
+        // A reset must return an adapter identification, not just an echoed ATZ.
+        ok = ([upper rangeOfString:@"ELM"].location != NSNotFound ||
+              [upper rangeOfString:@"STN"].location != NSNotFound ||
+              [upper rangeOfString:@"VLINK"].location != NSNotFound ||
+              [upper rangeOfString:@"OBDLINK"].location != NSNotFound);
+    }
+    if ([upper rangeOfString:@"?"].location != NSNotFound ||
+        [upper rangeOfString:@"ERROR"].location != NSNotFound) ok = NO;
+    NSString *command = [self obdInitializationCommands][self.obdInitCommandIndex];
+    if (!ok) {
+        [self obdLog:@"OBD init rejected %@ response: %@", command,
+         [upper stringByReplacingOccurrencesOfString:@"\r" withString:@"|"]];
+        [self forceReconnect];
+        return;
     }
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (self.isConnected && self.writeCharacteristic) {
-            self.waitingForResponse = NO;
-            self.obdInitialized = YES;
-            self.activeCANHeader = @"7DF";
-            self.connectionStatus = @"CAN-Bus Live";
-            [self obdLog:@"OBD init complete; starting Prius CAN polling loop (fast+CAN 0x127)"];
-            [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
-            if (self.pollingTimer) {
-                [self.pollingTimer invalidate];
-                self.pollingTimer = nil;
-            }
-            self.pollingTimer = [NSTimer scheduledTimerWithTimeInterval:0.15 target:self selector:@selector(pollNextOBD) userInfo:nil repeats:YES];
-            [self pollNextOBD];
-        }
+    [self obdLog:@"OBD init ACK: %@", command];
+    BOOL wasReset = (self.obdInitCommandIndex == 0);
+    self.obdInitCommandIndex++;
+    if (self.obdInitCommandIndex == [self obdInitializationCommands].count) {
+        self.obdInitInProgress = NO;
+        self.obdInitialized = YES;
+        self.activeCANHeader = @"7DF";
+        self.connectionStatus = @"OBD adapter ready; polling Prius CAN";
+        [self obdLog:@"OBD init complete; all setup commands acknowledged; starting Prius CAN polling"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
+        [self scheduleImmediatePoll];
+        return;
+    }
+
+    // Preserve the adapter reset settling time, but never overlap commands.
+    NSTimeInterval age = self.lastCmdSentAt ? [[NSDate date] timeIntervalSinceDate:self.lastCmdSentAt] : 0.0;
+    NSTimeInterval delay = wasReset ? MAX(0.0, 1.2 - age) : 0.0;
+    NSUInteger connGen = self.connectGeneration;
+    NSUInteger nextIndex = self.obdInitCommandIndex;
+    CBPeripheral *peripheral = self.activePeripheral;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (connGen != self.connectGeneration || peripheral != self.activePeripheral ||
+            !self.isConnected || !self.obdInitInProgress || self.obdInitCommandIndex != nextIndex) return;
+        [self sendCommand:[self obdInitializationCommands][nextIndex]];
     });
+}
+
+- (void)finishCANMonitorSnapshot {
+    if ([self.canMonitorTargetID isEqualToString:@"620"] && !self.can127FrameCaptured) {
+        self.can620Misses++;
+        [self obdLog:@"CAN 0x620 snapshot empty (%lu/4)%@", (unsigned long)self.can620Misses,
+         self.can620Misses >= 4 ? @"; pausing door monitor until reconnect" : @""];
+    }
+}
+
+- (void)expireDoorDataIfNeeded {
+    if (self.doorSensorsLive && (!self.lastCAN620At || [[NSDate date] timeIntervalSinceDate:self.lastCAN620At] >= 30.0)) {
+        self.doorSensorsLive = NO;
+        [self obdLog:@"CAN 0x620 stale; door status unavailable"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+    }
 }
 
 // Prius ZVW30 CAN-Bus poll sequence grouped by ECU header (7DF -> 7E2 -> 7C0) + live CAN 0x127 gear
 - (void)pollNextOBD {
+    [self expireDoorDataIfNeeded];
     if (!self.isConnected || !self.writeCharacteristic) return;
 
     NSTimeInterval elapsed = self.lastCmdSentAt ? [[NSDate date] timeIntervalSinceDate:self.lastCmdSentAt] : 0.0;
+    if (self.obdInitInProgress) {
+        if (self.waitingForResponse && elapsed >= 3.0) {
+            [self obdLog:@"OBD init timeout waiting for %@", [self obdInitializationCommands][self.obdInitCommandIndex]];
+            [self forceReconnect];
+        }
+        return;
+    }
+    if (!self.obdInitialized) return;
     if (self.waitingForResponse) {
         if (self.canMonitorPhase == 4) {
             if (!self.can127AbortSent && elapsed >= 0.35) {
@@ -989,9 +1071,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             if (elapsed < 0.90) return;
             NSString *monID = self.canMonitorTargetID ?: @"127";
             [self obdLog:@"CAN 0x%@ monitor timeout; restoring normal ELM state", monID];
-            if ([monID isEqualToString:@"620"] && !self.can127FrameCaptured) {
-                self.can620Misses++;
-            }
+            [self finishCANMonitorSnapshot];
             [self.rxBuffer setString:@""];
             self.waitingForResponse = NO;
             self.canMonitorPhase = 5;
@@ -1159,6 +1239,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     BOOL rl = (raw[5] & 0x04) != 0;
     BOOL trunk = (raw[5] & 0x02) != 0;
     self.can620Misses = 0;
+    self.lastCAN620At = [NSDate date];
 
     if (!self.lastLoggedCAN620Hex || ![self.lastLoggedCAN620Hex isEqualToString:line]) {
         self.lastLoggedCAN620Hex = line;
@@ -1183,14 +1264,15 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
+    if (peripheral != self.activePeripheral || characteristic != self.notifyCharacteristic || !self.isConnected) return;
     if (error || !characteristic.value) return;
     NSString *chunk = [[NSString alloc] initWithData:characteristic.value encoding:NSASCIIStringEncoding];
     if (!chunk.length) return;
 
     [self.rxBuffer appendString:chunk];
     if (self.rxBuffer.length > 2048) {
-        [self.rxBuffer setString:@""];
-        self.waitingForResponse = NO;
+        [self obdLog:@"OBD RX buffer overflow; reconnecting to restore command synchronization"];
+        [self forceReconnect];
         return;
     }
 
@@ -1217,6 +1299,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     while (promptRange.location != NSNotFound) {
         NSString *frame = [self.rxBuffer substringToIndex:promptRange.location];
         [self.rxBuffer deleteCharactersInRange:NSMakeRange(0, promptRange.location + 1)];
+        BOOL wasWaiting = self.waitingForResponse;
         self.waitingForResponse = NO;
         self.consecutiveTimeouts = 0;
 
@@ -1226,7 +1309,16 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             [self obdLog:@"RX[%lu]: %@", (unsigned long)self.rawLogCount, compact];
         }
 
+        if (self.obdInitInProgress) {
+            // Ignore duplicate/unsolicited prompts while reset settling is pending.
+            if (wasWaiting) [self handleOBDInitializationFrame:frame];
+            if (!self.isConnected) return;
+            promptRange = [self.rxBuffer rangeOfString:@">"];
+            continue;
+        }
+
         if (self.canMonitorPhase > 0) {
+            if (self.canMonitorPhase == 4) [self finishCANMonitorSnapshot];
             if (self.canMonitorPhase >= 7) {
                 self.canMonitorPhase = 0;
                 self.activeCANHeader = nil;
