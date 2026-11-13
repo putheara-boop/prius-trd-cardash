@@ -3678,9 +3678,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.movingSince = nil;
  }
 
- // 2. AUTO-RETURN TO HOME from auto-entered DRIVE MODE when stopped (<= 3.0 km/h) or GPS lost for 3.0 seconds
+ // 2. AUTO-RETURN TO HOME from auto-entered DRIVE MODE when stopped (<= 4.5 km/h) or GPS lost for 3.0 seconds
  if(self.driveMode && !self.manualDriveActive && !self.musicMode && !self.tripMode && !self.mapMode && !self.carplayMode){
-  BOOL isStopped = (!valid) || (kmh <= 3.0) || (fixAge > 4.0);
+  BOOL isStopped = (!valid) || (kmh <= 4.5) || (fixAge > 4.0);
+  BOOL clearlyMoving = (valid && fixAge <= 4.0 && kmh > 6.0);
   if(isStopped){
    if(!self.parkedSince) self.parkedSince = [NSDate date];
    NSTimeInterval parkedDuration = -[self.parkedSince timeIntervalSinceNow];
@@ -3690,11 +3691,18 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveMode = NO;
     self.manualDriveActive = NO;
     self.autoDriveSuppressed = NO;
+    self.focused = NO;
+    self.returnTap.enabled = NO;
+    self.song.numberOfLines = 1;
+    self.heading.hidden = NO;
+    self.owner.hidden = NO;
+    [self.settingsSheet dismiss];
     [self.driveCar stop];
     [self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];
     [self.view setNeedsLayout];
    }
-  }else{
+  }else if(clearlyMoving){
+   // Only cancel stop timer once clearly rolling again; ignore 4.6-6.0 km/h GPS stop jitter
    self.parkedSince = nil;
   }
  }else{
@@ -4565,7 +4573,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   case 68:[self carSettings];break;
  }
 }
--(void)homePage{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];[self teardownMapWebView];system("killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null &");self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)homePage{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];[self teardownMapWebView];system("(killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null) >/dev/null 2>&1 &");self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)openMusic{system("killall -9 YTNine 2>/dev/null; sync; purge 2>/dev/null &");if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
 -(void)openMap{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self ensureMapWebView];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];else [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];[self updateMapCar];}
 -(void)syncMapAppearance:(BOOL)initial{if(!self.mapWebView)return;NSString *mode=self.nightMode?@"night":@"traffic";NSString *js=initial?[NSString stringWithFormat:@"if(window.setMode && !window.__trdInitialThemeDone){window.__trdInitialThemeDone=true;window.setMode('%@');}",mode]:[NSString stringWithFormat:@"if(window.setMode){window.setMode('%@');}",mode];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}

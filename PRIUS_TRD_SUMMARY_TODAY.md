@@ -310,3 +310,15 @@ ldid -S /Applications/CarDash.app/CarDash
   2. `didDiscoverCharacteristicsForService` ยังเลือก write/notify characteristic ตัวท้ายที่พบโดยไม่ได้กรอง Service/Char UUID เฉพาะของ BLE UART (`FFE0`/`FFF0`/`6E40...`) — ถ้าเสียบจริงแล้วยังไม่อ่านค่าให้ล็อก UUID มาจูนตรงนี้ก่อน
   3. `pollNextOBD` ยังไม่ได้สลับ CAN Header (`ATSH 7E2`/`7E3`) ก่อนถาม PID เฉพาะของ Prius (`2101` HV SOC และ `2182` เกียร์/ถอยหลัง) และการ์ดตัวอย่างบางจุดบนหน้า Dashboard ยังเป็นข้อความแสดงผลรอผูกค่าจริงจาก `obdDataUpdated:`
 
+### 6. ปรับจูนเงื่อนไข Auto-Exit ของ Drive Mode & ปุ่ม EXIT TO HOME (13 Nov 2026)
+- **กัน GPS แกว่งตอนรถจอดไม่ให้รีเซ็ตตัวนับคืนหน้าหลัก (`cardash_main.m` `refreshSpeed` lines 3681–3710):**
+  - ปรับเงื่อนไข `isStopped` จากเดิมที่เข้มเกิน (`kmh <= 3.0`) เป็น `(!valid) || (kmh <= 4.5) || (fixAge > 4.0)` และเพิ่ม `BOOL clearlyMoving = (valid && fixAge <= 4.0 && kmh > 6.0);` เพื่อล้าง `parkedSince = nil` เฉพาะตอนรถออกตัวจริง (`> 6.0 km/h`) กันอาการจอดติดไฟแดงแล้ว GPS แกว่ง `4.6–6.0 km/h` มารีเซ็ตเวลานับ `3.0s` กลับ Dashboard
+  - คงพฤติกรรมเข้า Drive Mode ด้วยมือตอนจอด (`toggleDrive` line 3629, `curSpd < 15.0` -> `manualDriveActive = YES`) ไว้ให้เช็กหน้า Drive Mode ตอนจอดได้ไม่โดนดีดออกหลัง 3 วินาที โดยระบบจะปลด `manualDriveActive = NO` อัตโนมัติทันทีเมื่อขับถึง `>= 15.0 km/h` (และ Auto-Enter เข้า Drive Mode เมื่อวิ่ง `>= 20.0 km/h` ต่อเนื่อง `>= 1.0s`) แล้วจึงเข้าเงื่อนไข Auto-Return เมื่อจอดครบ `3.0s`
+- **รีเซ็ตสถานะ Home UI ให้สะอาดเมื่อ Auto-Return กลับ Dashboard (`cardash_main.m` lines 3688–3710):**
+  - เคลียร์ `focused = NO`, `returnTap.enabled = NO`, `song.numberOfLines = 1`, `heading.hidden = NO`, `owner.hidden = NO` และสั่ง `[self.settingsSheet dismiss]` พร้อม `[self.driveCar stop]`
+- **แก้ปุ่ม `🏠 EXIT TO HOME` ไม่ให้ค้างเธรดหลัก (`cardash_main.m` `homePage` line 4576):**
+  - ครอบคำสั่ง `system(...)` เป็น `"(killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null) >/dev/null 2>&1 &"` เพื่อให้ `killall` และ NAND `sync` ทำงานเบื้องหลังทั้งหมด (และ sync ไฟล์ `car_dash_live_main.m` ตรงกันแล้ว)
+- **ผลตรวจบน iPad Mini 1 (iOS 9.3.6) จริงหลังแก้:**
+  - `build_cardash.sh` ผ่าน `CARDASH_BUILD_OK` (0 errors, มี warning เดิม 1 จุดที่ line 4507)
+  - ทดสอบรันจริง: `HOME_COLD` (`driveMode = false`, `navigationVisible = 1`, `gpsLive = true`, `speed = 0`), `DRIVE_HELD` ตอนจอดในอาคาร 4 วินาที (`driveMode = true`, `navigationVisible = 0`, `driveCameraVisible = 1`, `driveTripVisible = 1`, `memoryWarnings = 0`), และ `BACK_HOME` (`driveMode = false`, `driveCameraVisible = 0`, `navigationVisible = 1`, `memoryWarnings = 0`, RSS `40,240 KB` หรือ ~`39.3 MB`); ส่วนจังหวะวิ่งจริง `>= 20 km/h` แล้วจอดนิ่ง `<= 4.5 km/h` เป็นการตรวจจากเงื่อนไขโค้ด (ทดสอบในอาคารที่ GPS speed `0`, รอลองขับจริงบนถนน)
+
