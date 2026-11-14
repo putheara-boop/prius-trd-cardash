@@ -40,7 +40,7 @@
   [pSet synchronize];
   [self carSettings];
  }]];
- BOOL mapConfirmGuard=[pSet objectForKey:@"TRDMapConfirmGuard"]?[pSet boolForKey:@"TRDMapConfirmGuard"]:YES;
+ BOOL mapConfirmGuard=[pSet objectForKey:@"TRDMapConfirmGuard"]?[pSet boolForKey:@"TRDMapConfirmGuard"]:NO;
  [m addAction:[TRDSettingAction actionWithTitle:mapConfirmGuard?@"🛡️ Map/CarPlay Ghost-Tap Guard: ON":@"🛡️ Map/CarPlay Ghost-Tap Guard: OFF" style:0 handler:^(TRDSettingAction *a){
   [pSet setBool:!mapConfirmGuard forKey:@"TRDMapConfirmGuard"];
   [pSet synchronize];

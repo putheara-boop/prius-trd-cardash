@@ -3927,7 +3927,7 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
  static NSDictionary *cachedCfg=nil;
  static NSTimeInterval lastConfigRead=0;
  NSTimeInterval nowSec=[[NSDate date]timeIntervalSinceReferenceDate];
- if(!cachedSrc||(nowSec-lastConfigRead>15)){
+ if(!cachedSrc||(nowSec-lastConfigRead>1.0)){
   cachedSrc=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];
   cachedCfg=[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath];
   lastConfigRead=nowSec;
@@ -3998,17 +3998,20 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 -(void)applyEQPreset:(NSString *)presetName{
  if(!presetName.length)return;
  NSString *clean=[presetName hasPrefix:@"TRD "]?[presetName substringFromIndex:4]:presetName;
- pid_t pid;
- const char *argv[]={"/usr/local/bin/trd-eqe",[clean UTF8String],NULL};
- posix_spawn(&pid,argv[0],NULL,NULL,(char *const *)argv,NULL);
- if(pid>0){int status=0;waitpid(pid,&status,0);}
- NSString *title=[NSString stringWithFormat:@"EQ • %@",[clean uppercaseString]];
+ NSString *title=[NSString stringWithFormat:@"🎚️ EQ • %@",[clean uppercaseString]];
  [self.driveEQ setTitle:title forState:UIControlStateNormal];
  [self.carplayEQBtn setTitle:title forState:UIControlStateNormal];
  NSString *srcPath=@"/var/mobile/codex-car/sound-source.plist";
  NSMutableDictionary *src=[NSMutableDictionary dictionaryWithContentsOfFile:srcPath]?:[NSMutableDictionary dictionary];
  src[@"preset"]=clean;
  [src writeToFile:srcPath atomically:YES];
+ dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+  pid_t pid=0;
+  const char *argv[]={"/usr/local/bin/trd-eqe",[clean UTF8String],NULL};
+  if(posix_spawn(&pid,argv[0],NULL,NULL,(char *const *)argv,NULL)==0 && pid>0){
+   int status=0;waitpid(pid,&status,0);
+  }
+ });
 }
 -(void)openDriveEQ{
  NSDictionary *src=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/sound-source.plist"];
@@ -5161,7 +5164,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  }
  if(authorized)return YES;
  NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];
- BOOL guard=[ud objectForKey:@"TRDMapConfirmGuard"]?[ud boolForKey:@"TRDMapConfirmGuard"]:YES;
+ BOOL guard=[ud objectForKey:@"TRDMapConfirmGuard"]?[ud boolForKey:@"TRDMapConfirmGuard"]:NO;
  if(guard){[self confirmOpenMapDestination:isCarPlay];return NO;}
  [self logNavigation:@"map confirmation disabled in settings"];
  return YES;
@@ -5172,12 +5175,12 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  NSUInteger generation=++self.mapConfirmationGeneration;
  NSTimeInterval deadline=[NSProcessInfo processInfo].systemUptime+5.0;
  NSString *title=isCarPlay?@"Open CarPlay & Maps?":@"Open Maps?";
- TRDSettingsMenu *confirm=[self settingsMenu:title message:@"Hold CONFIRM for 0.7 seconds. This closes after 5 seconds."];
+ TRDSettingsMenu *confirm=[self settingsMenu:title message:@"Hold CONFIRM for 0.5 seconds. This closes after 5 seconds."];
  confirm.requiresIntentionalTouch=YES;
- confirm.minimumActionHoldDuration=0.65;
- confirm.intentionalTouchArmedAt=[NSProcessInfo processInfo].systemUptime+0.5;
+ confirm.minimumActionHoldDuration=0.45;
+ confirm.intentionalTouchArmedAt=[NSProcessInfo processInfo].systemUptime+0.15;
  __weak Dashboard *weak=self;
- [confirm addAction:[TRDSettingAction actionWithTitle:@"Hold to CONFIRM (0.7 s)" style:0 handler:^(TRDSettingAction *a){
+ [confirm addAction:[TRDSettingAction actionWithTitle:@"Hold to CONFIRM (0.5 s)" style:0 handler:^(TRDSettingAction *a){
   Dashboard *v=weak;
   if(!v)return;
   if(generation!=v.mapConfirmationGeneration || [NSProcessInfo processInfo].systemUptime>=deadline){
