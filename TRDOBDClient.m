@@ -1075,11 +1075,11 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     if (!self.obdInitialized) return;
     if (self.waitingForResponse) {
         if (self.canMonitorPhase == 4) {
-            if (!self.can127AbortSent && elapsed >= 0.35) {
+            if (!self.can127AbortSent && elapsed >= 0.25) {
                 [self sendRawMonitorAbort];
                 return;
             }
-            if (elapsed < 0.90) return;
+            if (elapsed < 0.60) return;
             NSString *monID = self.canMonitorTargetID ?: @"127";
             [self obdLog:@"CAN 0x%@ monitor timeout; restoring normal ELM state", monID];
             [self finishCANMonitorSnapshot];
@@ -1134,38 +1134,32 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         }
     }
 
-    static NSArray *fastSchedule = nil;
-    static NSArray *fullSchedule = nil;
+    static NSArray *fastCoreSchedule = nil;
+    static NSArray *slowRotateSchedule = nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        fastSchedule = @[
+        fastCoreSchedule = @[
             @{@"hdr": @"7DF", @"cmd": @"010C"}, // Engine RPM
             @{@"hdr": @"7DF", @"cmd": @"010D"}, // Vehicle Speed
             @{@"hdr": @"7DF", @"cmd": @"0110"}, // MAF
             @{@"hdr": @"7E2", @"cmd": @"2101"}, // HV Battery SOC + Thermals
-            @{@"hdr": @"7E2", @"cmd": @"2162"}, // MG2 Temp & RPM
             @{@"hdr": @"7E2", @"cmd": @"218A"}, // HV Pack Current
-            @{@"hdr": @"7C0", @"cmd": @"2129"}, // Fuel Tank Level (0.5 L/bit)
         ];
-        fullSchedule = @[
-            @{@"hdr": @"7DF", @"cmd": @"010C"}, // Engine RPM
-            @{@"hdr": @"7DF", @"cmd": @"010D"}, // Vehicle Speed
-            @{@"hdr": @"7DF", @"cmd": @"0110"}, // MAF
+        slowRotateSchedule = @[
+            @{@"hdr": @"7C0", @"cmd": @"2129"}, // Fuel Tank Level (0.5 L/bit)
+            @{@"hdr": @"7E2", @"cmd": @"2162"}, // MG2 Temp & RPM
             @{@"hdr": @"7DF", @"cmd": @"0105"}, // Coolant Temp
             @{@"hdr": @"7DF", @"cmd": @"0142"}, // 12V Aux Voltage
-            @{@"hdr": @"7E2", @"cmd": @"2101"}, // HV Battery SOC + Thermals
-            @{@"hdr": @"7E2", @"cmd": @"2141"}, // Shift Sensor Voltages / Fallback
-            @{@"hdr": @"7E2", @"cmd": @"2161"}, // MG1 Temp & RPM
-            @{@"hdr": @"7E2", @"cmd": @"2162"}, // MG2 Temp & RPM
-            @{@"hdr": @"7E2", @"cmd": @"2171"}, // Inverter MG2 Temp
-            @{@"hdr": @"7E2", @"cmd": @"218A"}, // HV Pack Current
             @{@"hdr": @"7E2", @"cmd": @"2187"}, // HV Battery Temps
+            @{@"hdr": @"7E2", @"cmd": @"2161"}, // MG1 Temp & RPM
+            @{@"hdr": @"7C0", @"cmd": @"2129"}, // Fuel Tank Level (refresh more often)
+            @{@"hdr": @"7E2", @"cmd": @"2171"}, // Inverter MG2 Temp
             @{@"hdr": @"7E2", @"cmd": @"2181"}, // 14 Blocks + Total Pack Voltage
             @{@"hdr": @"7E2", @"cmd": @"2198"}, // Delta SOC
-            @{@"hdr": @"7C0", @"cmd": @"2129"}, // Fuel Tank Level (0.5 L/bit)
             @{@"hdr": @"7C0", @"cmd": @"2112"}, // Meter Cluster Indicators
             @{@"hdr": @"7C4", @"cmd": @"2121"}, // A/C Cabin Room Temp Sensor
             @{@"hdr": @"7C4", @"cmd": @"2122"}, // Exterior Ambient Temp Sensor
+            @{@"hdr": @"7E2", @"cmd": @"2141"}, // Shift Sensor Voltages / Fallback
         ];
     });
 
@@ -1174,13 +1168,18 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             self.pollIndex = 0;
             self.fastCycleCount++;
             self.activePollSchedule = nil;
-            self.canMonitorTargetID = (self.fastCycleCount % 5 == 0 && self.can620Misses < 4) ? @"620" : @"127";
+            BOOL anyDoorOpen = self.doorSensorsLive && (self.doorFrontLeftOpen || self.doorFrontRightOpen || self.doorRearLeftOpen || self.doorRearRightOpen || self.trunkOpen);
+            NSInteger doorStride = (self.currentSpeedKmh < 5.0 || anyDoorOpen) ? 4 : 8;
+            // Prioritize CAN 0x127 reverse/gear detection (~1s cycle); sample 0x620 doors cleanly without stalling 127.
+            self.canMonitorTargetID = (self.fastCycleCount % doorStride == 0 && self.can620Misses < 4) ? @"620" : @"127";
             self.canMonitorPhase = 1;
             [self sendCommand:@"AT CAF0"];
             return;
         }
         self.pollIndex = 0;
-        self.activePollSchedule = (self.fastCycleCount % 5 == 0) ? fullSchedule : fastSchedule;
+        NSMutableArray *cycle = [fastCoreSchedule mutableCopy];
+        [cycle addObject:slowRotateSchedule[self.fastCycleCount % slowRotateSchedule.count]];
+        self.activePollSchedule = cycle;
     }
 
     NSDictionary *step = self.activePollSchedule[self.pollIndex];
@@ -1254,9 +1253,9 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     uint8_t raw[8];
     if (![self parseCANFrameLine:line expectedPrefix:@"620" outBytes:raw]) return NO;
 
-    // Toyota ZVW30 BO_ 1568 (0x620) SEATS_DOORS: b[5] bits 5..2 = FL/FR/RR/RL
-    BOOL fl = (raw[5] & 0x20) != 0;
-    BOOL fr = (raw[5] & 0x10) != 0;
+    // Toyota ZVW30 BO_ 1568 (0x620) SEATS_DOORS: on RHD Thai Prius, 0x20 = Driver (FR), 0x10 = Passenger (FL)
+    BOOL fr = (raw[5] & 0x20) != 0;
+    BOOL fl = (raw[5] & 0x10) != 0;
     BOOL rr = (raw[5] & 0x08) != 0;
     BOOL rl = (raw[5] & 0x04) != 0;
     BOOL trunk = (raw[5] & 0x02) != 0;
@@ -1556,8 +1555,8 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             self.lastShiftHex6141 = hex;
             [self obdLog:@"7E2_6141 -> %@", hex];
         }
-        BOOL can127Fresh = (self.lastCAN127At && [[NSDate date] timeIntervalSinceDate:self.lastCAN127At] < 15.0);
-        if (!can127Fresh) {
+        // Only fall back to 7E2 2141 if CAN 0x127 has never been seen and vehicle is stationary
+        if (!self.lastCAN127At && self.currentSpeedKmh < 2.0) {
             BOOL inPark = ([b[7] unsignedIntValue] >= 0x20);
             self.parkSwitchEngaged = inPark;
             if (inPark) {

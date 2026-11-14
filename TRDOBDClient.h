@@ -61,8 +61,8 @@ extern NSString * const TRDOBDGearChangedNotification;
 // Body & Door Sensors (Tesla/EV Style)
 @property (nonatomic, copy, readonly) NSString *currentGear;          // @"P", @"R", @"N", @"D", @"B"
 @property (nonatomic, assign, readonly) BOOL isReverseGear;           // YES when gear == @"R"
-@property (nonatomic, assign, readonly) BOOL doorFrontLeftOpen;      // Driver Door
-@property (nonatomic, assign, readonly) BOOL doorFrontRightOpen;     // Passenger Door
+@property (nonatomic, assign, readonly) BOOL doorFrontLeftOpen;      // Front Left Door (Passenger on RHD)
+@property (nonatomic, assign, readonly) BOOL doorFrontRightOpen;     // Front Right Door (Driver on RHD)
 @property (nonatomic, assign, readonly) BOOL doorRearLeftOpen;       // Rear Left Door
 @property (nonatomic, assign, readonly) BOOL doorRearRightOpen;      // Rear Right Door
 @property (nonatomic, assign, readonly) BOOL trunkOpen;              // Hatch / Trunk
