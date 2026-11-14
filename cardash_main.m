@@ -1527,6 +1527,14 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property AVPlayer *radioPlayer;
 @property NSUInteger radioGeneration;
 @property NSString *currentRadioStation;
+@property (nonatomic, copy) NSArray *offlineTracks;
+@property (nonatomic, assign) NSInteger offlineTrackIndex;
+@property (nonatomic, assign) BOOL offlinePlaybackActive;
+@property (nonatomic, copy) NSString *currentOfflineArtist;
+-(void)playOfflineTrackAtIndex:(NSInteger)index;
+-(void)nextOfflineTrack;
+-(void)prevOfflineTrack;
+-(void)offlineTrackDidFinish:(NSNotification *)note;
 -(void)showTripSummary;
 -(void)showTripSummaryWithTab:(NSInteger)tabIndex;
 -(void)checkLowFuelWarning;
@@ -4094,6 +4102,22 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 }
 -(void)refreshNowPlaying{
  if(self.radioPlayer){
+  if(self.offlinePlaybackActive){
+   self.sourceBadge.text=@"OFFLINE";
+   AVPlayerItemStatus st=self.radioPlayer.currentItem.status;
+   NSString *artistLine=self.currentOfflineArtist.length?self.currentOfflineArtist:@"OFFLINE MUSIC";
+   if(st==AVPlayerItemStatusFailed){
+    self.song.text=[NSString stringWithFormat:@"[ERROR] %@",self.currentRadioStation?:@"Offline Track"];
+    self.artist.text=@"Cannot open local audio file";
+   }else if(self.radioPlayer.rate>0||st==AVPlayerItemStatusUnknown){
+    self.song.text=self.currentRadioStation?:@"Offline Music";
+    self.artist.text=artistLine;
+   }else{
+    self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:@"Offline Music"];
+    self.artist.text=@"Tap Play button to resume";
+   }
+   return;
+  }
   self.sourceBadge.text=@"RADIO";
   AVPlayerItemStatus st=self.radioPlayer.currentItem.status;
   if(st==AVPlayerItemStatusReadyToPlay){
@@ -4505,6 +4529,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 }
 -(void)playRadio:(NSString *)url name:(NSString *)name{
  NSUInteger gen=++self.radioGeneration;
+ self.offlinePlaybackActive=NO;
+ [[NSNotificationCenter defaultCenter]removeObserver:self name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
  if(self.radioPlayer){
   [self.radioPlayer pause];
   [self.radioPlayer replaceCurrentItemWithPlayerItem:nil];
@@ -6114,7 +6140,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  }
 }
 -(void)homePage{[self cancelNavigationTouch:nil forEvent:nil];self.mapConfirmationGeneration++;self.mapURLRequestGeneration++;self.mapNavigationAuthorized=NO;self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.18;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];self.mapContainer.hidden=YES;self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
--(void)openMusic{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
+-(void)openMusic{self.offlinePlaybackActive=NO;if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
 -(void)executeOrQueueMapJS:(NSString *)js{
   if(!js.length) return;
   if(self.mapWebView && self.mapWebView.request && !self.mapWebView.loading){
@@ -6332,44 +6358,138 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  [self presentSettingsMenu:menu];
 }
 -(void)openSearchMusic{[self browseSource:@"com.legacymusic.app" target:@"search"];}
+-(NSString *)resolveOfflineAudioPathForVideoId:(NSString *)vId{
+ if(!vId.length)return nil;
+ NSFileManager *fm=[NSFileManager defaultManager];
+ NSArray *exts=@[@"mp4",@"m4a",@"mp3",@"aac"];
+ for(NSString *ext in exts){
+  NSString *p=[NSString stringWithFormat:@"/var/mobile/Documents/LegacyMusic/audio/%@.%@",vId,ext];
+  if([fm fileExistsAtPath:p])return p;
+ }
+ return nil;
+}
+-(void)offlineTrackDidFinish:(NSNotification *)note{
+ if(!self.offlinePlaybackActive||!self.radioPlayer)return;
+ if(note.object!=self.radioPlayer.currentItem)return;
+ dispatch_async(dispatch_get_main_queue(),^{
+  [self nextOfflineTrack];
+ });
+}
+-(void)nextOfflineTrack{
+ if(!self.offlineTracks.count)return;
+ NSInteger n=(NSInteger)self.offlineTracks.count;
+ for(NSInteger step=1;step<=n;step++){
+  NSInteger cand=(self.offlineTrackIndex+step)%n;
+  NSDictionary *t=self.offlineTracks[cand];
+  if([self resolveOfflineAudioPathForVideoId:t[@"videoId"]]){
+   [self playOfflineTrackAtIndex:cand];
+   return;
+  }
+ }
+}
+-(void)prevOfflineTrack{
+ if(!self.offlineTracks.count)return;
+ NSInteger n=(NSInteger)self.offlineTracks.count;
+ for(NSInteger step=1;step<=n;step++){
+  NSInteger cand=(self.offlineTrackIndex-step+n)%n;
+  NSDictionary *t=self.offlineTracks[cand];
+  if([self resolveOfflineAudioPathForVideoId:t[@"videoId"]]){
+   [self playOfflineTrackAtIndex:cand];
+   return;
+  }
+ }
+}
+-(void)playOfflineTrackAtIndex:(NSInteger)index{
+ if(!self.offlineTracks.count||index<0||index>=(NSInteger)self.offlineTracks.count)return;
+ NSDictionary *track=self.offlineTracks[index];
+ NSString *title=track[@"title"]?:@"Untitled";
+ NSString *artist=track[@"artist"]?:@"Offline Music";
+ NSString *vId=track[@"videoId"]?:@"";
+ NSString *audioPath=[self resolveOfflineAudioPathForVideoId:vId];
+ if(!audioPath){
+  // Only fall back to audioNINJA search if the audio file was never downloaded locally
+  [self browseSource:@"com.legacymusic.app" target:@"search"];
+  return;
+ }
+
+ ++self.radioGeneration;
+ [[NSNotificationCenter defaultCenter]removeObserver:self name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
+ if(self.radioPlayer){
+  [self.radioPlayer pause];
+  [self.radioPlayer replaceCurrentItemWithPlayerItem:nil];
+  self.radioPlayer=nil;
+ }
+ notify_post("com.codex.trd.youtube.pause");
+ TRDSendMediaRemoteExternal(1,^{ [self send:@"libactivator.ipod.pause-playback"]; });
+
+ AVAudioSession *session=[AVAudioSession sharedInstance];
+ [session setCategory:AVAudioSessionCategoryPlayback error:nil];
+ [session setActive:YES error:nil];
+
+ self.offlinePlaybackActive=YES;
+ self.offlineTrackIndex=index;
+ self.currentRadioStation=title;
+ self.currentOfflineArtist=artist.length?artist:@"Offline Music";
+
+ AVPlayerItem *item=[AVPlayerItem playerItemWithURL:[NSURL fileURLWithPath:audioPath]];
+ [[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(offlineTrackDidFinish:) name:AVPlayerItemDidPlayToEndTimeNotification object:item];
+ AVPlayer *player=[AVPlayer playerWithPlayerItem:item];
+ self.radioPlayer=player;
+ [self.radioPlayer play];
+
+ // Clear any stale pending download-play-request so audioNINJA never hijacks on next open
+ [[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/download-play-request.plist" error:nil];
+
+ self.song.text=title;
+ self.artist.text=self.currentOfflineArtist;
+ self.sourceBadge.text=@"OFFLINE";
+ [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo=@{
+  MPMediaItemPropertyTitle:title,
+  MPMediaItemPropertyArtist:self.currentOfflineArtist,
+  MPNowPlayingInfoPropertyPlaybackRate:@(1.0)
+ };
+ [self refreshTransportState];
+ [self refreshTrackProgress];
+ [self refreshMini];
+}
 -(void)openOfflineMusicMenu{
  NSString *libPath=@"/var/mobile/Documents/LegacyMusic/library.plist";
- NSArray *tracks=[NSArray arrayWithContentsOfFile:libPath];
- if(!tracks||tracks.count==0){
+ NSArray *rawTracks=[NSArray arrayWithContentsOfFile:libPath];
+ NSMutableArray *playable=[NSMutableArray array];
+ for(NSDictionary *t in rawTracks){
+  if([t isKindOfClass:[NSDictionary class]]&&[self resolveOfflineAudioPathForVideoId:t[@"videoId"]]){
+   [playable addObject:t];
+  }
+ }
+ if(playable.count==0){
   TRDSettingsMenu *menu=[self settingsMenu:@"💾 OFFLINE MUSIC (0 เพลง)" message:@"No downloaded songs found in audioNINJA.\nUse audioNINJA to download songs."];
   [menu addAction:[TRDSettingAction actionWithTitle:@"🎵 Open audioNINJA" style:0 handler:^(TRDSettingAction *a){[self browseSource:@"com.legacymusic.app"];}]];
   [self presentSettingsMenu:menu];
   return;
  }
- NSString *msg=[NSString stringWithFormat:@"Choose a song to play (%lu เพลงที่ดาวน์โหลดไว้)",(unsigned long)tracks.count];
+ self.offlineTracks=[playable copy];
+ NSString *msg=[NSString stringWithFormat:@"แตะเลือกเพลงเพื่อเล่นใน CarDash ทันที (%lu เพลงออฟไลน์)",(unsigned long)self.offlineTracks.count];
  TRDSettingsMenu *menu=[self settingsMenu:@"💾 OFFLINE MUSIC" message:msg];
- for(NSDictionary *track in tracks){
+ NSInteger idx=0;
+ for(NSDictionary *track in self.offlineTracks){
   NSString *title=track[@"title"]?:@"Untitled";
   NSString *artist=track[@"artist"]?:@"";
-  NSString *vId=track[@"videoId"]?:@"";
-  NSString *btnTitle=artist.length?[NSString stringWithFormat:@"▶️ %@ — %@",title,artist]:[NSString stringWithFormat:@"▶️ %@",title];
+  BOOL cur=(self.offlinePlaybackActive&&self.radioPlayer&&idx==self.offlineTrackIndex);
+  NSString *prefix=cur?@"🔊 ":@"▶️ ";
+  NSString *btnTitle=artist.length?[NSString stringWithFormat:@"%@%@ — %@",prefix,title,artist]:[NSString stringWithFormat:@"%@%@",prefix,title];
+  NSInteger chosen=idx;
   [menu addAction:[TRDSettingAction actionWithTitle:btnTitle style:0 handler:^(TRDSettingAction *a){
-   NSString *audioPath=[NSString stringWithFormat:@"/var/mobile/Documents/LegacyMusic/audio/%@.mp4",vId];
-   if(![[NSFileManager defaultManager]fileExistsAtPath:audioPath]){
-    audioPath=[NSString stringWithFormat:@"/var/mobile/Documents/LegacyMusic/audio/%@.m4a",vId];
-   }
-   if([[NSFileManager defaultManager]fileExistsAtPath:audioPath]&&![[NSFileManager defaultManager]fileExistsAtPath:@"/Applications/LegacyMusic.app/LegacyMusic"]){
-    if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
-    [[AVAudioSession sharedInstance]setCategory:AVAudioSessionCategoryPlayback error:nil];
-    [[AVAudioSession sharedInstance]setActive:YES error:nil];
-    self.radioPlayer=[AVPlayer playerWithURL:[NSURL fileURLWithPath:audioPath]];
-    [self.radioPlayer play];
-    self.song.text=title;
-    self.artist.text=artist.length?artist:@"OFFLINE MUSIC";
-    self.sourceBadge.text=@"OFFLINE";
-    return;
-   }
-   NSDictionary *req=@{@"id":vId,@"token":[[NSUUID UUID]UUIDString],@"expires":[NSDate dateWithTimeIntervalSinceNow:60.0],@"pending":@YES};
-   [req writeToFile:@"/var/mobile/codex-car/download-play-request.plist" atomically:YES];
-   [self browseSource:@"com.legacymusic.app"];
+   [self playOfflineTrackAtIndex:chosen];
+  }]];
+  idx++;
+ }
+ if(self.offlinePlaybackActive&&self.radioPlayer){
+  [menu addAction:[TRDSettingAction actionWithTitle:@"⏹️ หยุดเล่นเพลงออฟไลน์" style:0 handler:^(TRDSettingAction *a){
+   self.offlinePlaybackActive=NO;
+   [self playRadio:nil name:nil];
   }]];
  }
- [menu addAction:[TRDSettingAction actionWithTitle:@"🔍 Search / Download More..." style:0 handler:^(TRDSettingAction *a){[self openSearchMusic];}]];
+ [menu addAction:[TRDSettingAction actionWithTitle:@"🔍 Search / Download More in audioNINJA..." style:0 handler:^(TRDSettingAction *a){[self openSearchMusic];}]];
  [self presentSettingsMenu:menu];
 }
 // QUICK VIEWS uses this legacy selector only for its explicit Full Clock action.
@@ -6382,6 +6502,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
 }
 -(void)card:(UIButton *)button forEvent:(UIEvent *)event{
  if(![self acceptNavigationTouch:button forEvent:event])return;
+ self.offlinePlaybackActive=NO;
  if(self.radioPlayer){[self.radioPlayer pause];[self.radioPlayer replaceCurrentItemWithPlayerItem:nil];self.radioPlayer=nil;}
  TRDSendMediaRemoteExternal(1,^{ [self send:@"libactivator.ipod.pause-playback"]; });
  if(button.tag==1){[self openYouTubeSource];return;}
@@ -6401,7 +6522,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  NSString *lb=lastMedia[@"bundle"];
  return [lb isEqualToString:@"com.himais0giiiin.ytnine"]&&![source[@"bundle"]isEqualToString:@"com.legacymusic.app"]&&![source[@"bundle"]isEqualToString:@"com.codex.poddash"];
 }
--(void)media:(UIButton *)button{if(self.radioPlayer){if(button.tag==21){if(self.radioPlayer.rate>0){[self.radioPlayer pause];self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:@"Radio"];self.artist.text=@"Tap Play button to resume";}else{notify_post("com.codex.trd.youtube.pause");TRDSendMediaRemoteExternal(1,^{ [self send:@"libactivator.ipod.pause-playback"]; });[self.radioPlayer play];self.song.text=self.currentRadioStation?:@"Radio";self.artist.text=@"Live Radio Broadcast · Playing Live";}[self refreshTransportState];[self refreshMini];return;}else if(button.tag==20||button.tag==22){[self openRadioStationsMenu];return;}}NSArray *ids=@[@"libactivator.ipod.previous-track",@"libactivator.ipod.toggle-playback",@"libactivator.ipod.next-track",@"com.r333d.eqe.app"];if(button.tag>=20&&button.tag<=23){BOOL youtube=[self isYouTubeMediaActive];if(button.tag==22){if(youtube)notify_post("com.codex.trd.youtube.next");else TRDSendMediaRemoteExternal(4,^{ [self send:ids[2]]; });}else if(button.tag==20){if(youtube)notify_post("com.codex.trd.youtube.previous");else TRDSendMediaRemoteExternal(5,^{ [self send:ids[0]]; });}else if(button.tag==21){if(youtube)notify_post("com.codex.trd.youtube.toggle");else TRDSendMediaRemoteExternal(2,^{ [self send:ids[1]]; });}else{[self send:ids[button.tag-20]];}[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.15];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:1.2];}}
+-(void)media:(UIButton *)button{if(self.radioPlayer){if(button.tag==21){if(self.radioPlayer.rate>0){[self.radioPlayer pause];self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:(self.offlinePlaybackActive?@"Offline":@"Radio")];self.artist.text=@"Tap Play button to resume";}else{notify_post("com.codex.trd.youtube.pause");TRDSendMediaRemoteExternal(1,^{ [self send:@"libactivator.ipod.pause-playback"]; });[self.radioPlayer play];self.song.text=self.currentRadioStation?:(self.offlinePlaybackActive?@"Offline":@"Radio");self.artist.text=self.offlinePlaybackActive?(self.currentOfflineArtist?:@"OFFLINE MUSIC"):@"Live Radio Broadcast · Playing Live";}[self refreshTransportState];[self refreshMini];return;}else if(button.tag==20||button.tag==22){if(self.offlinePlaybackActive){if(button.tag==22)[self nextOfflineTrack];else [self prevOfflineTrack];return;}[self openRadioStationsMenu];return;}}NSArray *ids=@[@"libactivator.ipod.previous-track",@"libactivator.ipod.toggle-playback",@"libactivator.ipod.next-track",@"com.r333d.eqe.app"];if(button.tag>=20&&button.tag<=23){BOOL youtube=[self isYouTubeMediaActive];if(button.tag==22){if(youtube)notify_post("com.codex.trd.youtube.next");else TRDSendMediaRemoteExternal(4,^{ [self send:ids[2]]; });}else if(button.tag==20){if(youtube)notify_post("com.codex.trd.youtube.previous");else TRDSendMediaRemoteExternal(5,^{ [self send:ids[0]]; });}else if(button.tag==21){if(youtube)notify_post("com.codex.trd.youtube.toggle");else TRDSendMediaRemoteExternal(2,^{ [self send:ids[1]]; });}else{[self send:ids[button.tag-20]];}[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.15];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:1.2];}}
 -(void)leaveClock{self.focused=NO;self.mapMode=NO;self.returnTap.enabled=NO;[self.view setNeedsLayout];}
 -(void)testSettingsAction:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<self.settingsSheet.buttons.count)[(UIButton *)self.settingsSheet.buttons[i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
 -(void)testNav:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<self.navButtons.count)[(UIButton *)self.navButtons[i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
@@ -6411,7 +6532,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
 -(void)capture{UIView *surface=self.view;UIGraphicsBeginImageContextWithOptions(surface.bounds.size,YES,1);[surface drawViewHierarchyInRect:surface.bounds afterScreenUpdates:YES];NSData *png=UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext());UIGraphicsEndImageContext();[png writeToFile:@"/var/mobile/h109-build/cardash.png" atomically:YES];NSDictionary *report=@{@"driveTripText":self.driveTripButton.currentTitle?:@"",@"driveTripVisible":@(!self.driveTripButton.hidden),@"driveTripFrame":NSStringFromCGRect(self.driveTripButton.frame),@"driveCameraVisible":@(!self.driveCameraButton.hidden),@"driveCameraFrame":NSStringFromCGRect(self.driveCameraButton.frame),@"driveCameraActions":[self.driveCameraButton actionsForTarget:self forControlEvent:UIControlEventTouchUpInside]?:@[],@"audioOutput":self.audioOutput?:@"UNKNOWN",@"audioDevice":self.audioDevice?:@"",@"outputVolume":@(self.outputVolume),@"songVisible":@(!self.song.hidden),@"mapMode":@(self.mapMode),@"tripMode":@(self.tripMode),@"tripRunning":@(self.trip.running),@"tripSummary":[self.trip summary],@"tripState":self.tripView.state.text?:@"",@"miniVisible":@(!self.miniPlayer.hidden),@"miniTitle":self.miniPlayer.title.text?:@"",@"miniArtist":self.miniPlayer.artist.text?:@"",@"miniIcon":@(self.miniPlayer.icon.kind),@"musicHoldCount":@(((UIView *)self.navButtons[1]).gestureRecognizers.count),@"calmDrive":@(self.calmDrive),@"carLink":self.statusCar?:@"UNKNOWN",@"wifiSSID":self.statusWiFi?:@"NO NETWORK",@"powerState":self.statusPower?:@"UNKNOWN",@"gpsLive":@(self.gpsLive),@"navLabels":[self.navButtons valueForKey:@"accessibilityLabel"],@"youtubeSource":@(self.youtubeSource),@"commandsPending":@(self.commandsPending),@"metadataPending":@(self.metadataPending),@"artworkDecodes":@(self.artworkDecodes),@"artworkPixels":@(self.artwork.image?MAX(CGImageGetWidth(self.artwork.image.CGImage),CGImageGetHeight(self.artwork.image.CGImage)):0),@"memoryWarnings":@(self.memoryWarnings),@"gpsAccuracy":@(self.gps.desiredAccuracy),@"timerActive":@(self.timer!=nil),@"meterActive":@(self.audioBars.refreshTimer!=nil),@"settingsTitle":self.settingsSheet.title?:@"",@"settingsActions":[self.settingsSheet.actions valueForKey:@"title"]?:@[],@"playbackKnown":@(self.hasPlaybackRate),@"transportIcon":@(((DashIcon *)[[self.controls viewWithTag:21]viewWithTag:105]).kind),@"settingsVisible":@(self.settingsSheet!=nil),@"theme":@(TRDTheme),@"displayMode":@(self.displayMode),@"welcomeVisible":@(self.welcome!=nil),@"mediaRate":@(self.mediaRate),@"bounds":NSStringFromCGRect(self.view.bounds),@"navFrame":NSStringFromCGRect(self.navigation.frame),@"musicMode":@(self.musicMode),@"navigationVisible":@(!self.navigation.hidden),@"trackTime":self.trackTime.text?:@"",@"trackProgress":@(self.trackProgress.progress),@"wheelAnimating":@(self.driveCar.wheelTimer!=nil),@"wheelAngle":@(self.driveCar.angle),@"autoDriveSuppressed":@(self.autoDriveSuppressed),@"driveMode":@(self.driveMode),@"audioState":self.audioBars.state?:@"",@"audioRMS":@(self.audioBars.rms),@"carStatus":self.carStatus.text?:@"",@"hasArtwork":@(self.artwork.image!=nil),@"artist":self.artist.text?:@"",@"nightMode":@(self.nightMode),@"brightness":@([UIScreen mainScreen].brightness),@"speed":self.speed.text?:@"",@"gps":self.gpsStatus.text?:@"",@"clock":self.clock.text?:@"",@"date":self.date.text?:@"",@"network":self.network.text?:@"",@"song":self.song.text?:@"",@"focused":@(self.focused),@"clockHudVisible":@(!self.clockHud.hidden),@"clockHudSpeed":((UILabel *)[self.clockHud viewWithTag:402]).text?:@"",@"clockHudGps":((UILabel *)[self.clockHud viewWithTag:405]).text?:@"",@"clockHudTrip":((UILabel *)[self.clockHud viewWithTag:407]).text?:@"",@"sourceBadge":self.sourceBadge.text?:@"",@"driveEQTitle":self.driveEQ.currentTitle?:@"",@"lastAction":self.lastAction?:@""};[report writeToFile:@"/var/mobile/h109-build/cardash-state.plist" atomically:YES];}
 -(BOOL)canBecomeFirstResponder{return YES;}
 -(MPRemoteCommandHandlerStatus)carRemoteNext:(id)event{
- if(self.radioPlayer)return MPRemoteCommandHandlerStatusSuccess;
+ if(self.radioPlayer){if(self.offlinePlaybackActive)[self nextOfflineTrack];return MPRemoteCommandHandlerStatusSuccess;}
  if([self isYouTubeMediaActive]){
   static NSTimeInterval lastNext=0;
   NSTimeInterval now=TRDMonotonic();
@@ -6420,7 +6541,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(MPRemoteCommandHandlerStatus)carRemotePrev:(id)event{
- if(self.radioPlayer)return MPRemoteCommandHandlerStatusSuccess;
+ if(self.radioPlayer){if(self.offlinePlaybackActive)[self prevOfflineTrack];return MPRemoteCommandHandlerStatusSuccess;}
  if([self isYouTubeMediaActive]){
   static NSTimeInterval lastPrev=0;
   NSTimeInterval now=TRDMonotonic();
@@ -6441,8 +6562,8 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  if(self.radioPlayer){
   if(self.radioPlayer.rate<=0){
    [self.radioPlayer play];
-   self.song.text=self.currentRadioStation?:@"Radio";
-   self.artist.text=@"Live Radio Broadcast · Playing Live";
+   self.song.text=self.currentRadioStation?:(self.offlinePlaybackActive?@"Offline":@"Radio");
+   self.artist.text=self.offlinePlaybackActive?(self.currentOfflineArtist?:@"OFFLINE MUSIC"):@"Live Radio Broadcast · Playing Live";
    [self refreshTransportState];
    [self refreshMini];
   }
@@ -6459,7 +6580,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  if(self.radioPlayer){
   if(self.radioPlayer.rate>0){
    [self.radioPlayer pause];
-   self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:@"Radio"];
+   self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:(self.offlinePlaybackActive?@"Offline":@"Radio")];
    self.artist.text=@"Tap Play button to resume";
    [self refreshTransportState];
    [self refreshMini];
