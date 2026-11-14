@@ -19,6 +19,12 @@
 #include <notify.h>
 #include <mach/mach_time.h>
 extern char **environ;
+static inline void trd_run_bg(const char *cmd){
+ if(!cmd)return;
+ pid_t pid=0;
+ char *argv[]={(char *)"/bin/sh",(char *)"-c",(char *)cmd,NULL};
+ posix_spawn(&pid,"/bin/sh",NULL,NULL,argv,environ);
+}
 #import "CarExtras.h"
 #import "TRDSettingsMenu.h"
 #import "TRDTrip.h"
@@ -4268,7 +4274,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [ud synchronize];
   [[NSURLCache sharedURLCache] removeAllCachedResponses];
   [self releaseArtwork];
-  system("killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null &");
+  trd_run_bg("killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null");
   notify_post("com.apple.SpringBoard.MemoryWarning");
   [self showTripSummary];
  }else if(state==UIDeviceBatteryStateCharging||state==UIDeviceBatteryStateFull){
@@ -4599,7 +4605,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  [ud setBool:YES forKey:@"TRDSkipNextLaunchWelcome"];
  [ud setDouble:[[NSDate date] timeIntervalSince1970] forKey:@"TRDLastActiveTimestamp"];
  [ud synchronize];
- system("sync; purge 2>/dev/null &");
+ trd_run_bg("sync; purge 2>/dev/null");
 }
 -(void)openYouTubeSource{
  [self prepareForExternalAppLaunch];
@@ -4776,8 +4782,8 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   case 68:[self carSettings];break;
  }
 }
--(void)homePage{[self cancelNavigationTouch:nil forEvent:nil];self.mapConfirmationGeneration++;self.mapURLRequestGeneration++;self.mapNavigationAuthorized=NO;self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.55;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];[self teardownMapWebView];system("(killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null) >/dev/null 2>&1 &");self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
--(void)openMusic{system("killall -9 YTNine 2>/dev/null; sync; purge 2>/dev/null &");if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
+-(void)homePage{[self cancelNavigationTouch:nil forEvent:nil];self.mapConfirmationGeneration++;self.mapURLRequestGeneration++;self.mapNavigationAuthorized=NO;self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.55;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];[self teardownMapWebView];trd_run_bg("killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null");self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)openMusic{trd_run_bg("killall -9 YTNine 2>/dev/null; sync; purge 2>/dev/null");if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
 -(void)openMap{if(![self authorizeMapNavigation:NO])return;[self logNavigation:@"opened Maps"];self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.55;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self ensureMapWebView];[self.view setNeedsLayout];if(!self.mapWebView.request)[self loadMapHTML];else [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(); if(window.recenter)window.recenter(); }"];[self updateMapCar];}
 -(void)syncMapAppearance:(BOOL)initial{if(!self.mapWebView)return;NSString *mode=self.nightMode?@"night":@"traffic";NSString *js=initial?[NSString stringWithFormat:@"if(window.setMode && !window.__trdInitialThemeDone){window.__trdInitialThemeDone=true;window.setMode('%@');}",mode]:[NSString stringWithFormat:@"if(window.setMode){window.setMode('%@');}",mode];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
 -(void)webViewDidFinishLoad:(UIWebView *)webView{if(webView==self.mapWebView)[self syncMapAppearance:YES];}
