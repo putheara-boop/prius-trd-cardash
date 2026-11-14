@@ -1243,6 +1243,23 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 }
 @end
 
+static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
+ static Boolean (*mrSend)(int,id);
+ static void (*mrOwner)(dispatch_queue_t,void (^)(int));
+ static dispatch_once_t once;
+ dispatch_once(&once,^{
+  mrSend=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+  mrOwner=dlsym(RTLD_DEFAULT,"MRMediaRemoteGetNowPlayingApplicationPID");
+ });
+ if(!mrSend){if(fallback)fallback();return;}
+ if(!mrOwner){if(!mrSend(cmd,nil)&&fallback)fallback();return;}
+ pid_t selfPid=getpid();
+ mrOwner(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^(int pid){
+  if(pid<=0||pid==selfPid)return;
+  if(!mrSend(cmd,nil)&&fallback)dispatch_async(dispatch_get_main_queue(),fallback);
+ });
+}
+
 @interface Dashboard:UIViewController<CLLocationManagerDelegate,UIGestureRecognizerDelegate,UIWebViewDelegate>
 @property (nonatomic, strong) TRDCarPlayMediaWidget *carplayMediaWidget;
 @property (nonatomic, strong) TRDCarPlayTelemetryWidget *carplayTelemetryWidget;
@@ -4290,8 +4307,7 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 
   // 1. Explicitly pause any background music / YouTube players so audio never overlaps
   notify_post("com.codex.trd.youtube.pause");
-  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
-  if(!pauseCmd||!pauseCmd(1,nil))dispatch_async(dispatch_get_main_queue(),^{[weak send:@"libactivator.ipod.pause-playback"];});
+  TRDSendMediaRemoteExternal(1,^{ [weak send:@"libactivator.ipod.pause-playback"]; });
 
   // 2. Configure exclusive AVAudioSession (NO MixWithOthers!) off the main thread
   AVAudioSession *session=[AVAudioSession sharedInstance];
@@ -5359,9 +5375,8 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 }
 -(void)card:(UIButton *)button forEvent:(UIEvent *)event{
  if(![self acceptNavigationTouch:button forEvent:event])return;
- if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
- Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
- if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
+ if(self.radioPlayer){[self.radioPlayer pause];[self.radioPlayer replaceCurrentItemWithPlayerItem:nil];self.radioPlayer=nil;}
+ TRDSendMediaRemoteExternal(1,^{ [self send:@"libactivator.ipod.pause-playback"]; });
  if(button.tag==1){[self openYouTubeSource];return;}
  if(button.tag==2){[self browseSource:@"com.legacymusic.app"];return;}
  if(button.tag==3){[self openMap];return;}
@@ -5379,7 +5394,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  NSString *lb=lastMedia[@"bundle"];
  return [lb isEqualToString:@"com.himais0giiiin.ytnine"]&&![source[@"bundle"]isEqualToString:@"com.legacymusic.app"]&&![source[@"bundle"]isEqualToString:@"com.codex.poddash"];
 }
--(void)media:(UIButton *)button{if(self.radioPlayer){if(button.tag==21){if(self.radioPlayer.rate>0){[self.radioPlayer pause];self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:@"Radio"];self.artist.text=@"Tap Play button to resume";}else{notify_post("com.codex.trd.youtube.pause");Boolean (*pCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pCmd||!pCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];[self.radioPlayer play];self.song.text=self.currentRadioStation?:@"Radio";self.artist.text=@"Live Radio Broadcast · Playing Live";}return;}else if(button.tag==20||button.tag==22){[self openRadioStationsMenu];return;}}NSArray *ids=@[@"libactivator.ipod.previous-track",@"libactivator.ipod.toggle-playback",@"libactivator.ipod.next-track",@"com.r333d.eqe.app"];if(button.tag>=20&&button.tag<=23){Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");BOOL youtube=[self isYouTubeMediaActive];if(button.tag==22){if(youtube)notify_post("com.codex.trd.youtube.next");else if(!command||!command(4,nil))[self send:ids[2]];}else if(button.tag==20){if(youtube)notify_post("com.codex.trd.youtube.previous");else if(!command||!command(5,nil))[self send:ids[0]];}else if(button.tag==21){if(youtube)notify_post("com.codex.trd.youtube.toggle");else if(!command||!command(2,nil))[self send:ids[1]];}else{[self send:ids[button.tag-20]];}[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.15];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:1.2];}}
+-(void)media:(UIButton *)button{if(self.radioPlayer){if(button.tag==21){if(self.radioPlayer.rate>0){[self.radioPlayer pause];self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:@"Radio"];self.artist.text=@"Tap Play button to resume";}else{notify_post("com.codex.trd.youtube.pause");TRDSendMediaRemoteExternal(1,^{ [self send:@"libactivator.ipod.pause-playback"]; });[self.radioPlayer play];self.song.text=self.currentRadioStation?:@"Radio";self.artist.text=@"Live Radio Broadcast · Playing Live";}[self refreshTransportState];[self refreshMini];return;}else if(button.tag==20||button.tag==22){[self openRadioStationsMenu];return;}}NSArray *ids=@[@"libactivator.ipod.previous-track",@"libactivator.ipod.toggle-playback",@"libactivator.ipod.next-track",@"com.r333d.eqe.app"];if(button.tag>=20&&button.tag<=23){BOOL youtube=[self isYouTubeMediaActive];if(button.tag==22){if(youtube)notify_post("com.codex.trd.youtube.next");else TRDSendMediaRemoteExternal(4,^{ [self send:ids[2]]; });}else if(button.tag==20){if(youtube)notify_post("com.codex.trd.youtube.previous");else TRDSendMediaRemoteExternal(5,^{ [self send:ids[0]]; });}else if(button.tag==21){if(youtube)notify_post("com.codex.trd.youtube.toggle");else TRDSendMediaRemoteExternal(2,^{ [self send:ids[1]]; });}else{[self send:ids[button.tag-20]];}[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.15];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];[self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:1.2];}}
 -(void)leaveClock{self.focused=NO;self.mapMode=NO;self.returnTap.enabled=NO;[self.view setNeedsLayout];}
 -(void)testSettingsAction:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<self.settingsSheet.buttons.count)[(UIButton *)self.settingsSheet.buttons[i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
 -(void)testNav:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<self.navButtons.count)[(UIButton *)self.navButtons[i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
@@ -5389,56 +5404,71 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 -(void)capture{UIView *surface=self.view;UIGraphicsBeginImageContextWithOptions(surface.bounds.size,YES,1);[surface drawViewHierarchyInRect:surface.bounds afterScreenUpdates:YES];NSData *png=UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext());UIGraphicsEndImageContext();[png writeToFile:@"/var/mobile/h109-build/cardash.png" atomically:YES];NSDictionary *report=@{@"driveTripText":self.driveTripButton.currentTitle?:@"",@"driveTripVisible":@(!self.driveTripButton.hidden),@"driveTripFrame":NSStringFromCGRect(self.driveTripButton.frame),@"driveCameraVisible":@(!self.driveCameraButton.hidden),@"driveCameraFrame":NSStringFromCGRect(self.driveCameraButton.frame),@"driveCameraActions":[self.driveCameraButton actionsForTarget:self forControlEvent:UIControlEventTouchUpInside]?:@[],@"audioOutput":self.audioOutput?:@"UNKNOWN",@"audioDevice":self.audioDevice?:@"",@"outputVolume":@(self.outputVolume),@"songVisible":@(!self.song.hidden),@"mapMode":@(self.mapMode),@"tripMode":@(self.tripMode),@"tripRunning":@(self.trip.running),@"tripSummary":[self.trip summary],@"tripState":self.tripView.state.text?:@"",@"miniVisible":@(!self.miniPlayer.hidden),@"miniTitle":self.miniPlayer.title.text?:@"",@"miniArtist":self.miniPlayer.artist.text?:@"",@"miniIcon":@(self.miniPlayer.icon.kind),@"musicHoldCount":@(((UIView *)self.navButtons[1]).gestureRecognizers.count),@"calmDrive":@(self.calmDrive),@"carLink":self.statusCar?:@"UNKNOWN",@"wifiSSID":self.statusWiFi?:@"NO NETWORK",@"powerState":self.statusPower?:@"UNKNOWN",@"gpsLive":@(self.gpsLive),@"navLabels":[self.navButtons valueForKey:@"accessibilityLabel"],@"youtubeSource":@(self.youtubeSource),@"commandsPending":@(self.commandsPending),@"metadataPending":@(self.metadataPending),@"artworkDecodes":@(self.artworkDecodes),@"artworkPixels":@(self.artwork.image?MAX(CGImageGetWidth(self.artwork.image.CGImage),CGImageGetHeight(self.artwork.image.CGImage)):0),@"memoryWarnings":@(self.memoryWarnings),@"gpsAccuracy":@(self.gps.desiredAccuracy),@"timerActive":@(self.timer!=nil),@"meterActive":@(self.audioBars.refreshTimer!=nil),@"settingsTitle":self.settingsSheet.title?:@"",@"settingsActions":[self.settingsSheet.actions valueForKey:@"title"]?:@[],@"playbackKnown":@(self.hasPlaybackRate),@"transportIcon":@(((DashIcon *)[[self.controls viewWithTag:21]viewWithTag:105]).kind),@"settingsVisible":@(self.settingsSheet!=nil),@"theme":@(TRDTheme),@"displayMode":@(self.displayMode),@"welcomeVisible":@(self.welcome!=nil),@"mediaRate":@(self.mediaRate),@"bounds":NSStringFromCGRect(self.view.bounds),@"navFrame":NSStringFromCGRect(self.navigation.frame),@"musicMode":@(self.musicMode),@"navigationVisible":@(!self.navigation.hidden),@"trackTime":self.trackTime.text?:@"",@"trackProgress":@(self.trackProgress.progress),@"wheelAnimating":@(self.driveCar.wheelTimer!=nil),@"wheelAngle":@(self.driveCar.angle),@"autoDriveSuppressed":@(self.autoDriveSuppressed),@"driveMode":@(self.driveMode),@"audioState":self.audioBars.state?:@"",@"audioRMS":@(self.audioBars.rms),@"carStatus":self.carStatus.text?:@"",@"hasArtwork":@(self.artwork.image!=nil),@"artist":self.artist.text?:@"",@"nightMode":@(self.nightMode),@"brightness":@([UIScreen mainScreen].brightness),@"speed":self.speed.text?:@"",@"gps":self.gpsStatus.text?:@"",@"clock":self.clock.text?:@"",@"date":self.date.text?:@"",@"network":self.network.text?:@"",@"song":self.song.text?:@"",@"focused":@(self.focused),@"clockHudVisible":@(!self.clockHud.hidden),@"clockHudSpeed":((UILabel *)[self.clockHud viewWithTag:402]).text?:@"",@"clockHudGps":((UILabel *)[self.clockHud viewWithTag:405]).text?:@"",@"clockHudTrip":((UILabel *)[self.clockHud viewWithTag:407]).text?:@"",@"sourceBadge":self.sourceBadge.text?:@"",@"driveEQTitle":self.driveEQ.currentTitle?:@"",@"lastAction":self.lastAction?:@""};[report writeToFile:@"/var/mobile/h109-build/cardash-state.plist" atomically:YES];}
 -(BOOL)canBecomeFirstResponder{return YES;}
 -(MPRemoteCommandHandlerStatus)carRemoteNext:(id)event{
- if(!self.radioPlayer&&[self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.next");}else{
-  Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
-  if(!command||!command(4,nil))[self send:@"libactivator.ipod.next-track"];
+ if(self.radioPlayer)return MPRemoteCommandHandlerStatusSuccess;
+ if([self isYouTubeMediaActive]){
+  static NSTimeInterval lastNext=0;
+  NSTimeInterval now=TRDMonotonic();
+  if(now-lastNext>=0.25){lastNext=now;notify_post("com.codex.trd.youtube.next");}
  }
- [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];
- [self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(MPRemoteCommandHandlerStatus)carRemotePrev:(id)event{
- if(!self.radioPlayer&&[self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.previous");}else{
-  Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
-  if(!command||!command(5,nil))[self send:@"libactivator.ipod.previous-track"];
+ if(self.radioPlayer)return MPRemoteCommandHandlerStatusSuccess;
+ if([self isYouTubeMediaActive]){
+  static NSTimeInterval lastPrev=0;
+  NSTimeInterval now=TRDMonotonic();
+  if(now-lastPrev>=0.25){lastPrev=now;notify_post("com.codex.trd.youtube.previous");}
  }
- [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];
- [self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(MPRemoteCommandHandlerStatus)carRemoteToggle:(id)event{
  if(self.radioPlayer){[self media:(UIButton *)[self.controls viewWithTag:21]];return MPRemoteCommandHandlerStatusSuccess;}
- if([self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.toggle");}else{
-  Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
-  if(!command||!command(2,nil))[self send:@"libactivator.ipod.toggle-playback"];
+ if([self isYouTubeMediaActive]){
+  static NSTimeInterval lastTog=0;
+  NSTimeInterval now=TRDMonotonic();
+  if(now-lastTog>=0.25){lastTog=now;notify_post("com.codex.trd.youtube.toggle");}
  }
- [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refreshNowPlaying) object:nil];
- [self performSelector:@selector(refreshNowPlaying) withObject:nil afterDelay:.5];
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(MPRemoteCommandHandlerStatus)carRemotePlay:(id)event{
- if(!self.radioPlayer&&[self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.play");}else{
-  Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
-  if(!command||!command(0,nil))[self send:@"libactivator.ipod.resume-playback"];
+ if(self.radioPlayer){
+  if(self.radioPlayer.rate<=0){
+   [self.radioPlayer play];
+   self.song.text=self.currentRadioStation?:@"Radio";
+   self.artist.text=@"Live Radio Broadcast · Playing Live";
+   [self refreshTransportState];
+   [self refreshMini];
+  }
+  return MPRemoteCommandHandlerStatusSuccess;
+ }
+ if([self isYouTubeMediaActive]){
+  static NSTimeInterval lastPlay=0;
+  NSTimeInterval now=TRDMonotonic();
+  if(now-lastPlay>=0.25){lastPlay=now;notify_post("com.codex.trd.youtube.play");}
  }
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(MPRemoteCommandHandlerStatus)carRemotePause:(id)event{
- if(self.radioPlayer){[self.radioPlayer pause];return MPRemoteCommandHandlerStatusSuccess;}
- if([self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.pause");}else{
-  Boolean (*command)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
-  if(!command||!command(1,nil))[self send:@"libactivator.ipod.pause-playback"];
+ if(self.radioPlayer){
+  if(self.radioPlayer.rate>0){
+   [self.radioPlayer pause];
+   self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:@"Radio"];
+   self.artist.text=@"Tap Play button to resume";
+   [self refreshTransportState];
+   [self refreshMini];
+  }
+  return MPRemoteCommandHandlerStatusSuccess;
+ }
+ if([self isYouTubeMediaActive]){
+  static NSTimeInterval lastPause=0;
+  NSTimeInterval now=TRDMonotonic();
+  if(now-lastPause>=0.25){lastPause=now;notify_post("com.codex.trd.youtube.pause");}
  }
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(void)remoteControlReceivedWithEvent:(UIEvent *)event{
- if(event.type==UIEventTypeRemoteControl){
-  if(event.subtype==UIEventSubtypeRemoteControlNextTrack)[self carRemoteNext:nil];
-  else if(event.subtype==UIEventSubtypeRemoteControlPreviousTrack)[self carRemotePrev:nil];
-  else if(event.subtype==UIEventSubtypeRemoteControlTogglePlayPause)[self carRemoteToggle:nil];
-  else if(event.subtype==UIEventSubtypeRemoteControlPlay)[self carRemotePlay:nil];
-  else if(event.subtype==UIEventSubtypeRemoteControlPause)[self carRemotePause:nil];
- }
+ // Handled via MPRemoteCommandCenter targets; never re-broadcast MRMediaRemoteSendCommand here to avoid self-loop.
+ (void)event;
 }
 
 -(void)carStatusTapped{
