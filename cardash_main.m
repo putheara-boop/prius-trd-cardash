@@ -4050,6 +4050,11 @@ static NSUInteger gTRDUpdateTicks=0;
     self.view.userInteractionEnabled=YES;
   }
 
+  if(self.driveClockCard && !self.driveClockCard.hidden){
+    UILabel *cBig=(UILabel *)[self.driveClockCard viewWithTag:801];
+    NSString *dc=self.clockFormat?[self.clockFormat stringFromDate:[NSDate date]]:nil;
+    if(cBig && dc && ![cBig.text isEqualToString:dc])cBig.text=dc;
+  }
   if(self.topClockLabel && !self.topClockLabel.hidden){
     NSString *tc = [self.clockFormat stringFromDate:[NSDate date]];
     if(![self.topClockLabel.text isEqualToString:tc]) self.topClockLabel.text = tc;
@@ -7586,7 +7591,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  @try{
   if(event.type==UIEventTypeTouches){
    UITouch *t=[[event allTouches] anyObject];
-   if(t){
+   if(t && t.phase!=UITouchPhaseMoved){
     CGPoint pt=[t locationInView:self];
     UIView *hit=[self hitTest:pt withEvent:event];
     UIViewController *rc=self.rootViewController;

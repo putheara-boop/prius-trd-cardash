@@ -35,12 +35,28 @@ static int gSleepGeneration = 0;
 - (BOOL)unlockUIFromSource:(int)source withOptions:(id)options;
 - (void)_lockUI;
 - (BOOL)isUILocked;
+- (BOOL)isLockScreenActive;
 - (void)lockAndDimDevice;
 - (void)lockAndDimDeviceDisconnectingCallIfNecessary:(BOOL)disc andDimScreen:(BOOL)dim;
 - (void)setBacklightFactor:(float)factor source:(int)source;
 - (void)turnOnScreenFullyWithBacklightSource:(int)source;
 - (void)_startFadeOutAnimationFromLockSource:(int)source;
 - (BOOL)screenIsOn;
+- (BOOL)screenIsDim;
+- (void)preventIdleSleep;
+- (void)allowIdleSleep;
+- (BOOL)isPresented;
+- (BOOL)isVisible;
+- (void)setCoverSheetPresented:(BOOL)presented animated:(BOOL)animated withCompletion:(void (^)(void))completion;
+- (void)_updateDeactivationReasonsForPresented:(BOOL)presented;
+- (void)_coversheetDidDismiss;
++ (id)sharedMonitorForDisplayType:(NSInteger)displayType;
+- (id)currentLayout;
+- (NSArray *)elements;
+- (NSString *)identifier;
+- (NSString *)bundleIdentifier;
+- (id)_accessibilityFrontMostApplication;
+- (id)processState;
 @end
 
 @interface TRDBluetoothManagerProxy : NSObject
@@ -74,15 +90,90 @@ static void TRDInitSymbols(void) {
     });
 }
 
+static BOOL TRDHasLockScreenLayoutElement(void) {
+    Class dlCls = objc_getClass("FBSDisplayLayoutMonitor");
+    if (!dlCls || ![dlCls respondsToSelector:@selector(sharedMonitorForDisplayType:)]) return NO;
+    id mon = [dlCls sharedMonitorForDisplayType:0];
+    id lay = (mon && [mon respondsToSelector:@selector(currentLayout)]) ? [mon currentLayout] : nil;
+    NSArray *elems = (lay && [lay respondsToSelector:@selector(elements)]) ? [lay elements] : nil;
+    for (id el in elems) {
+        NSString *ident = [el respondsToSelector:@selector(identifier)] ? [el identifier] : nil;
+        if ([ident isEqualToString:@"com.apple.lock-screen"]) return YES;
+    }
+    return NO;
+}
+
+static void TRDDismissCoverSheetCompletely(BOOL allowCycleIfStuck) {
+    Class lockCls = objc_getClass("SBLockScreenManager");
+    id lockMgr = [lockCls respondsToSelector:@selector(sharedInstance)] ? [lockCls sharedInstance] : nil;
+    Class csmCls = objc_getClass("SBCoverSheetPresentationManager");
+    id csmi = [csmCls respondsToSelector:@selector(sharedInstance)] ? [csmCls sharedInstance] : nil;
+    Class mwCls = objc_getClass("SBMainWorkspace");
+    id mw = [mwCls respondsToSelector:@selector(sharedInstance)] ? [mwCls sharedInstance] : nil;
+
+    if (csmi && [csmi respondsToSelector:@selector(_updateDeactivationReasonsForPresented:)]) {
+        [csmi _updateDeactivationReasonsForPresented:NO];
+    }
+    if (lockMgr && [lockMgr respondsToSelector:@selector(unlockUIFromSource:withOptions:)]) {
+        [lockMgr unlockUIFromSource:1 withOptions:nil];
+    }
+    BOOL presented = (csmi && [csmi respondsToSelector:@selector(isPresented)]) ? [csmi isPresented] : NO;
+    BOOL visible = (csmi && [csmi respondsToSelector:@selector(isVisible)]) ? [csmi isVisible] : NO;
+    if (csmi && [csmi respondsToSelector:@selector(setCoverSheetPresented:animated:withCompletion:)]) {
+        if (presented || visible) {
+            [csmi setCoverSheetPresented:NO animated:NO withCompletion:^{
+                id lm2 = [objc_getClass("SBLockScreenManager") sharedInstance];
+                id c2 = [objc_getClass("SBCoverSheetPresentationManager") sharedInstance];
+                id mw2 = [objc_getClass("SBMainWorkspace") sharedInstance];
+                if (lm2 && [lm2 respondsToSelector:@selector(unlockUIFromSource:withOptions:)]) [lm2 unlockUIFromSource:1 withOptions:nil];
+                if (c2 && [c2 respondsToSelector:@selector(_updateDeactivationReasonsForPresented:)]) [c2 _updateDeactivationReasonsForPresented:NO];
+                if (mw2 && [mw2 respondsToSelector:@selector(_coversheetDidDismiss)]) [mw2 _coversheetDidDismiss];
+            }];
+        } else if (allowCycleIfStuck && TRDHasLockScreenLayoutElement()) {
+            // Reset ghost coverSheetSceneIdentifier stuck at level 1050 when isPresented is already NO
+            [csmi setCoverSheetPresented:YES animated:NO withCompletion:^{
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    id c2 = [objc_getClass("SBCoverSheetPresentationManager") sharedInstance];
+                    [c2 setCoverSheetPresented:NO animated:NO withCompletion:^{
+                        id lm3 = [objc_getClass("SBLockScreenManager") sharedInstance];
+                        id c3 = [objc_getClass("SBCoverSheetPresentationManager") sharedInstance];
+                        id mw3 = [objc_getClass("SBMainWorkspace") sharedInstance];
+                        if (lm3 && [lm3 respondsToSelector:@selector(unlockUIFromSource:withOptions:)]) [lm3 unlockUIFromSource:1 withOptions:nil];
+                        if (c3 && [c3 respondsToSelector:@selector(_updateDeactivationReasonsForPresented:)]) [c3 _updateDeactivationReasonsForPresented:NO];
+                        if (mw3 && [mw3 respondsToSelector:@selector(_coversheetDidDismiss)]) [mw3 _coversheetDidDismiss];
+                    }];
+                });
+            }];
+        }
+    }
+    if (mw && [mw respondsToSelector:@selector(_coversheetDidDismiss)]) {
+        [mw _coversheetDidDismiss];
+    }
+}
+
 static void TRDWriteStatus(NSString *action) {
     TRDInitSymbols();
     Class lockCls = objc_getClass("SBLockScreenManager");
     id lockMgr = [lockCls respondsToSelector:@selector(sharedInstance)] ? [lockCls sharedInstance] : nil;
     BOOL uiLocked = (lockMgr && [lockMgr respondsToSelector:@selector(isUILocked)]) ? [lockMgr isUILocked] : NO;
+    BOOL lockActive = (lockMgr && [lockMgr respondsToSelector:@selector(isLockScreenActive)]) ? [lockMgr isLockScreenActive] : NO;
+
+    Class csmCls = objc_getClass("SBCoverSheetPresentationManager");
+    id csmi = [csmCls respondsToSelector:@selector(sharedInstance)] ? [csmCls sharedInstance] : nil;
+    BOOL coverPresented = (csmi && [csmi respondsToSelector:@selector(isPresented)]) ? [csmi isPresented] : NO;
+    BOOL coverVisible = (csmi && [csmi respondsToSelector:@selector(isVisible)]) ? [csmi isVisible] : NO;
+    BOOL lockElementVisible = TRDHasLockScreenLayoutElement();
 
     Class blCls = objc_getClass("SBBacklightController");
     id blMgr = [blCls respondsToSelector:@selector(sharedInstance)] ? [blCls sharedInstance] : nil;
     BOOL screenOn = (blMgr && [blMgr respondsToSelector:@selector(screenIsOn)]) ? [blMgr screenIsOn] : NO;
+    BOOL screenDim = (blMgr && [blMgr respondsToSelector:@selector(screenIsDim)]) ? [blMgr screenIsDim] : NO;
+
+    UIApplication *sbApp = [UIApplication sharedApplication];
+    id frontApp = [sbApp respondsToSelector:@selector(_accessibilityFrontMostApplication)] ? [sbApp _accessibilityFrontMostApplication] : nil;
+    NSString *frontBundle = (frontApp && [frontApp respondsToSelector:@selector(bundleIdentifier)]) ? ([frontApp bundleIdentifier] ?: @"") : @"";
+    id frontStateObj = (frontApp && [frontApp respondsToSelector:@selector(processState)]) ? [frontApp processState] : nil;
+    NSString *frontProcState = frontStateObj ? [frontStateObj description] : @"";
 
     Class wifiCls = objc_getClass("SBWiFiManager");
     id wifiMgr = [wifiCls respondsToSelector:@selector(sharedInstance)] ? [wifiCls sharedInstance] : nil;
@@ -102,7 +193,14 @@ static void TRDWriteStatus(NSString *action) {
     NSDictionary *dict = @{
         @"action": action ?: @"status",
         @"uiLocked": @(uiLocked),
+        @"lockScreenActive": @(lockActive),
+        @"coverSheetPresented": @(coverPresented),
+        @"coverSheetVisible": @(coverVisible),
+        @"lockElementVisible": @(lockElementVisible),
         @"screenIsOn": @(screenOn),
+        @"screenIsDim": @(screenDim),
+        @"frontmostBundle": frontBundle ?: @"",
+        @"frontmostProcessState": frontProcState ?: @"",
         @"wifiEnabled": @(hwWifi),
         @"sbWifiEnabled": @(sbWifi),
         @"btEnabled": @(btEnabled),
@@ -174,6 +272,9 @@ static void TRDApplySleepStep(void) {
     Class blCls = objc_getClass("SBBacklightController");
     id blMgr = [blCls respondsToSelector:@selector(sharedInstance)] ? [blCls sharedInstance] : nil;
     if (blMgr) {
+        if ([blMgr respondsToSelector:@selector(allowIdleSleep)]) {
+            [blMgr allowIdleSleep];
+        }
         if ([blMgr respondsToSelector:@selector(setBacklightFactor:source:)]) {
             [blMgr setBacklightFactor:0.0f source:1];
         }
@@ -222,14 +323,15 @@ static void TRDPerformWake(void) {
             if ([blMgr respondsToSelector:@selector(setBacklightFactor:source:)]) {
                 [blMgr setBacklightFactor:1.0f source:1];
             }
+            if ([blMgr respondsToSelector:@selector(preventIdleSleep)]) {
+                [blMgr preventIdleSleep];
+            }
         }
 
-        // 2. Unlock Lock Screen
+        // 2. Unlock Lock Screen & dismiss CoverSheet completely (including ghost coverSheetSceneIdentifier)
         Class lockCls = objc_getClass("SBLockScreenManager");
         id lockMgr = [lockCls respondsToSelector:@selector(sharedInstance)] ? [lockCls sharedInstance] : nil;
-        if (lockMgr && [lockMgr respondsToSelector:@selector(unlockUIFromSource:withOptions:)]) {
-            [lockMgr unlockUIFromSource:1 withOptions:nil];
-        }
+        TRDDismissCoverSheetCompletely(YES);
 
         Class actCls = objc_getClass("LAActivator");
         Class evtCls = objc_getClass("LAEvent");
@@ -267,6 +369,9 @@ static void TRDPerformWake(void) {
 
         // 4. Launch CarDash and show welcome
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (TRDHasLockScreenLayoutElement()) {
+                TRDDismissCoverSheetCompletely(NO);
+            }
             if (act && evtCls && [act respondsToSelector:@selector(sendEvent:toListenerWithName:)]) {
                 NSString *mode = [act respondsToSelector:@selector(currentEventMode)] ? [act currentEventMode] : @"springboard";
                 id evt = [evtCls respondsToSelector:@selector(eventWithName:mode:)] ? [evtCls eventWithName:@"libactivator.power.connected" mode:mode] : nil;
@@ -284,13 +389,28 @@ static void TRDPerformWake(void) {
         });
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (pBKSDisplayServicesSetScreenBlanked) pBKSDisplayServicesSetScreenBlanked(NO);
-            if (blMgr && [blMgr respondsToSelector:@selector(setBacklightFactor:source:)]) {
-                [blMgr setBacklightFactor:1.0f source:1];
+            if (blMgr) {
+                if ([blMgr respondsToSelector:@selector(setBacklightFactor:source:)]) {
+                    [blMgr setBacklightFactor:1.0f source:1];
+                }
+                if ([blMgr respondsToSelector:@selector(preventIdleSleep)]) {
+                    [blMgr preventIdleSleep];
+                }
             }
-            if (lockMgr && [lockMgr respondsToSelector:@selector(unlockUIFromSource:withOptions:)]) {
-                [lockMgr unlockUIFromSource:1 withOptions:nil];
+            BOOL stillLocked = (lockMgr && [lockMgr respondsToSelector:@selector(isUILocked)]) ? [lockMgr isUILocked] : NO;
+            if (stillLocked || TRDHasLockScreenLayoutElement()) {
+                TRDDismissCoverSheetCompletely(YES);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    Class wsCls = objc_getClass("LSApplicationWorkspace");
+                    id ws = (wsCls && [wsCls respondsToSelector:@selector(defaultWorkspace)]) ? [wsCls performSelector:@selector(defaultWorkspace)] : nil;
+                    if (ws && [ws respondsToSelector:@selector(openApplicationWithBundleID:)]) {
+                        [ws performSelector:@selector(openApplicationWithBundleID:) withObject:@"com.codex.cardash"];
+                    }
+                    TRDWriteStatus(@"wake-verified");
+                });
+            } else {
+                TRDWriteStatus(@"wake-verified");
             }
-            TRDWriteStatus(@"wake-verified");
         });
     });
 }
