@@ -224,8 +224,21 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
   self.fullMusicLabel.text=@" 🎵 PRIUS TRD • audioNINJA";
  }
 }
+-(BOOL)wantsReverseRearCamera{
+ NSDictionary *rev=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/reverse-camera.plist"];
+ NSDate *at=[rev[@"at"]isKindOfClass:[NSDate class]]?rev[@"at"]:nil;
+ return [rev[@"rear"]boolValue]&&at&&-[at timeIntervalSinceNow]<15.0;
+}
 -(void)beginAutomaticCamera{
- [self stop];NSDictionary *config=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-config.plist"];self.cameraSSID=[config[@"cameraSSID"]isKindOfClass:[NSString class]]?config[@"cameraSSID"]:@"H109Y-37802895";self.networkDeadline=[NSDate dateWithTimeIntervalSinceNow:90];
+ [self stop];
+ if([self wantsReverseRearCamera]){
+  self.channels.selectedSegmentIndex=1;
+  self.showGuide=YES;
+  if(self.parkingGuideView)self.parkingGuideView.hidden=NO;
+  [self applyChannelMirror];
+  [self updateFullHUD];
+ }
+ NSDictionary *config=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-config.plist"];self.cameraSSID=[config[@"cameraSSID"]isKindOfClass:[NSString class]]?config[@"cameraSSID"]:@"H109Y-37802895";self.networkDeadline=[NSDate dateWithTimeIntervalSinceNow:90];
  self.stateLabel.text=@"JOINING CAMERA WI-FI";self.status.text=[NSString stringWithFormat:@"Connecting to %@...",self.cameraSSID];self.emptyLabel.hidden=NO;self.emptyLabel.text=@"CONNECTING TO CAMERA WI-FI";[UIApplication sharedApplication].idleTimerDisabled=YES;
  self.networkRequestedAt=[NSDate date];notify_post("com.codex.trd.network.camera");self.networkWait=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(checkCameraNetwork) userInfo:nil repeats:YES];self.networkWait.tolerance=.1;[self checkCameraNetwork];
 }
@@ -234,7 +247,19 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive){[self stop];return;}
  NSDictionary *network=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));NSDictionary *state=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-state.plist"];
  BOOL ready=[network[@"SSID"]isEqual:self.cameraSSID]&&[state[@"mode"]isEqual:@"camera"]&&[state[@"phase"]isEqual:@"ready"]&&[state[@"actualSSID"]isEqual:self.cameraSSID];
- if(ready){[self.networkWait invalidate];self.networkWait=nil;NSString *cached=[[NSUserDefaults standardUserDefaults]stringForKey:@"lastWorkingStream"];if(cached.length&&[cached hasPrefix:@"rtsp://"]){self.status.text=@"Fast-connecting to camera stream...";self.address.text=cached;[self connect];return;}[self discover];return;}
+ if(ready){[self.networkWait invalidate];self.networkWait=nil;
+  if([self wantsReverseRearCamera]){
+   [[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/reverse-camera.plist" error:nil];
+   self.channels.selectedSegmentIndex=1;
+   self.showGuide=YES;
+   if(self.parkingGuideView)self.parkingGuideView.hidden=NO;
+   [self applyChannelMirror];
+   [self updateFullHUD];
+   self.status.text=@"Reverse gear: switching to REAR camera...";
+   [self selectChannel];
+   return;
+  }
+  NSString *cached=[[NSUserDefaults standardUserDefaults]stringForKey:@"lastWorkingStream"];if(cached.length&&[cached hasPrefix:@"rtsp://"]){self.status.text=@"Fast-connecting to camera stream...";self.address.text=cached;[self connect];return;}[self discover];return;}
  NSDate *stateDate=[state[@"at"]isKindOfClass:[NSDate class]]?state[@"at"]:nil;BOOL fresh=stateDate&&[stateDate compare:self.networkRequestedAt]!=NSOrderedAscending;
  if(fresh&&[state[@"cameraUnavailable"]boolValue]&&![@[@"restored",@"error"]containsObject:state[@"phase"]]){self.stateLabel.text=@"RESTORING PREVIOUS WI-FI";self.emptyLabel.text=@"CAMERA UNAVAILABLE\nRestoring previous Wi-Fi...";}
  if((fresh&&(([state[@"cameraUnavailable"]boolValue]&&[@[@"restored",@"error"]containsObject:state[@"phase"]])||([state[@"mode"]isEqual:@"camera"]&&[state[@"phase"]isEqual:@"error"])))||[self.networkDeadline timeIntervalSinceNow]<=0){[self.networkWait invalidate];self.networkWait=nil;self.stateLabel.text=@"WI-FI NOT CONNECTED";self.emptyLabel.text=@"CHECK CAMERA WI-FI\nTap FIND to retry";self.status.text=[state[@"cameraUnavailable"]boolValue]?([state[@"phase"]isEqual:@"restored"]?@"Camera unavailable. Previous Wi-Fi restored. Tap FIND to retry.":@"Camera unavailable. Restoring previous Wi-Fi; tap FIND later."):state[@"error"]?:@"Could not join the camera Wi-Fi. Check that the camera is on, then tap FIND.";[UIApplication sharedApplication].idleTimerDisabled=NO;}

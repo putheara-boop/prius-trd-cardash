@@ -154,7 +154,7 @@ static id networkRouteObserver;
 @implementation TRDBrowseReturn
 +(void)selected:(id)source{dispatch_async(dispatch_get_main_queue(),^{
  NSDictionary *arm=[NSDictionary dictionaryWithContentsOfFile:Arm];NSString *bundle=NSBundle.mainBundle.bundleIdentifier;
- if([bundle isEqual:@"com.himais0giiiin.ytnine"])return; // Never auto-return from YouTube
+ if([bundle isEqual:@"com.himais0giiiin.ytnine"]||[bundle isEqual:@"com.google.ios.youtube"])return; // Never auto-return from YouTube
  if(![arm[@"pending"]boolValue]||![arm[@"bundle"]isEqual:bundle]||![arm[@"expires"]isKindOfClass:[NSDate class]]||[arm[@"expires"]timeIntervalSinceNow]<=0||[UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
  if(!bridge){bridge=[TRDBrowseReturn new];[[NSNotificationCenter defaultCenter]addObserver:bridge selector:@selector(stop) name:UIApplicationDidEnterBackgroundNotification object:nil];}[bridge stop];bridge.source=source;bridge.token=arm[@"token"];bridge.oldTitle=arm[@"baselineTitle"]?:@"";bridge.lastTime=-1;bridge.deadline=[NSDate dateWithTimeIntervalSinceNow:25];
  if([bundle isEqual:@"com.legacymusic.app"]){NSArray *queue=[(id<TRDBrowseNinjaPlayer>)source queue];NSInteger index=[(id<TRDBrowseNinjaPlayer>)source currentIndex];id track=index>=0&&index<(NSInteger)queue.count?queue[index]:nil;bridge.expectedTrackID=[track respondsToSelector:@selector(videoId)]?[track videoId]:nil;}

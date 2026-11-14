@@ -1330,9 +1330,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)refreshDriveTripDisplay{
   double liveKm = self.trip ? (self.trip.meters / 1000.0) : 0.0;
   long liveSec = self.trip ? (long)self.trip.seconds : 0;
-  double liveKml = 24.2;
-  double liveLiters = liveKm / liveKml;
-  double liveCost = liveLiters * 38.50;
+  TRDOBDClient *obd = [TRDOBDClient sharedClient];
+  double liveKml = (obd.tripAverageKmPerL > 0.1) ? obd.tripAverageKmPerL : 21.5;
+  double liveLiters = (obd.tripFuelUsedLiters > 0.001) ? obd.tripFuelUsedLiters : (liveKm / liveKml);
+  double liveCost = (obd.tripFuelCostTHB > 0.01) ? obd.tripFuelCostTHB : (liveLiters * 38.50);
   NSString *liveTimeMin = (liveSec >= 3600)
     ? [NSString stringWithFormat:@"%02ld:%02ld ชม.", liveSec / 3600, (liveSec / 60) % 60]
     : [NSString stringWithFormat:@"%02ld:%02ld นาที", (liveSec / 60) % 60, liveSec % 60];
@@ -3685,11 +3686,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  double rawKmh = (valid && fixAge <= 6.0 && self.fix.speed >= 0) ? (self.fix.speed * 3.6) : 0.0;
  double kmh = (rawKmh < 1.5) ? 0.0 : rawKmh;
  TRDOBDClient *obdSpd = [TRDOBDClient sharedClient];
- if (kmh < 0.5 && obdSpd.isConnected && obdSpd.currentSpeedKmh >= 1.0) {
-  kmh = obdSpd.currentSpeedKmh;
+ BOOL obdLive = (obdSpd.isConnected && obdSpd.obdInitialized);
+ if (obdLive) {
+  kmh = MAX(0.0, obdSpd.currentSpeedKmh);
  }
- BOOL reliable = valid && (!self.fix || self.fix.horizontalAccuracy <= 65.0);
- [self updateEcoScoreForSpeed:kmh valid:valid];
+ BOOL reliable = (valid && (!self.fix || self.fix.horizontalAccuracy <= 65.0)) || obdLive;
+ [self updateEcoScoreForSpeed:kmh valid:(valid || obdLive)];
 
  // Sync live speed to all custom dials & widgets!
  if(self.homeSpeedoDial) self.homeSpeedoDial.speed = kmh;
@@ -3751,7 +3753,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }else{
   self.parkedSince = nil;
  }
- self.gpsLive=valid;[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&valid?kmh:0];
+ self.gpsLive=valid;[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&(valid||obdLive)?kmh:0];
  if(self.hybridEcoBar&&!self.hybridEcoBar.hidden){
   double curSpeed=valid?kmh:0;
   BOOL braking=(self.harshBrakeCount>0);
@@ -4703,7 +4705,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  }
  if(authorized)return YES;
  NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];
- BOOL guard=[ud objectForKey:@"TRDMapConfirmGuard"]?[ud boolForKey:@"TRDMapConfirmGuard"]:YES;
+ BOOL guard=[ud objectForKey:@"TRDMapConfirmGuard"]?[ud boolForKey:@"TRDMapConfirmGuard"]:NO;
  if(guard){[self confirmOpenMapDestination:isCarPlay];return NO;}
  [self logNavigation:@"map confirmation disabled in settings"];
  return YES;
@@ -5279,6 +5281,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  if(self.isReverseActive)return;
  self.isReverseActive=YES;
  [self prepareForExternalAppLaunch];
+ [@{@"rear": @YES, @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/reverse-camera.plist" atomically:YES];
  notify_post("com.codex.trd.network.camera");
  if(![self launchBundleApp:@"com.codex.h109viewer"]){
   [self launchBundleApp:@"com.apple.camera"];

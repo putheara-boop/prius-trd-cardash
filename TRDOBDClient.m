@@ -925,7 +925,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     if (self.pollDispatchPending || !self.isConnected || !self.obdInitialized) return;
     self.pollDispatchPending = YES;
     NSUInteger connGen = self.connectGeneration;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(12 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(45 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
         if (connGen != self.connectGeneration) return;
         self.pollDispatchPending = NO;
         if (self.isConnected && self.obdInitialized && !self.waitingForResponse) {
@@ -1378,7 +1378,33 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)updateLiveGear:(NSString *)gear {
-    if (!gear.length || [_currentGear isEqualToString:gear]) return;
+    if (!gear.length) return;
+    static NSString *pendingGear = nil;
+    static NSInteger pendingHits = 0;
+    static CFAbsoluteTime pendingFirstAt = 0;
+    if ([_currentGear isEqualToString:gear]) {
+        pendingGear = nil;
+        pendingHits = 0;
+        return;
+    }
+    if (!_currentGear.length || [_currentGear isEqualToString:@"--"]) {
+        pendingGear = nil;
+        pendingHits = 0;
+    } else {
+        CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+        if (![pendingGear isEqualToString:gear]) {
+            pendingGear = [gear copy];
+            pendingHits = 1;
+            pendingFirstAt = now;
+            return;
+        }
+        pendingHits++;
+        if (pendingHits < 2 || (now - pendingFirstAt) < 0.20) {
+            return;
+        }
+        pendingGear = nil;
+        pendingHits = 0;
+    }
     _currentGear = [gear copy];
     _isReverseGear = [_currentGear isEqualToString:@"R"];
     [self obdLog:@"LIVE GEAR -> %@", _currentGear];
