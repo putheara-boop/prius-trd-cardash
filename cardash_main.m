@@ -599,16 +599,15 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 }
 
 - (void)setSpeed:(CGFloat)speed {
+  if (fabs(_speed - speed) < 0.25 && self.speedLabel.text.length > 0) return;
   _speed = speed;
-  if (speed <= 0.5) {
-    self.speedLabel.text = @"0";
-  } else {
-    self.speedLabel.text = [NSString stringWithFormat:@"%.0f", speed];
-  }
+  NSString *txt = (speed <= 0.5) ? @"0" : [NSString stringWithFormat:@"%.0f", speed];
+  if (![self.speedLabel.text isEqualToString:txt]) self.speedLabel.text = txt;
   [self setNeedsDisplay];
 }
 
 - (void)setGear:(NSString *)gear {
+  if ((_gear == gear) || (gear && [_gear isEqualToString:gear])) return;
   _gear = [gear copy];
   UILabel *gl = (UILabel *)[self.gearBadge viewWithTag:101];
   UILabel *gw = (UILabel *)[self.gearBadge viewWithTag:102];
@@ -1509,7 +1508,11 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property BOOL mapNavigationAuthorized;
 @property NSUInteger mapConfirmationGeneration;
 @property NSUInteger mapURLRequestGeneration;
+@property NSUInteger unplugCheckGeneration;
+@property NSTimeInterval lastOBDUIRefreshAt;
+@property BOOL obdUIRefreshPending;
 @property NSTimeInterval navGuardUntil;
+-(void)ensureActiveRunLoopHealth;
 -(void)confirmOpenMapDestination:(BOOL)isCarPlay;
 -(void)card:(UIButton *)button;
 @property UILabel *sourceBadge;
@@ -1896,6 +1899,11 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 }
 -(void)applyGearToUI:(NSString *)g{
   if(!g.length) return;
+  UILabel *curL = (UILabel *)[self.gearBadge viewWithTag:801];
+  if([self.driveShifter.gear isEqualToString:g] && [self.homeSpeedoDial.gear isEqualToString:g] &&
+     curL && [curL.text isEqualToString:g] && self.gearButtons.count > 0){
+    return;
+  }
   NSArray *names = @[@"P", @"R", @"N", @"D", @"B"];
   NSInteger idx = [names indexOfObject:g];
   self.homeSpeedoDial.gear = g;
@@ -2360,9 +2368,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  self.clockHud=[[UIView alloc]init];self.clockHud.backgroundColor=[UIColor colorWithRed:.05 green:.05 blue:.06 alpha:.94];self.clockHud.layer.cornerRadius=8;self.clockHud.layer.borderWidth=1;self.clockHud.layer.borderColor=[blue colorWithAlphaComponent:.38].CGColor;self.clockHud.userInteractionEnabled=NO;self.clockHud.hidden=YES;[self.view addSubview:self.clockHud];UIView *hudAccent=[[UIView alloc]initWithFrame:CGRectMake(0,16,4,76)];hudAccent.tag=401;hudAccent.backgroundColor=blue;[self.clockHud addSubview:hudAccent];UILabel *hudSpeed=[[UILabel alloc]initWithFrame:CGRectMake(16,8,168,70)];hudSpeed.tag=402;hudSpeed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:72]?:[UIFont boldSystemFontOfSize:72];hudSpeed.textColor=[UIColor whiteColor];hudSpeed.textAlignment=NSTextAlignmentCenter;hudSpeed.adjustsFontSizeToFitWidth=YES;hudSpeed.text=@"--";[self.clockHud addSubview:hudSpeed];UILabel *hudUnit=[[UILabel alloc]initWithFrame:CGRectMake(16,76,168,22)];hudUnit.tag=403;hudUnit.font=[UIFont boldSystemFontOfSize:13];hudUnit.textColor=blue;hudUnit.textAlignment=NSTextAlignmentCenter;hudUnit.text=@"km/h  •  GPS HUD";[self.clockHud addSubview:hudUnit];UIView *hudDiv=[[UIView alloc]initWithFrame:CGRectMake(196,18,1,72)];hudDiv.tag=404;hudDiv.backgroundColor=[UIColor colorWithWhite:.18 alpha:1];[self.clockHud addSubview:hudDiv];UILabel *hudGps=[[UILabel alloc]initWithFrame:CGRectMake(214,16,230,22)];hudGps.tag=405;hudGps.font=[UIFont boldSystemFontOfSize:13];hudGps.textColor=[UIColor colorWithWhite:.76 alpha:1];hudGps.adjustsFontSizeToFitWidth=YES;hudGps.text=@"WAITING FOR GPS";[self.clockHud addSubview:hudGps];UILabel *hudAcc=[[UILabel alloc]initWithFrame:CGRectMake(214,43,230,20)];hudAcc.tag=406;hudAcc.font=[UIFont systemFontOfSize:12];hudAcc.textColor=[UIColor colorWithWhite:.55 alpha:1];hudAcc.adjustsFontSizeToFitWidth=YES;hudAcc.text=@"SIGNAL  •  SEARCHING SATELLITES";[self.clockHud addSubview:hudAcc];UILabel *hudTrip=[[UILabel alloc]initWithFrame:CGRectMake(214,68,230,22)];hudTrip.tag=407;hudTrip.font=[UIFont boldSystemFontOfSize:12];hudTrip.textColor=blue;hudTrip.adjustsFontSizeToFitWidth=YES;hudTrip.text=@"TRIP  AUTO  •  WAITING FOR MOVEMENT";[self.clockHud addSubview:hudTrip];
  self.clockFormat=[NSDateFormatter new];self.clockFormat.locale=[[NSLocale alloc]initWithLocaleIdentifier:@"en_US_POSIX"];self.clockFormat.dateFormat=@"HH:mm";self.dateFormat=[NSDateFormatter new];self.dateFormat.locale=[[NSLocale alloc]initWithLocaleIdentifier:@"en_US_POSIX"];self.dateFormat.dateFormat=@"EEEE, d MMMM yyyy";
  self.cards=[NSMutableArray array];NSArray *names=@[@"YouTube",@"audioNINJA",@"Maps",@"Camera",@"Settings",@"Full Clock"];
- for(int i=0;i<6;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeCustom];b.tag=i+1;b.backgroundColor=[UIColor colorWithRed:.065 green:.065 blue:.075 alpha:1];b.layer.cornerRadius=7;b.layer.borderWidth=1;b.layer.borderColor=[UIColor colorWithRed:.25 green:.12 blue:.14 alpha:1].CGColor;UILabel *title=[UILabel new];title.tag=100;title.text=names[i];title.font=[UIFont boldSystemFontOfSize:24];title.textColor=i==0?blue:[UIColor whiteColor];[b addSubview:title];DashIcon *icon=[[DashIcon alloc]init];icon.kind=i+1;icon.tag=104;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];b.accessibilityLabel=names[i];UIView *accent=[[UIView alloc]init];accent.tag=102;accent.backgroundColor=blue;accent.userInteractionEnabled=NO;[b addSubview:accent];title.userInteractionEnabled=NO;b.exclusiveTouch=YES;b.clipsToBounds=YES;[b addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[b addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[b addTarget:self action:@selector(card:forEvent:) forControlEvents:UIControlEventTouchUpInside];[self.cards addObject:b];[self.view addSubview:b];}
+ for(int i=0;i<6;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeCustom];b.tag=i+1;b.backgroundColor=[UIColor colorWithRed:.065 green:.065 blue:.075 alpha:1];b.layer.cornerRadius=7;b.layer.borderWidth=1;b.layer.borderColor=[UIColor colorWithRed:.25 green:.12 blue:.14 alpha:1].CGColor;UILabel *title=[UILabel new];title.tag=100;title.text=names[i];title.font=[UIFont boldSystemFontOfSize:24];title.textColor=i==0?blue:[UIColor whiteColor];[b addSubview:title];DashIcon *icon=[[DashIcon alloc]init];icon.kind=i+1;icon.tag=104;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];b.accessibilityLabel=names[i];UIView *accent=[[UIView alloc]init];accent.tag=102;accent.backgroundColor=blue;accent.userInteractionEnabled=NO;[b addSubview:accent];title.userInteractionEnabled=NO;b.clipsToBounds=YES;[b addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[b addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[b addTarget:self action:@selector(card:forEvent:) forControlEvents:UIControlEventTouchUpInside];[self.cards addObject:b];[self.view addSubview:b];}
  self.controls=[UIView new];[self.view addSubview:self.controls];NSArray *commands=@[@"Previous",@"Play / Pause",@"Next",@"Equalizer"];for(int i=0;i<4;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];b.tag=20+i;b.backgroundColor=[UIColor colorWithRed:.11 green:.055 blue:.065 alpha:1];b.layer.cornerRadius=7;b.layer.borderWidth=1;b.layer.borderColor=[UIColor colorWithRed:.35 green:.10 blue:.13 alpha:1].CGColor;b.accessibilityLabel=commands[i];if(i<3){DashIcon *icon=[[DashIcon alloc]init];icon.kind=7+i;icon.tag=105;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];}else [b setTitle:commands[i] forState:UIControlStateNormal];[b setTitleColor:blue forState:UIControlStateNormal];b.titleLabel.font=[UIFont boldSystemFontOfSize:22];[b addTarget:self action:@selector(media:) forControlEvents:UIControlEventTouchUpInside];[self.controls addSubview:b];}
- self.navigation=[UIView new];self.navigation.backgroundColor=[UIColor colorWithWhite:.035 alpha:1];self.navigation.layer.borderWidth=1;self.navigation.layer.borderColor=[UIColor colorWithWhite:.16 alpha:1].CGColor;[self.view addSubview:self.navigation];NSMutableArray *nav=[NSMutableArray array];NSArray *navNames=@[@"HOME",@"CARPLAY",@"MAPS",@"YOUTUBE",@"audioNINJA",@"CAMERA",@"SETTINGS"];NSInteger kinds[]={10,15,3,1,2,4,5};NSInteger tags[]={60,66,62,67,61,65,68};for(int i=0;i<7;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeCustom];b.tag=tags[i];b.exclusiveTouch=YES;b.clipsToBounds=YES;b.accessibilityLabel=navNames[i];b.layer.cornerRadius=8;DashIcon *icon=[DashIcon new];icon.kind=kinds[i];icon.tag=201;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];UILabel *text=[UILabel new];text.tag=202;text.text=navNames[i];text.textColor=[UIColor lightGrayColor];text.font=[UIFont boldSystemFontOfSize:13];text.userInteractionEnabled=NO;[b addSubview:text];UIView *line=[UIView new];line.tag=203;line.backgroundColor=blue;line.userInteractionEnabled=NO;[b addSubview:line];[b addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[b addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[b addTarget:self action:@selector(navigate:forEvent:) forControlEvents:UIControlEventTouchUpInside];[self.navigation addSubview:b];[nav addObject:b];}self.navButtons=nav;
+ self.navigation=[UIView new];self.navigation.backgroundColor=[UIColor colorWithWhite:.035 alpha:1];self.navigation.layer.borderWidth=1;self.navigation.layer.borderColor=[UIColor colorWithWhite:.16 alpha:1].CGColor;[self.view addSubview:self.navigation];NSMutableArray *nav=[NSMutableArray array];NSArray *navNames=@[@"HOME",@"CARPLAY",@"MAPS",@"YOUTUBE",@"audioNINJA",@"CAMERA",@"SETTINGS"];NSInteger kinds[]={10,15,3,1,2,4,5};NSInteger tags[]={60,66,62,67,61,65,68};for(int i=0;i<7;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeCustom];b.tag=tags[i];b.clipsToBounds=YES;b.accessibilityLabel=navNames[i];b.layer.cornerRadius=8;DashIcon *icon=[DashIcon new];icon.kind=kinds[i];icon.tag=201;icon.backgroundColor=[UIColor clearColor];icon.userInteractionEnabled=NO;[b addSubview:icon];UILabel *text=[UILabel new];text.tag=202;text.text=navNames[i];text.textColor=[UIColor lightGrayColor];text.font=[UIFont boldSystemFontOfSize:13];text.userInteractionEnabled=NO;[b addSubview:text];UIView *line=[UIView new];line.tag=203;line.backgroundColor=blue;line.userInteractionEnabled=NO;[b addSubview:line];[b addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[b addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[b addTarget:self action:@selector(navigate:forEvent:) forControlEvents:UIControlEventTouchUpInside];[self.navigation addSubview:b];[nav addObject:b];}self.navButtons=nav;
  self.musicHeading=[self label:16 color:blue];self.musicHeading.text=@"NOW PLAYING";self.musicHeading.font=[UIFont boldSystemFontOfSize:16];self.musicHeading.hidden=YES;self.browseMusic=[UIButton buttonWithType:UIButtonTypeCustom];[self.browseMusic setTitle:@"Browse music" forState:UIControlStateNormal];self.browseMusic.titleLabel.font=[UIFont boldSystemFontOfSize:16];self.browseMusic.backgroundColor=[UIColor colorWithWhite:.09 alpha:1];self.browseMusic.layer.cornerRadius=7;self.browseMusic.layer.borderWidth=1;self.browseMusic.layer.borderColor=[UIColor colorWithWhite:.25 alpha:1].CGColor;[self.browseMusic addTarget:self action:@selector(showMusicSources:) forControlEvents:UIControlEventTouchUpInside];self.browseMusic.hidden=YES;[self.view addSubview:self.browseMusic];[self.nowPanel addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(openMusic)]];
  self.tripView=[TRDTripView new];self.tripView.hidden=YES;[self.view addSubview:self.tripView];[self.tripView.run addTarget:self action:@selector(toggleTrip) forControlEvents:UIControlEventTouchUpInside];[self.tripView.reset addTarget:self action:@selector(resetTripMenu) forControlEvents:UIControlEventTouchUpInside];[self.tripView.close addTarget:self action:@selector(homePage) forControlEvents:UIControlEventTouchUpInside];self.driveTripButton=[UIButton buttonWithType:UIButtonTypeCustom];self.driveTripButton.titleLabel.font=[UIFont boldSystemFontOfSize:14];self.driveTripButton.titleLabel.adjustsFontSizeToFitWidth=YES;self.driveTripButton.titleLabel.minimumScaleFactor=.8;self.driveTripButton.backgroundColor=[UIColor colorWithWhite:.055 alpha:1];self.driveTripButton.layer.cornerRadius=8;self.driveTripButton.layer.borderWidth=1;self.driveTripButton.layer.borderColor=[UIColor colorWithWhite:.2 alpha:1].CGColor;self.driveTripButton.accessibilityLabel=@"Open GPS trip summary";UIGraphicsBeginImageContextWithOptions(CGSizeMake(24,24),NO,0);[[UIColor whiteColor]setStroke];UIBezierPath *pin=[UIBezierPath bezierPath];pin.lineWidth=1.8;[pin moveToPoint:CGPointMake(12,22)];[pin addCurveToPoint:CGPointMake(4,9) controlPoint1:CGPointMake(10,18) controlPoint2:CGPointMake(4,13)];[pin addArcWithCenter:CGPointMake(12,9) radius:8 startAngle:M_PI endAngle:0 clockwise:YES];[pin addCurveToPoint:CGPointMake(12,22) controlPoint1:CGPointMake(20,13) controlPoint2:CGPointMake(14,18)];[pin stroke];UIBezierPath *pinCenter=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(9,6,6,6)];pinCenter.lineWidth=1.6;[pinCenter stroke];UIImage *tripIcon=UIGraphicsGetImageFromCurrentImageContext();UIGraphicsEndImageContext();[self.driveTripButton setImage:[tripIcon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];self.driveTripButton.imageEdgeInsets=UIEdgeInsetsMake(0,-8,0,0);self.driveTripButton.titleEdgeInsets=UIEdgeInsetsMake(0,5,0,0);[self.driveTripButton addTarget:self action:@selector(openTrip) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveTripButton];
  self.driveCameraButton=[UIButton buttonWithType:UIButtonTypeCustom];[self.driveCameraButton setTitle:@"CAMERA" forState:0];self.driveCameraButton.titleLabel.font=[UIFont boldSystemFontOfSize:22];self.driveCameraButton.backgroundColor=[TRDAccent()colorWithAlphaComponent:.20];self.driveCameraButton.layer.cornerRadius=8;self.driveCameraButton.layer.borderWidth=1.5;self.driveCameraButton.layer.borderColor=[TRDAccent()colorWithAlphaComponent:.8].CGColor;self.driveCameraButton.accessibilityLabel=@"Open live camera";self.driveCameraButton.accessibilityHint=@"View blind spots and follow the main camera";[self.driveCameraButton addTarget:self action:@selector(openCamera) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.driveCameraButton];
@@ -2377,12 +2385,12 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   self.carplayDock=[[UIView alloc]init];self.carplayDock.backgroundColor=[UIColor colorWithRed:.06 green:.07 blue:.09 alpha:.96];self.carplayDock.layer.borderWidth=1;self.carplayDock.layer.borderColor=[UIColor colorWithWhite:.14 alpha:1].CGColor;self.carplayDock.userInteractionEnabled=YES;self.carplayDock.clipsToBounds=YES;self.carplayDock.hidden=YES;[self.view addSubview:self.carplayDock];
   self.carplayHomeBtn=[UIButton buttonWithType:UIButtonTypeCustom];self.carplayHomeBtn.backgroundColor=[UIColor colorWithRed:.12 green:.15 blue:.22 alpha:.85];self.carplayHomeBtn.layer.cornerRadius=16;self.carplayHomeBtn.layer.borderWidth=1.2;self.carplayHomeBtn.layer.borderColor=[UIColor colorWithWhite:1.0 alpha:.24].CGColor;self.carplayHomeBtn.showsTouchWhenHighlighted=YES;
   UIImageView *gridI=[[UIImageView alloc]initWithImage:[UIImage imageNamed:@"cp_dock_home.png"]];gridI.frame=CGRectMake(11,11,32,32);gridI.contentMode=UIViewContentModeScaleAspectFit;gridI.userInteractionEnabled=NO;[self.carplayHomeBtn addSubview:gridI];
-  self.carplayHomeBtn.exclusiveTouch=YES;self.carplayHomeBtn.tag=9300;[self.carplayHomeBtn addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[self.carplayHomeBtn addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[self.carplayHomeBtn addTarget:self action:@selector(carplayHomeTouch:forEvent:) forControlEvents:UIControlEventTouchUpInside];[self.carplayDock addSubview:self.carplayHomeBtn];
+  self.carplayHomeBtn.tag=9300;[self.carplayHomeBtn addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[self.carplayHomeBtn addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[self.carplayHomeBtn addTarget:self action:@selector(carplayHomeTouch:forEvent:) forControlEvents:UIControlEventTouchUpInside];[self.carplayDock addSubview:self.carplayHomeBtn];
 
   self.carplayDockButtons=[NSMutableArray array];
   NSInteger dKinds[]={3,2,1,4,11};
   NSArray *dockIcons=@[@"cp_icon_maps.png",@"cp_icon_music.png",@"cp_icon_youtube.png",@"cp_icon_camera.png",@"cp_icon_eq.png"];
-  for(int i=0;i<5;i++){UIButton *db=[UIButton buttonWithType:UIButtonTypeCustom];db.layer.cornerRadius=14;db.backgroundColor=[UIColor colorWithRed:.10 green:.12 blue:.18 alpha:.7];db.layer.borderWidth=1;db.layer.borderColor=[UIColor colorWithWhite:1.0 alpha:.18].CGColor;db.clipsToBounds=YES;db.showsTouchWhenHighlighted=YES;UIImageView *ic=[[UIImageView alloc]initWithImage:[UIImage imageNamed:dockIcons[i]]];ic.frame=CGRectMake(6,6,42,42);ic.contentMode=UIViewContentModeScaleAspectFit;ic.layer.cornerRadius=10;ic.clipsToBounds=YES;ic.userInteractionEnabled=NO;[db addSubview:ic];db.accessibilityLabel=@[@"Maps",@"Music",@"YouTube",@"Camera",@"Sound equalizer"][i];db.exclusiveTouch=YES;db.tag=9100+i;[db addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[db addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[db addTarget:self action:@selector(carplayDockTouch:forEvent:) forControlEvents:UIControlEventTouchUpInside];[self.carplayDock addSubview:db];[self.carplayDockButtons addObject:db];}
+  for(int i=0;i<5;i++){UIButton *db=[UIButton buttonWithType:UIButtonTypeCustom];db.layer.cornerRadius=14;db.backgroundColor=[UIColor colorWithRed:.10 green:.12 blue:.18 alpha:.7];db.layer.borderWidth=1;db.layer.borderColor=[UIColor colorWithWhite:1.0 alpha:.18].CGColor;db.clipsToBounds=YES;db.showsTouchWhenHighlighted=YES;UIImageView *ic=[[UIImageView alloc]initWithImage:[UIImage imageNamed:dockIcons[i]]];ic.frame=CGRectMake(6,6,42,42);ic.contentMode=UIViewContentModeScaleAspectFit;ic.layer.cornerRadius=10;ic.clipsToBounds=YES;ic.userInteractionEnabled=NO;[db addSubview:ic];db.accessibilityLabel=@[@"Maps",@"Music",@"YouTube",@"Camera",@"Sound equalizer"][i];db.tag=9100+i;[db addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[db addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[db addTarget:self action:@selector(carplayDockTouch:forEvent:) forControlEvents:UIControlEventTouchUpInside];[self.carplayDock addSubview:db];[self.carplayDockButtons addObject:db];}
 
   self.carplayClock=[[UILabel alloc]init];self.carplayClock.font=[UIFont boldSystemFontOfSize:14];self.carplayClock.textColor=[UIColor whiteColor];self.carplayClock.textAlignment=NSTextAlignmentCenter;[self.carplayDock addSubview:self.carplayClock];
   self.carplayBattery=[[UILabel alloc]init];self.carplayBattery.font=[UIFont boldSystemFontOfSize:11];self.carplayBattery.textColor=[UIColor colorWithRed:.2 green:.9 blue:.5 alpha:1];self.carplayBattery.textAlignment=NSTextAlignmentCenter;[self.carplayDock addSubview:self.carplayBattery];
@@ -2458,7 +2466,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
     gt.textAlignment=NSTextAlignmentCenter;
     gt.userInteractionEnabled=NO;
     [gb addSubview:gt];
-    gb.exclusiveTouch=YES;gb.tag=9200+i;[gb addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[gb addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[gb addTarget:self action:@selector(carplayGridTouch:forEvent:) forControlEvents:UIControlEventTouchUpInside];
+    gb.tag=9200+i;[gb addTarget:self action:@selector(navTouchDown:forEvent:) forControlEvents:UIControlEventTouchDown];[gb addTarget:self action:@selector(cancelNavigationTouch:forEvent:) forControlEvents:(UIControlEventTouchCancel|UIControlEventTouchUpOutside|UIControlEventTouchDragExit)];[gb addTarget:self action:@selector(carplayGridTouch:forEvent:) forControlEvents:UIControlEventTouchUpInside];
     [self.carplayAppGrid addSubview:gb];
     [self.carplayGridButtons addObject:gb];
   }
@@ -2491,7 +2499,18 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 -(BOOL)shouldAutorotate{return YES;}
 -(UIInterfaceOrientationMask)supportedInterfaceOrientations{return UIInterfaceOrientationMaskLandscape;}
 // The audio source owns Now Playing and Bluetooth remote commands.
--(void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];notify_post("com.codex.trd.network.internet");[self applyTheme];[self applyDisplaySchedule];[self becomeFirstResponder];if(self.welcome){[self.view bringSubviewToFront:self.welcome];}else if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}[self.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;[self.timer invalidate];self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];self.timer.tolerance=.1;[self update];}
+-(void)ensureActiveRunLoopHealth{
+ if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive && self.timer)return;
+ [UIApplication sharedApplication].idleTimerDisabled=YES;
+ self.view.userInteractionEnabled=YES;
+ NSTimeInterval now=[NSProcessInfo processInfo].systemUptime;
+ if(self.navGuardUntil > now + 2.0)self.navGuardUntil=now;
+ if(!self.timer || ![self.timer isValid]){
+  self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];
+  self.timer.tolerance=.1;
+ }
+}
+-(void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];notify_post("com.codex.trd.network.internet");[self applyTheme];[self applyDisplaySchedule];[self becomeFirstResponder];if(self.welcome){[self.view bringSubviewToFront:self.welcome];}else if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}[self.audioBars start];[self ensureActiveRunLoopHealth];[self update];}
 -(void)viewWillDisappear:(BOOL)animated{[super viewWillDisappear:animated];[self hideWelcome];[self.audioBars stop];[self.driveCar stop];[self.timer invalidate];self.timer=nil;[self saveTrip];[UIApplication sharedApplication].idleTimerDisabled=NO;}
 
 -(void)hideAllHomeWidgets:(BOOL)hide {
@@ -3630,11 +3649,13 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
     self.carImage.frame = CGRectMake(centerX + 14, topY + 82, 320, 160);
     self.homeCarLightBeams.frame = self.carImage.frame;
     self.homeCarLightBeams.hidden = YES;
-    [self.homeCarLightBeams setNeedsDisplay];
 
     self.doorDiagramView.hidden = NO;
-    self.doorDiagramView.frame = CGRectMake(centerX + centerW - 124, topY + 94, 112, 144);
-    [self.doorDiagramView setNeedsDisplay];
+    CGRect doorTarget = CGRectMake(centerX + centerW - 124, topY + 94, 112, 144);
+    if (!CGRectEqualToRect(self.doorDiagramView.frame, doorTarget)) {
+      self.doorDiagramView.frame = doorTarget;
+      [self.doorDiagramView setNeedsDisplay];
+    }
 
     self.flowBeamLine.hidden = NO;
     self.flowBeamLine.frame = CGRectMake(centerX + 24, topY + 243, centerW - 48, 2);
@@ -3918,7 +3939,6 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
     for (int i = 0; i < self.navButtons.count; i++) {
       UIButton *b = self.navButtons[i];
       BOOL active = (i == 0);
-      b.exclusiveTouch = YES;
       b.clipsToBounds = YES;
       b.layer.cornerRadius = 10;
       b.frame = CGRectMake(12 + i * nw, 9, nw - 4, 60);
@@ -3949,7 +3969,6 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
     [self.view bringSubviewToFront:self.settingsPill];
     [self.view bringSubviewToFront:self.helpPill];
     [self.view bringSubviewToFront:self.readyPill];
-    [self.homeSpeedoDial setNeedsDisplay];
     [self.view bringSubviewToFront:self.homeSpeedoDial];
     for (UIButton *b in self.gearButtons) [self.view bringSubviewToFront:b];
     [self.view bringSubviewToFront:self.hybridEcoBar];
@@ -4014,24 +4033,27 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 -(void)update{
 
   if(self.topClockLabel && !self.topClockLabel.hidden){
-    self.topClockLabel.text = [self.clockFormat stringFromDate:[NSDate date]];
+    NSString *tc = [self.clockFormat stringFromDate:[NSDate date]];
+    if(![self.topClockLabel.text isEqualToString:tc]) self.topClockLabel.text = tc;
   }
   if(self.obdStatusPill && !self.obdStatusPill.hidden){
     TRDOBDClient *obd = [TRDOBDClient sharedClient];
     BOOL live = obd.isConnected;
-    [self.obdStatusPill setTitle:(live ? @"● OBD2: LIVE BLE" : @"● OBD2: SCAN BLE") forState:UIControlStateNormal];
-    self.obdStatusPill.backgroundColor = live
-      ? [UIColor colorWithRed:0.04 green:0.24 blue:0.12 alpha:0.95]
-      : [UIColor colorWithRed:0.16 green:0.10 blue:0.04 alpha:0.95];
-    self.obdStatusPill.layer.borderColor = (live
-      ? [UIColor colorWithRed:0.20 green:0.92 blue:0.50 alpha:0.8]
-      : [UIColor colorWithRed:0.95 green:0.65 blue:0.20 alpha:0.6]).CGColor;
+    NSString *obdTitle = live ? @"● OBD2: LIVE BLE" : @"● OBD2: SCAN BLE";
+    if(![self.obdStatusPill.currentTitle isEqualToString:obdTitle]){
+      [self.obdStatusPill setTitle:obdTitle forState:UIControlStateNormal];
+      self.obdStatusPill.backgroundColor = live
+        ? [UIColor colorWithRed:0.04 green:0.24 blue:0.12 alpha:0.95]
+        : [UIColor colorWithRed:0.16 green:0.10 blue:0.04 alpha:0.95];
+      self.obdStatusPill.layer.borderColor = (live
+        ? [UIColor colorWithRed:0.20 green:0.92 blue:0.50 alpha:0.8]
+        : [UIColor colorWithRed:0.95 green:0.65 blue:0.20 alpha:0.6]).CGColor;
+    }
   }
   if(self.dayNightPill && !self.dayNightPill.hidden){
-    if(self.driveMode){
-      [self.dayNightPill setTitle:self.nightMode?@"🌙 กลางคืน":@"☀️ กลางวัน" forState:UIControlStateNormal];
-    }else{
-      [self.dayNightPill setTitle:self.nightMode?@"🌙 NIGHT":@"☀️ DAY" forState:UIControlStateNormal];
+    NSString *dnTitle = self.driveMode ? (self.nightMode?@"🌙 กลางคืน":@"☀️ กลางวัน") : (self.nightMode?@"🌙 NIGHT":@"☀️ DAY");
+    if(![self.dayNightPill.currentTitle isEqualToString:dnTitle]){
+      [self.dayNightPill setTitle:dnTitle forState:UIControlStateNormal];
     }
   }
   [self updateDrive12VPill];
@@ -4043,9 +4065,13 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   self.date.text=[self.dateFormat stringFromDate:now];
  }
  UIDeviceBatteryState currentPower=[UIDevice currentDevice].batteryState;
+ BOOL curPowered=(currentPower==UIDeviceBatteryStateCharging||currentPower==UIDeviceBatteryStateFull);
  static UIDeviceBatteryState previousPower=UIDeviceBatteryStateUnknown;
  if(previousPower!=UIDeviceBatteryStateUnknown && previousPower!=currentPower){
-  [self batteryStateChanged:nil];
+  BOOL prevPowered=(previousPower==UIDeviceBatteryStateCharging||previousPower==UIDeviceBatteryStateFull);
+  if(prevPowered != curPowered){
+   [self batteryStateChanged:nil];
+  }
  }
  previousPower=currentPower;
  if(self.carplayMode){
@@ -4360,7 +4386,10 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  if(self.homeSpeedoDial) self.homeSpeedoDial.speed = kmh;
  if(self.driveSpeedoDial) self.driveSpeedoDial.speed = kmh;
  if(self.carplayTelemetryWidget && self.carplayTelemetryWidget.speedLabel){
-  self.carplayTelemetryWidget.speedLabel.text = [NSString stringWithFormat:@"%.0f", kmh];
+  NSString *cpSpd = [NSString stringWithFormat:@"%.0f", kmh];
+  if(![self.carplayTelemetryWidget.speedLabel.text isEqualToString:cpSpd]){
+   self.carplayTelemetryWidget.speedLabel.text = cpSpd;
+  }
  }
 
  // Clear manual suppression quickly once vehicle drops below 5 km/h
@@ -4500,6 +4529,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   }
  }
  if(obdWarn){
+  BOOL wasHidden = (!self.obdAlertBanner || self.obdAlertBanner.hidden);
   if(!self.obdAlertBanner){
    self.obdAlertBanner = [[UILabel alloc] init];
    self.obdAlertBanner.backgroundColor = [UIColor colorWithRed:0.85 green:0.10 blue:0.12 alpha:0.94];
@@ -4512,15 +4542,20 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    self.obdAlertBanner.layer.borderColor = [UIColor colorWithRed:1.0 green:0.55 blue:0.20 alpha:0.95].CGColor;
    [self.view addSubview:self.obdAlertBanner];
   }
-  self.obdAlertBanner.text = obdWarn;
-  self.obdAlertBanner.hidden = NO;
-  [self.view setNeedsLayout];
+  if(![self.obdAlertBanner.text isEqualToString:obdWarn]){
+   self.obdAlertBanner.text = obdWarn;
+  }
+  if(wasHidden){
+   self.obdAlertBanner.hidden = NO;
+   [self.view setNeedsLayout];
+  }
   if(!self.lastOBDWarnDate || -[self.lastOBDWarnDate timeIntervalSinceNow] >= 30.0){
    self.lastOBDWarnDate = [NSDate date];
    AudioServicesPlaySystemSound(1052);
   }
  }else if(self.obdAlertBanner && !self.obdAlertBanner.hidden){
   self.obdAlertBanner.hidden = YES;
+  [self.view setNeedsLayout];
  }
  NSString *newStatus=gps[@"label"];
  if(![self.gpsStatus.text isEqualToString:newStatus]){
@@ -5294,34 +5329,43 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   [self showFeatureExplanation:@"⚙️ มอเตอร์ขับเคลื่อน MG2 & เจเนอเรเตอร์ MG1" body:@"• มอเตอร์ไฟฟ้าหลัก MG2 (Traction Motor): กำลังขับ 60 kW (80 แรงม้า) แรงบิดสูงสุด 207 Nm ขับเคลื่อนล้อหน้าโดยตรง ออกตัวเงียบและตอบสนองทันที\n• เจเนอเรเตอร์ MG1: ทำหน้าที่สตาร์ทเครื่องยนต์ 1.8L อย่างนุ่มนวล และปั่นไฟชาร์จกลับเข้าแบตเตอรี่ไฮบริด\n• Inverter ระบายความร้อนด้วยระบบน้ำแยกอิสระ พร้อมระบบชาร์จไฟกลับขณะเบรก (Regenerative Braking) สูงสุด 20+ kW"];
 }
 -(void)batteryStateChanged:(NSNotification *)note{
- // Apply on every power transition, even one later suppressed by the session debounce.
+ UIDeviceBatteryState state=[UIDevice currentDevice].batteryState;
+ BOOL isPowered=(state==UIDeviceBatteryStateCharging||state==UIDeviceBatteryStateFull);
+ NSInteger logicalPower=isPowered?1:0;
+ static NSInteger lastLogicalPower=-1;
+ // Ignore Charging <-> Full ripples at 100% battery completely so navigation and menus never pause!
+ if(lastLogicalPower==logicalPower && !(logicalPower==1 && !self.isCarSessionActive)){
+  return;
+ }
+ lastLogicalPower=logicalPower;
  [self cancelNavigationTouch:nil forEvent:nil];
  self.mapConfirmationGeneration++;
  self.mapURLRequestGeneration++;
  self.mapNavigationAuthorized=NO;
- self.navGuardUntil=MAX(self.navGuardUntil,[NSProcessInfo processInfo].systemUptime+1.2);
+ self.navGuardUntil=MAX(self.navGuardUntil,[NSProcessInfo processInfo].systemUptime+0.4);
  if(self.settingsSheet.requiresIntentionalTouch)[self.settingsSheet dismiss];
- [self logNavigation:@"power transition: navigation paused"];
- static NSTimeInterval lastBatteryChange = 0;
- NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
- if (lastBatteryChange > 0 && (now - lastBatteryChange < 3.0)) return; // Debounce rapid power ripples
- lastBatteryChange = now;
-
- UIDeviceBatteryState state=[UIDevice currentDevice].batteryState;
+ [self logNavigation:isPowered?@"power connected":@"power unplugged"];
  if(state==UIDeviceBatteryStateUnplugged){
-  // Engine stopped / Charger unplugged: Reset session, purge cache & memory, show trip summary
-  self.isCarSessionActive = NO;
-  NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];
-  [ud setBool:NO forKey:@"TRDWelcomeShownForSession"];
-  [ud setBool:NO forKey:@"TRDSkipNextLaunchWelcome"];
-  [ud setDouble:0 forKey:@"TRDLastActiveTimestamp"];
-  [ud synchronize];
-  [[NSURLCache sharedURLCache] removeAllCachedResponses];
-  [self releaseArtwork];
-  trd_run_bg("killall -9 YTNine Maps 2>/dev/null; sync; purge 2>/dev/null");
-  notify_post("com.apple.SpringBoard.MemoryWarning");
-  [self showTripSummary];
- }else if(state==UIDeviceBatteryStateCharging||state==UIDeviceBatteryStateFull){
+  NSUInteger gen=++self.unplugCheckGeneration;
+  __weak Dashboard *weakSelf=self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2.5*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   Dashboard *strongSelf=weakSelf;
+   if(!strongSelf || gen!=strongSelf.unplugCheckGeneration)return;
+   if([UIDevice currentDevice].batteryState!=UIDeviceBatteryStateUnplugged)return;
+   // Confirmed unplug: reset session, clean caches safely (without stalling kernel VM via sync/purge), show trip summary
+   strongSelf.isCarSessionActive=NO;
+   NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];
+   [ud setBool:NO forKey:@"TRDWelcomeShownForSession"];
+   [ud setBool:NO forKey:@"TRDSkipNextLaunchWelcome"];
+   [ud setDouble:0 forKey:@"TRDLastActiveTimestamp"];
+   [ud synchronize];
+   [[NSURLCache sharedURLCache] removeAllCachedResponses];
+   [strongSelf releaseArtwork];
+   trd_run_bg("killall -9 YTNine Maps 2>/dev/null");
+   [strongSelf showTripSummary];
+  });
+ }else if(isPowered){
+  self.unplugCheckGeneration++;
   // Only run Welcome ONCE per car power-on session; ignore Charging<->Full ripples!
   if(self.isCarSessionActive) return;
   self.isCarSessionActive = YES;
@@ -5330,12 +5374,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   [ud setDouble:[[NSDate date] timeIntervalSince1970] forKey:@"TRDLastActiveTimestamp"];
   [ud synchronize];
 
-  // Power plugged: 0.5s digitizer touch guard + 0.85s bottom dock guard to absorb electrical ripple
-  self.navGuardUntil = MAX(self.navGuardUntil,[NSProcessInfo processInfo].systemUptime + 1.2);
-  self.view.userInteractionEnabled = NO;
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-   self.view.userInteractionEnabled = YES;
-  });
+  self.navGuardUntil = MAX(self.navGuardUntil,[NSProcessInfo processInfo].systemUptime + 0.35);
+  self.view.userInteractionEnabled = YES;
 
   [self syncTripSlotsDelta:YES];
   [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
@@ -5997,11 +6037,14 @@ static NSData *TRDBuildLoudBeepWAVData(void){
 -(void)navTouchDown:(UIButton *)button forEvent:(UIEvent *)event{
  [self cancelNavigationTouch:nil forEvent:nil];
  NSTimeInterval now=[NSProcessInfo processInfo].systemUptime;
+ if(self.navGuardUntil > now + 2.0)self.navGuardUntil=now;
  if(now<self.navGuardUntil || self.welcome || self.tripSummaryCard || self.settingsSheet || self.featureExplanationBanner ||
-    ![self isNavigationControlVisible:button] || !event || event.type!=UIEventTypeTouches || event.allTouches.count!=1)return;
- UITouch *touch=[event.allTouches anyObject];
+    ![self isNavigationControlVisible:button] || !event || event.type!=UIEventTypeTouches)return;
+ NSSet *viewTouches=[event touchesForView:button];
+ UITouch *touch=[viewTouches anyObject]?:[event.allTouches anyObject];
+ if(!touch)return;
  CGPoint point=[touch locationInView:button];
- if(touch.phase!=UITouchPhaseBegan || !CGRectContainsPoint(CGRectInset(button.bounds,-2,-2),point))return;
+ if(touch.phase!=UITouchPhaseBegan || !CGRectContainsPoint(CGRectInset(button.bounds,-10,-10),point))return;
  self.navTrackingTouch=touch;
  self.navTouchDownTag=button.tag;
  self.navTouchDownPoint=point;
@@ -6009,6 +6052,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
 }
 -(BOOL)acceptNavigationTouch:(UIButton *)button forEvent:(UIEvent *)event{
  NSTimeInterval now=[NSProcessInfo processInfo].systemUptime;
+ if(self.navGuardUntil > now + 2.0)self.navGuardUntil=now;
  UITouch *tracked=self.navTrackingTouch;
  NSInteger tag=self.navTouchDownTag;
  NSTimeInterval held=now-self.navTouchDownAt;
@@ -6017,16 +6061,25 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  if(now<self.navGuardUntil || self.welcome || self.tripSummaryCard || self.settingsSheet || self.featureExplanationBanner){
   [self logNavigationReject:@"cooldown or overlay"];return NO;
  }
- if(![self isNavigationControlVisible:button] || !event || event.type!=UIEventTypeTouches || event.allTouches.count!=1){
-  [self logNavigationReject:@"missing single visible touch"];return NO;
+ if(![self isNavigationControlVisible:button]){
+  [self logNavigationReject:@"invisible control"];return NO;
  }
- UITouch *touch=[event.allTouches anyObject];
- CGPoint point=[touch locationInView:button];
- if(touch!=tracked || touch.phase!=UITouchPhaseEnded || tag!=button.tag || held<0.005 || held>2.0 ||
-    !CGRectContainsPoint(CGRectInset(button.bounds,-2,-2),point) || hypot(point.x-origin.x,point.y-origin.y)>16.0){
-  [self logNavigationReject:@"unmatched, short, dragged or edge touch"];return NO;
+ if(event && event.type==UIEventTypeTouches){
+  NSSet *viewTouches=[event touchesForView:button];
+  UITouch *touch=[viewTouches anyObject]?:[event.allTouches anyObject];
+  if(!touch){
+   [self logNavigationReject:@"missing touch"];return NO;
+  }
+  CGPoint point=[touch locationInView:button];
+  if(tracked!=nil && (touch!=tracked || touch.phase!=UITouchPhaseEnded || tag!=button.tag || held>4.0 ||
+     !CGRectContainsPoint(CGRectInset(button.bounds,-10,-10),point) || hypot(point.x-origin.x,point.y-origin.y)>36.0)){
+   [self logNavigationReject:@"unmatched, dragged or edge touch"];return NO;
+  }
+  if(tracked==nil && !CGRectContainsPoint(CGRectInset(button.bounds,-10,-10),point)){
+   [self logNavigationReject:@"outside bounds"];return NO;
+  }
  }
- if(self.lastNavigationAcceptedAt>0 && now-self.lastNavigationAcceptedAt<0.18){
+ if(self.lastNavigationAcceptedAt>0 && now-self.lastNavigationAcceptedAt<0.12){
   [self logNavigationReject:@"repeat touch"];return NO;
  }
  self.lastNavigationAcceptedAt=now;
@@ -7129,14 +7182,19 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(!self.driveMode || !self.thaiVoicePill || self.thaiVoicePill.hidden) return;
  TRDOBDClient *obd=[TRDOBDClient sharedClient];
  double v12 = obd.auxBatteryVoltage;
- [self.thaiVoicePill setTitle:[NSString stringWithFormat:@"🔋 12V: %.2fV", v12] forState:UIControlStateNormal];
- BOOL low = (v12 > 0.5 && v12 < 12.1);
- BOOL chg = (v12 >= 13.4);
- UIColor *fg = low ? [UIColor colorWithRed:1.0 green:0.35 blue:0.35 alpha:1.0]
-                   : (chg ? [UIColor colorWithRed:0.30 green:0.98 blue:0.58 alpha:1.0]
-                          : [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:1.0]);
- [self.thaiVoicePill setTitleColor:fg forState:UIControlStateNormal];
- self.thaiVoicePill.layer.borderColor = [fg colorWithAlphaComponent:0.55].CGColor;
+ NSString *title = [NSString stringWithFormat:@"🔋 12V: %.2fV", v12];
+ if(![self.thaiVoicePill.currentTitle isEqualToString:title]){
+  [self.thaiVoicePill setTitle:title forState:UIControlStateNormal];
+ }
+ NSInteger band = (v12 > 0.5 && v12 < 12.1) ? 0 : (v12 >= 13.4 ? 2 : 1);
+ if(self.thaiVoicePill.tag != 900 + band){
+  self.thaiVoicePill.tag = 900 + band;
+  UIColor *fg = (band == 0) ? [UIColor colorWithRed:1.0 green:0.35 blue:0.35 alpha:1.0]
+                            : ((band == 2) ? [UIColor colorWithRed:0.30 green:0.98 blue:0.58 alpha:1.0]
+                                           : [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:1.0]);
+  [self.thaiVoicePill setTitleColor:fg forState:UIControlStateNormal];
+  self.thaiVoicePill.layer.borderColor = [fg colorWithAlphaComponent:0.55].CGColor;
+ }
 }
 
 -(void)refreshCarPlayTelemetryWidget:(TRDOBDClient *)obd{
@@ -7166,7 +7224,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  }
 }
 
--(void)refreshLiveOBDDashboard{
+ -(void)refreshLiveOBDDashboard{
  TRDOBDClient *obd=[TRDOBDClient sharedClient];
  if(self.carplayMode || self.mapMode || self.focused){
   if(self.carplayMode)[self refreshCarPlayTelemetryWidget:obd];
@@ -7186,10 +7244,13 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
  // Top OBD status pill
  if(self.obdStatusPill){
-  [self.obdStatusPill setTitle:(obd.isConnected ? @"● OBD2: LIVE BLE" : @"● OBD2: SCAN BLE") forState:UIControlStateNormal];
-  self.obdStatusPill.backgroundColor = obd.isConnected
-   ? [UIColor colorWithRed:0.04 green:0.24 blue:0.12 alpha:0.95]
-   : [UIColor colorWithRed:0.16 green:0.10 blue:0.04 alpha:0.95];
+  NSString *obdT = obd.isConnected ? @"● OBD2: LIVE BLE" : @"● OBD2: SCAN BLE";
+  if(![[self.obdStatusPill titleForState:UIControlStateNormal] isEqualToString:obdT]){
+   [self.obdStatusPill setTitle:obdT forState:UIControlStateNormal];
+   self.obdStatusPill.backgroundColor = obd.isConnected
+    ? [UIColor colorWithRed:0.04 green:0.24 blue:0.12 alpha:0.95]
+    : [UIColor colorWithRed:0.16 green:0.10 blue:0.04 alpha:0.95];
+  }
  }
 
  // Left Card 2: AI ECO COACH (Live Eco Score, Regen, EV/ICE & ECB status)
@@ -7200,25 +7261,29 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   UILabel *ecoS = (UILabel *)[self.homeAiEcoCard viewWithTag:502];
   UILabel *ecoD = (UILabel *)[self.homeAiEcoCard viewWithTag:503];
   if(ecoH){
-   ecoH.text = (obd.regenBrakingPowerKW > 0.2)
+   NSString *t = (obd.regenBrakingPowerKW > 0.2)
     ? [NSString stringWithFormat:@"🌱 AI ECO COACH  •  ♻️ +%.1f kW", obd.regenBrakingPowerKW]
     : [NSString stringWithFormat:@"🌱 AI ECO COACH  •  %@", (obd.engineRPM > 100 ? @"🔥 HYBRID" : @"🍃 EV READY")];
+   if(![ecoH.text isEqualToString:t]) ecoH.text = t;
   }
   if(ecoS){
-   ecoS.text = [NSString stringWithFormat:@"ECO %ld / 100  [ GRADE %@ ]", (long)ecoVal, grade];
+   NSString *t = [NSString stringWithFormat:@"ECO %ld / 100  [ GRADE %@ ]", (long)ecoVal, grade];
+   if(![ecoS.text isEqualToString:t]) ecoS.text = t;
   }
   if(ecoD){
    NSString *thrState = (obd.engineRPM > 2200) ? @"เร่งแรง (High Load)" : (obd.engineRPM > 100) ? @"กำลังขับปกติ (Hybrid)" : @"โหมดไฟฟ้าเงียบ (EV)";
    NSString *regState = (obd.hvPackCurrent < -0.5) ? [NSString stringWithFormat:@"ชาร์จคืนแบต %.1f kW", obd.regenBrakingPowerKW] : @"พร้อมปั่นไฟชะลอ";
    NSString *brkState = obd.brakeFluidNormal ? @"แรงดันเบรกปกติ" : @"⚠️ ตรวจเช็กระบบเบรก";
-   ecoD.text = [NSString stringWithFormat:@"• HYBRID: %@\n• THROTTLE: %@\n• REGEN: %@\n• ECB BRAKE: %@", obd.isConnected ? @"LIVE OBD2" : @"STANDBY", thrState, regState, brkState];
+   NSString *t = [NSString stringWithFormat:@"• HYBRID: %@\n• THROTTLE: %@\n• REGEN: %@\n• ECB BRAKE: %@", obd.isConnected ? @"LIVE OBD2" : @"STANDBY", thrState, regState, brkState];
+   if(![ecoD.text isEqualToString:t]) ecoD.text = t;
   }
  }
  if(self.drivePowerMeter && self.drivePowerMeter.coachPill){
   NSInteger ecoVal = self.ecoScore > 0 ? self.ecoScore : 96;
   NSString *grade = (ecoVal >= 90) ? @"A+" : (ecoVal >= 80) ? @"A" : (ecoVal >= 70) ? @"B" : @"C";
   UILabel *cl = (UILabel *)[self.drivePowerMeter.coachPill viewWithTag:201];
-  if(cl) cl.text = [NSString stringWithFormat:@"ECO  AI ECO COACH: %ld %@", (long)ecoVal, grade];
+  NSString *t = [NSString stringWithFormat:@"ECO  AI ECO COACH: %ld %@", (long)ecoVal, grade];
+  if(cl && ![cl.text isEqualToString:t]) cl.text = t;
  }
 
  // Left Card 3: Thermals & 12V (homeThermalsCard)
@@ -7228,14 +7293,17 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   UILabel *tRow3 = (UILabel *)[self.homeThermalsCard viewWithTag:603];
   if(tRow1){
    NSString *ectStatus = (obd.coolantTempC >= 98.0) ? @"สูง" : (obd.coolantTempC >= 40.0) ? @"ปกติ" : @"อุ่นเครื่อง";
-   tRow1.text = [NSString stringWithFormat:@"🌡️ ENGINE COOLANT : %.0f °C\n     น้ำหล่อเย็น (%@) • RPM %ld", obd.coolantTempC, ectStatus, (long)obd.engineRPM];
+   NSString *t = [NSString stringWithFormat:@"🌡️ ENGINE COOLANT : %.0f °C\n     น้ำหล่อเย็น (%@) • RPM %ld", obd.coolantTempC, ectStatus, (long)obd.engineRPM];
+   if(![tRow1.text isEqualToString:t]) tRow1.text = t;
   }
   if(tRow2){
-   tRow2.text = [NSString stringWithFormat:@"❄️ CABIN A/C : %.1f°C • EXT %.0f°C\n     INV : %.0f°C • HV AIR %.1f°C", obd.cabinTempC, obd.exteriorTempC, obd.inverterTempC, obd.hvIntakeTempC];
+   NSString *t = [NSString stringWithFormat:@"❄️ CABIN A/C : %.1f°C • EXT %.0f°C\n     INV : %.0f°C • HV AIR %.1f°C", obd.cabinTempC, obd.exteriorTempC, obd.inverterTempC, obd.hvIntakeTempC];
+   if(![tRow2.text isEqualToString:t]) tRow2.text = t;
   }
   if(tRow3){
    NSString *auxMsg = (obd.auxBatteryVoltage >= 13.4) ? @"ระบบ DC-DC ชาร์จไฟ 12V ปกติ" : (obd.auxBatteryVoltage >= 12.1) ? @"ไฟ 12V สแตนด์บายปกติ" : @"⚠️ แบตเตอรี่ 12V ต่ำ";
-   tRow3.text = [NSString stringWithFormat:@"🔋 AUX 12V BATTERY : %.2f V\n     %@", obd.auxBatteryVoltage, auxMsg];
+   NSString *t = [NSString stringWithFormat:@"🔋 AUX 12V BATTERY : %.2f V\n     %@", obd.auxBatteryVoltage, auxMsg];
+   if(![tRow3.text isEqualToString:t]) tRow3.text = t;
   }
  }
 
@@ -7245,27 +7313,33 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  double liveAvgKmL = (obd.tripFuelUsedLiters > 0.05 && tripKm > 0.5) ? MAX(8.0, MIN(40.0, tripKm / obd.tripFuelUsedLiters)) : ((obd.tripAverageKmPerL > 1.0) ? obd.tripAverageKmPerL : 21.5);
  double estRangeKm = MAX(0.0, obd.fuelRemainingLiters * liveAvgKmL);
  if(self.energyFlowLabel){
+  NSString *ef = nil;
   if(!obd.isConnected){
-   self.energyFlowLabel.text = [NSString stringWithFormat:@"🔍 %@  •  RPM %ld", obd.connectionStatus ?: @"Scanning", (long)obd.engineRPM];
+   ef = [NSString stringWithFormat:@"🔍 %@  •  RPM %ld", obd.connectionStatus ?: @"Scanning", (long)obd.engineRPM];
   } else if(obd.engineRPM > 100){
-   self.energyFlowLabel.text = [NSString stringWithFormat:@"🔥 ICE %ld RPM • ⛽ %.1f L (วิ่งได้ ~%.0f กม.)", (long)obd.engineRPM, obd.fuelRemainingLiters, estRangeKm];
+   ef = [NSString stringWithFormat:@"🔥 ICE %ld RPM • ⛽ %.1f L (วิ่งได้ ~%.0f กม.)", (long)obd.engineRPM, obd.fuelRemainingLiters, estRangeKm];
   } else {
-   self.energyFlowLabel.text = [NSString stringWithFormat:@"🍃 EV READY • ⛽ %.1f L (วิ่งได้ ~%.0f กม.)", obd.fuelRemainingLiters, estRangeKm];
+   ef = [NSString stringWithFormat:@"🍃 EV READY • ⛽ %.1f L (วิ่งได้ ~%.0f กม.)", obd.fuelRemainingLiters, estRangeKm];
   }
+  if(![self.energyFlowLabel.text isEqualToString:ef]) self.energyFlowLabel.text = ef;
  }
  if(self.frontMotorBox){
   UILabel *fm2 = (UILabel *)[self.frontMotorBox viewWithTag:841];
-  if(fm2) fm2.text = [NSString stringWithFormat:@"MG1 %ld / MG2 %ld RPM", (long)obd.mg1RPM, (long)obd.mg2RPM];
+  NSString *t = [NSString stringWithFormat:@"MG1 %ld / MG2 %ld RPM", (long)obd.mg1RPM, (long)obd.mg2RPM];
+  if(fm2 && ![fm2.text isEqualToString:t]) fm2.text = t;
  }
  if(self.rearBatteryBox){
   UILabel *rb2 = (UILabel *)[self.rearBatteryBox viewWithTag:842];
-  if(rb2) rb2.text = [NSString stringWithFormat:@"SOC %.1f%% • %.1f V🔋", obd.hybridBatterySOC, obd.hvPackVoltage];
+  NSString *t = [NSString stringWithFormat:@"SOC %.1f%% • %.1f V🔋", obd.hybridBatterySOC, obd.hvPackVoltage];
+  if(rb2 && ![rb2.text isEqualToString:t]) rb2.text = t;
  }
  if(self.compassLabel && !self.driveMode){
   NSString *flowDir = (obd.hvPackCurrent < -0.5) ? @"ชาร์จไฟเข้า" : (obd.hvPackCurrent > 1.5) ? @"จ่ายไฟขับเคลื่อน" : @"สแตนด์บาย";
-  self.compassLabel.text = [NSString stringWithFormat:@"⚡ HV PACK: %.1f V • %+.2f A • %@ (%.2f kW)", obd.hvPackVoltage, obd.hvPackCurrent, flowDir, fabs(hvKW)];
+  NSString *t = [NSString stringWithFormat:@"⚡ HV PACK: %.1f V • %+.2f A • %@ (%.2f kW)", obd.hvPackVoltage, obd.hvPackCurrent, flowDir, fabs(hvKW)];
+  if(![self.compassLabel.text isEqualToString:t]) self.compassLabel.text = t;
  } else if(self.compassLabel && self.driveMode){
-  self.compassLabel.text = [NSString stringWithFormat:@"⚡ HV PACK: %.1f V • %+.2f A (%.2f kW)", obd.hvPackVoltage, obd.hvPackCurrent, fabs(hvKW)];
+  NSString *t = [NSString stringWithFormat:@"⚡ HV PACK: %.1f V • %+.2f A (%.2f kW)", obd.hvPackVoltage, obd.hvPackCurrent, fabs(hvKW)];
+  if(![self.compassLabel.text isEqualToString:t]) self.compassLabel.text = t;
  }
  if(self.doorDiagramView){
   BOOL doorDirty = (self.doorDiagramView.doorsLive != obd.doorSensorsLive ||
@@ -7285,21 +7359,34 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(self.carStatus){
   NSString *openDoors = TRDOpenDoorsSummary(obd.doorSensorsLive, obd.doorFrontLeftOpen, obd.doorFrontRightOpen, obd.doorRearLeftOpen, obd.doorRearRightOpen, obd.trunkOpen);
   BOOL doorAlert = (openDoors.length > 0);
+  NSString *csText = nil;
+  NSInteger styleTag = 0;
   if(doorAlert){
-   self.carStatus.text = [NSString stringWithFormat:@"🚨 ประตูเปิด: %@ • เกียร์ %@ • 🔋 %.2fV", openDoors, obd.currentGear ?: @"P", obd.auxBatteryVoltage];
-   self.carStatus.textColor = [UIColor colorWithRed:1.0 green:0.88 blue:0.88 alpha:1.0];
-   self.carStatus.backgroundColor = [UIColor colorWithRed:0.30 green:0.04 blue:0.05 alpha:0.96];
-   self.carStatus.layer.borderColor = [UIColor colorWithRed:1.0 green:0.30 blue:0.30 alpha:0.95].CGColor;
+   csText = [NSString stringWithFormat:@"🚨 ประตูเปิด: %@ • เกียร์ %@ • 🔋 %.2fV", openDoors, obd.currentGear ?: @"P", obd.auxBatteryVoltage];
+   styleTag = 1;
   } else if(self.driveMode){
-   self.carStatus.text = [NSString stringWithFormat:@"🔌 OBD2 %@ • 🚪 ปิดครบ • 🌡️ %.0f°C • 🔋 %.2fV", obd.isConnected ? @"LIVE" : @"SCAN", obd.coolantTempC, obd.auxBatteryVoltage];
-   self.carStatus.textColor = [UIColor whiteColor];
-   self.carStatus.backgroundColor = [UIColor colorWithRed:0.03 green:0.06 blue:0.09 alpha:0.95];
-   self.carStatus.layer.borderColor = [UIColor colorWithWhite:0.22 alpha:1].CGColor;
+   csText = [NSString stringWithFormat:@"🔌 OBD2 %@ • 🚪 ปิดครบ • 🌡️ %.0f°C • 🔋 %.2fV", obd.isConnected ? @"LIVE" : @"SCAN", obd.coolantTempC, obd.auxBatteryVoltage];
+   styleTag = 2;
   } else {
-   self.carStatus.text = [NSString stringWithFormat:@"🔌 vLinker MC+ : %@  •  ⚙️ เกียร์ %@  •  ⛽ %.1f ลิตร (~%.0f กม.)", obd.isConnected ? @"เชื่อมต่อสด (LIVE)" : (obd.connectionStatus ?: @"รอเชื่อมต่อ"), obd.currentGear ?: @"P", obd.fuelRemainingLiters, estRangeKm];
-   self.carStatus.textColor = [UIColor colorWithWhite:0.96 alpha:1];
-   self.carStatus.backgroundColor = self.nightMode ? [UIColor colorWithRed:0.05 green:0.09 blue:0.15 alpha:0.90] : [UIColor colorWithWhite:0.08 alpha:0.85];
-   self.carStatus.layer.borderColor = [UIColor colorWithRed:0.0 green:0.75 blue:1.0 alpha:0.30].CGColor;
+   csText = [NSString stringWithFormat:@"🔌 vLinker MC+ : %@  •  ⚙️ เกียร์ %@  •  ⛽ %.1f ลิตร (~%.0f กม.)", obd.isConnected ? @"เชื่อมต่อสด (LIVE)" : (obd.connectionStatus ?: @"รอเชื่อมต่อ"), obd.currentGear ?: @"P", obd.fuelRemainingLiters, estRangeKm];
+   styleTag = self.nightMode ? 3 : 4;
+  }
+  if(![self.carStatus.text isEqualToString:csText]) self.carStatus.text = csText;
+  if(self.carStatus.tag != styleTag){
+   self.carStatus.tag = styleTag;
+   if(styleTag == 1){
+    self.carStatus.textColor = [UIColor colorWithRed:1.0 green:0.88 blue:0.88 alpha:1.0];
+    self.carStatus.backgroundColor = [UIColor colorWithRed:0.30 green:0.04 blue:0.05 alpha:0.96];
+    self.carStatus.layer.borderColor = [UIColor colorWithRed:1.0 green:0.30 blue:0.30 alpha:0.95].CGColor;
+   }else if(styleTag == 2){
+    self.carStatus.textColor = [UIColor whiteColor];
+    self.carStatus.backgroundColor = [UIColor colorWithRed:0.03 green:0.06 blue:0.09 alpha:0.95];
+    self.carStatus.layer.borderColor = [UIColor colorWithWhite:0.22 alpha:1].CGColor;
+   }else{
+    self.carStatus.textColor = [UIColor colorWithWhite:0.96 alpha:1];
+    self.carStatus.backgroundColor = self.nightMode ? [UIColor colorWithRed:0.05 green:0.09 blue:0.15 alpha:0.90] : [UIColor colorWithWhite:0.08 alpha:0.85];
+    self.carStatus.layer.borderColor = [UIColor colorWithRed:0.0 green:0.75 blue:1.0 alpha:0.30].CGColor;
+   }
   }
  }
 
@@ -7310,23 +7397,28 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   if(pbLbl){
    NSString *socGrade = (obd.hybridBatterySOC >= 40.0 && obd.hybridBatterySOC <= 80.0) ? @"ปกติ" : @"ต้องเฝ้าระวัง";
    NSString *curSign = (obd.hvPackCurrent < 0) ? @"ชาร์จ" : @"โหลด";
-   pbLbl.text = [NSString stringWithFormat:@"HV SOC: %.1f%% (%@)\nPACK: %.1f V • %@ %+.2f A\n14 BLOCKS (ΔSOC %.1f%%)",
+   NSString *t = [NSString stringWithFormat:@"HV SOC: %.1f%% (%@)\nPACK: %.1f V • %@ %+.2f A\n14 BLOCKS (ΔSOC %.1f%%)",
                  obd.hybridBatterySOC, socGrade, obd.hvPackVoltage, curSign, obd.hvPackCurrent, obd.hvDeltaSOC];
+   if(![pbLbl.text isEqualToString:t]) pbLbl.text = t;
   }
  }
  if(self.blockGraphView && obd.hvBlockVoltages.count == 14){
-  self.blockGraphView.voltages = obd.hvBlockVoltages;
-  [self.blockGraphView setNeedsDisplay];
+  if(![self.blockGraphView.voltages isEqualToArray:obd.hvBlockVoltages]){
+   self.blockGraphView.voltages = obd.hvBlockVoltages;
+   [self.blockGraphView setNeedsDisplay];
+  }
  }
  UILabel *deltaL = (UILabel *)[self.view viewWithTag:706];
  if(deltaL){
+  NSString *dt = nil;
   if(obd.hvBlockVoltages.count == 14 && obd.hvBlockMaxV > 0){
    CGFloat dv = obd.hvBlockMaxV - obd.hvBlockMinV;
    NSString *bal = (dv <= 0.25) ? @"สมดุลดี" : @"ควรเช็คเซลล์";
-   deltaL.text = [NSString stringWithFormat:@"ΔV: %.2fV (%@) • %.2f–%.2fV", dv, bal, obd.hvBlockMinV, obd.hvBlockMaxV];
+   dt = [NSString stringWithFormat:@"ΔV: %.2fV (%@) • %.2f–%.2fV", dv, bal, obd.hvBlockMinV, obd.hvBlockMaxV];
   } else {
-   deltaL.text = obd.isConnected ? @"ΔV: กำลังอ่าน 14 Blocks (2181)..." : @"ΔV: รอเชื่อมต่อ vLinker MC+";
+   dt = obd.isConnected ? @"ΔV: กำลังอ่าน 14 Blocks (2181)..." : @"ΔV: รอเชื่อมต่อ vLinker MC+";
   }
+  if(![deltaL.text isEqualToString:dt]) deltaL.text = dt;
  }
 
  // Right Card 2: Motors & HV Battery Temp
@@ -7334,34 +7426,42 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(mCard){
   UILabel *mlLbl = (UILabel *)[mCard viewWithTag:708];
   if(mlLbl){
-   mlLbl.text = [NSString stringWithFormat:@"⚙️ MOTOR MG2 : %ld RPM\n     อุณหภูมิ %.0f °C • รถ %.0f km/h\n⚡ GENERATOR MG1 : %ld RPM\n     อุณหภูมิ %.0f °C • ICE %ld RPM\n🌡️ HV BATTERY TEMP\n     %.1f °C • ลมดูด %.1f °C",
+   NSString *t = [NSString stringWithFormat:@"⚙️ MOTOR MG2 : %ld RPM\n     อุณหภูมิ %.0f °C • รถ %.0f km/h\n⚡ GENERATOR MG1 : %ld RPM\n     อุณหภูมิ %.0f °C • ICE %ld RPM\n🌡️ HV BATTERY TEMP\n     %.1f °C • ลมดูด %.1f °C",
                  (long)obd.mg2RPM, obd.mg2TempC, obd.currentSpeedKmh,
                  (long)obd.mg1RPM, obd.mg1TempC, (long)obd.engineRPM,
                  obd.hvBatteryTempC, obd.hvIntakeTempC];
+   if(![mlLbl.text isEqualToString:t]) mlLbl.text = t;
   }
  }
 
  // Drive Mode Cards
  if(self.driveClockCard){
   UILabel *cSub = (UILabel *)[self.driveClockCard viewWithTag:802];
-  if(cSub) cSub.text = [NSString stringWithFormat:@"❄️ A/C %.1f°C • INV %.0f°C", obd.cabinTempC, obd.inverterTempC];
+  NSString *t = [NSString stringWithFormat:@"❄️ A/C %.1f°C • INV %.0f°C", obd.cabinTempC, obd.inverterTempC];
+  if(cSub && ![cSub.text isEqualToString:t]) cSub.text = t;
  }
  if(self.driveBatteryCard){
   UIView *barBg = [self.driveBatteryCard viewWithTag:813];
   UIView *barFill = [barBg viewWithTag:814];
   if(barBg && barFill){
    CGFloat pct = MAX(0.0, MIN(1.0, obd.hybridBatterySOC / 100.0));
-   barFill.frame = CGRectMake(0, 0, barBg.bounds.size.width * pct, barBg.bounds.size.height);
+   CGRect targetFrame = CGRectMake(0, 0, barBg.bounds.size.width * pct, barBg.bounds.size.height);
+   if(fabs(barFill.frame.size.width - targetFrame.size.width) > 0.5){
+    barFill.frame = targetFrame;
+   }
   }
   UILabel *bS = (UILabel *)[self.driveBatteryCard viewWithTag:812];
   if(bS){
-   bS.text = [NSString stringWithFormat:@"%.1f%% (HV BAT %.1f°C)\nแรงดัน: %.1f V  •  %+.2f A", obd.hybridBatterySOC, obd.hvBatteryTempC, obd.hvPackVoltage, obd.hvPackCurrent];
+   NSString *t = [NSString stringWithFormat:@"%.1f%% (HV BAT %.1f°C)\nแรงดัน: %.1f V  •  %+.2f A", obd.hybridBatterySOC, obd.hvBatteryTempC, obd.hvPackVoltage, obd.hvPackCurrent];
+   if(![bS.text isEqualToString:t]) bS.text = t;
   }
  }
  [self refreshCarPlayTelemetryWidget:obd];
 }
 
--(void)obdDataUpdated:(NSNotification *)note{
+-(void)flushOBDDashboardUpdate{
+ self.obdUIRefreshPending = NO;
+ self.lastOBDUIRefreshAt = [NSProcessInfo processInfo].systemUptime;
  if(!self.carplayMode && !self.mapMode && !self.focused){
   [self refreshBrakeStatus];
   [self refreshDriveTripDisplay];
@@ -7371,6 +7471,19 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [self refreshHybridStatus];
  [self refreshLiveOBDDashboard];
  [self checkLowFuelWarning];
+}
+
+-(void)obdDataUpdated:(NSNotification *)note{
+ [self applyGearToUI:[TRDOBDClient sharedClient].currentGear];
+ NSTimeInterval now = [NSProcessInfo processInfo].systemUptime;
+ NSTimeInterval elapsed = now - self.lastOBDUIRefreshAt;
+ if(elapsed >= 0.25){
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(flushOBDDashboardUpdate) object:nil];
+  [self flushOBDDashboardUpdate];
+ }else if(!self.obdUIRefreshPending){
+  self.obdUIRefreshPending = YES;
+  [self performSelector:@selector(flushOBDDashboardUpdate) withObject:nil afterDelay:(0.25 - elapsed)];
+ }
 }
 
 -(void)refreshHybridStatus{
@@ -7454,6 +7567,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 }
 -(BOOL)application:(UIApplication *)app openURL:(NSURL *)url options:(NSDictionary *)options{
  Dashboard *v=(Dashboard *)self.window.rootViewController;
+ [v ensureActiveRunLoopHealth];
  if([url.host isEqualToString:@"home"])[v homePage];
  if([url.host isEqualToString:@"carplay"])[v requestMapURL:YES];
  if([url.host isEqualToString:@"grid"])[v toggleCarPlayGrid];
@@ -7526,7 +7640,12 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [UIApplication sharedApplication].idleTimerDisabled=NO;
  [v captureLifecycle];
 }
--(void)applicationDidBecomeActive:(UIApplication *)app{notify_post("com.codex.trd.network.internet");[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];Dashboard *v=(Dashboard *)self.window.rootViewController;[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.85;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[UIApplication sharedApplication].idleTimerDisabled=YES;if(!v.timer)v.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:v selector:@selector(update) userInfo:nil repeats:YES];v.timer.tolerance=.1;[v startGPS];[v update];[v captureLifecycle];}
+-(void)applicationWillEnterForeground:(UIApplication *)app{
+ Dashboard *v=(Dashboard *)self.window.rootViewController;
+ [v ensureActiveRunLoopHealth];
+ [v restoreDisplayBrightness];
+}
+-(void)applicationDidBecomeActive:(UIApplication *)app{notify_post("com.codex.trd.network.internet");[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];Dashboard *v=(Dashboard *)self.window.rootViewController;[v ensureActiveRunLoopHealth];[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.35;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[v ensureActiveRunLoopHealth];[v startGPS];[v update];[v captureLifecycle];}
 
 @end
 static void TRDCrashHandler(NSException *exception) {

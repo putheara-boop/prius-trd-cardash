@@ -51,9 +51,8 @@
  [m addAction:[TRDSettingAction actionWithTitle:[TRDAutoSettings()[@"offlineOnly"]boolValue]?@"Autoplay downloaded only: ON":@"Autoplay downloaded only: OFF" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[TRDAutoSettings() mutableCopy]?:[NSMutableDictionary dictionary];cfg[@"offlineOnly"]=@(![cfg[@"offlineOnly"]boolValue]);[cfg writeToFile:TRDAutoFile(@"autoplay-settings.plist") atomically:YES];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"🧹 Clear Cache & Purge RAM (ล้างแคช/คืนแรม)" style:0 handler:^(TRDSettingAction *a){
   [[NSURLCache sharedURLCache] removeAllCachedResponses];
   [self releaseArtwork];
-  trd_run_bg("rm -rf /tmp/*.png /var/mobile/Library/Caches/com.codex.cardash/* 2>/dev/null; sync; purge 2>/dev/null");
-  notify_post("com.apple.SpringBoard.MemoryWarning");
-  TRDSettingsMenu *done=[self settingsMenu:@"🧹 CACHE CLEARED" message:@"ล้างแคช (NSURLCache + Artwork) และคืนหน่วยความจำ RAM เรียบร้อยแล้วครับ"];
+  trd_run_bg("rm -rf /tmp/*.png /var/mobile/Library/Caches/com.codex.cardash/* 2>/dev/null");
+  TRDSettingsMenu *done=[self settingsMenu:@"🧹 CACHE CLEARED" message:@"ล้างแคช (NSURLCache + Artwork) เรียบร้อยแล้วครับ"];
   [done addAction:[TRDSettingAction actionWithTitle:@"↩️ กลับหน้า CAR SETTINGS" style:0 handler:^(TRDSettingAction *x){[self carSettings];}]];
   [self presentSettingsMenu:done];
  }]];[m addAction:[TRDSettingAction actionWithTitle:self.calmDrive?@"Wheel animation: OFF":@"Wheel animation: ON" style:0 handler:^(TRDSettingAction *a){[self toggleCalmDrive];[self carSettings];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Screen off - keep audio" style:0 handler:^(TRDSettingAction *a){[self confirmSettingsActionTitle:@"CONFIRM SCREEN OFF" message:@"Turn display off while keeping audio playing? (ปิดหน้าจอชั่วคราว โดยเสียงยังเล่นต่อ)" confirmTitle:@"✅ Confirm: Screen Off (ปิดหน้าจอ)" onConfirm:^{[self screenOff];}];}]];[m addAction:[TRDSettingAction actionWithTitle:@"Preview Welcome" style:0 handler:^(TRDSettingAction *a){[self previewWelcome];}]];[m addAction:[TRDSettingAction actionWithTitle:@"iPad Settings" style:0 handler:^(TRDSettingAction *a){[self confirmSettingsActionTitle:@"EXIT TO IPAD SETTINGS?" message:@"Leave CarDash and open Apple iPad Settings? (ออกจาก CarDash ไปหน้าตั้งค่า iPad)" confirmTitle:@"✅ Confirm: Open iPad Settings (เปิดตั้งค่า iPad)" onConfirm:^{[self send:@"com.apple.Preferences"];}];}]];[m addAction:[TRDSettingAction actionWithTitle:@"📍 Trip A/B/C & GPS (จัดการทริป)" style:0 handler:^(TRDSettingAction *a){[self resetTripMenu];}]];[m addAction:[TRDSettingAction actionWithTitle:@"GPS status / Restart" style:0 handler:^(TRDSettingAction *a){[self gpsSettings];}]];[self presentSettingsMenu:m];}
@@ -445,9 +444,10 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
 -(void)restoreDisplayBrightness{
  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
  [UIApplication sharedApplication].idleTimerDisabled=YES;
+ self.view.userInteractionEnabled=YES;
  CGFloat target=self.nightMode?.25:.85;
  [UIScreen mainScreen].brightness=target;
- if(!self.timer){
+ if(!self.timer || ![self.timer isValid]){
   self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];
   self.timer.tolerance=.1;
  }
