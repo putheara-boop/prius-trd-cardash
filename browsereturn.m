@@ -277,7 +277,7 @@ static BOOL Hook_ShouldAutorotate(id self, SEL _cmd) {
 
 __attribute__((constructor))static void Install(void){@autoreleasepool{
  NSString *bundle=NSBundle.mainBundle.bundleIdentifier;NSString *name=nil,*selector=nil;IMP replacement=NULL;IMP *original=NULL;const char *a=NULL,*b=NULL;
- if([@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash"]containsObject:bundle]){
+ if([@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash",@"com.google.ios.youtube"]containsObject:bundle]){
   networkRouteObserver=[[NSNotificationCenter defaultCenter]addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note){
    [@{@"bundle":NSBundle.mainBundle.bundleIdentifier,@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
    notify_post("com.codex.trd.network.internet");
@@ -339,8 +339,6 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
    if(mOri) method_setImplementation(mOri, (IMP)Hook_SupportedOrientations);
    Method mAuto = class_getInstanceMethod(tabCls, @selector(shouldAutorotate));
    if(mAuto) method_setImplementation(mAuto, (IMP)Hook_ShouldAutorotate);
-   Method mLayout = class_getInstanceMethod(tabCls, @selector(viewDidLayoutSubviews));
-   if(mLayout) orig_TabBar_viewDidLayoutSubviews = (void(*)(id,SEL))method_setImplementation(mLayout, (IMP)Hook_TabBar_viewDidLayoutSubviews);
   }
   Class splitCls = NSClassFromString(@"LTSplitContainerViewController");
   if(splitCls){
@@ -348,8 +346,6 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
    if(mOri) method_setImplementation(mOri, (IMP)Hook_SupportedOrientations);
    Method mAuto = class_getInstanceMethod(splitCls, @selector(shouldAutorotate));
    if(mAuto) method_setImplementation(mAuto, (IMP)Hook_ShouldAutorotate);
-   Method mLayout = class_getInstanceMethod(splitCls, @selector(viewDidLayoutSubviews));
-   if(mLayout) orig_SplitContainer_viewDidLayoutSubviews = (void(*)(id,SEL))method_setImplementation(mLayout, (IMP)Hook_SplitContainer_viewDidLayoutSubviews);
   }
   dispatch_async(dispatch_get_main_queue(),^{
    [[UIDevice currentDevice] setValue:@(UIInterfaceOrientationLandscapeRight) forKey:@"orientation"];
@@ -380,6 +376,7 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
  }
  else if([bundle isEqual:@"com.himais0giiiin.ytnine"]){name=@"YTPlayback";selector=@"loadWatch:startAt:";replacement=(IMP)YouTube;original=(IMP *)&oldYT;a="@";b="d";}
  else if([bundle isEqual:@"com.codex.poddash"]){name=@"Podcasts";selector=@"playIndex:";replacement=(IMP)Podcast;original=(IMP *)&oldPod;a="i";}
+ else if([bundle isEqual:@"com.google.ios.youtube"]){return;}
  else return;
  Class cls=NSClassFromString(name);SEL sel=NSSelectorFromString(selector);Method method=class_getInstanceMethod(cls,sel);BOOL valid=Signature(method,a,b);BOOL installed=valid;
  if(installed)*original=method_setImplementation(method,replacement);
