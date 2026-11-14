@@ -1647,7 +1647,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 #pragma mark - Body ECU Auto Door Lock (Prius 0x750)
 
 - (void)setAutoDoorLockEnabled:(BOOL)enabled {
-    self.autoDoorLockEnabled = enabled;
+    _autoDoorLockEnabled = enabled;
     NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
     [prefs setBool:enabled forKey:@"TRDAutoDoorLockEnabled"];
     [prefs synchronize];
@@ -1655,7 +1655,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)setAutoDoorUnlockOnParkEnabled:(BOOL)enabled {
-    self.autoDoorUnlockOnParkEnabled = enabled;
+    _autoDoorUnlockOnParkEnabled = enabled;
     NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
     [prefs setBool:enabled forKey:@"TRDAutoDoorUnlockOnParkEnabled"];
     [prefs synchronize];

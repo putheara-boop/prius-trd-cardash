@@ -171,8 +171,8 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
   if(v)utt.voice=v;
   utt.rate=rate;
   utt.pitchMultiplier=1.0f;
-  utt.preUtteranceDelay=(i==0)?0.20f:0.0f;
-  utt.postUtteranceDelay=(i+1<sentences.count)?0.32f:0.10f;
+  utt.preUtteranceDelay=(i==0)?0.08f:0.0f;
+  utt.postUtteranceDelay=(i+1<sentences.count)?0.12f:0.05f;
   utt.volume=1.0f;
   [synth speakUtterance:utt];
  }
@@ -218,19 +218,13 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
 
    if(voiceLang==1){ // Thai
     langCode=@"th-TH";
-    rate=0.03f;
+    rate=0.46f;
     if(hour>=5 && hour<12){
-     [sentences addObject:@"อรุณสวัสดิ์ครับคุณพีพุท"];
-     [sentences addObject:@"ระบบพร้อมใช้งาน"];
-     [sentences addObject:@"ขอให้เป็นวันที่ดี และเดินทางปลอดภัยนะครับ"];
+     [sentences addObject:@"อรุณสวัสดิ์ครับคุณพีพุท ระบบพร้อมใช้งาน ขอให้เป็นวันที่ดีและเดินทางปลอดภัยนะครับ"];
     }else if(hour>=12 && hour<18){
-     [sentences addObject:@"สวัสดีตอนบ่ายครับคุณพีพุท"];
-     [sentences addObject:@"ระบบพร้อมใช้งาน"];
-     [sentences addObject:@"ขอให้ขับรถอย่างมีความสุข และเดินทางปลอดภัยนะครับ"];
+     [sentences addObject:@"สวัสดีตอนบ่ายครับคุณพีพุท ระบบพร้อมใช้งาน ขอให้ขับรถอย่างมีความสุขและเดินทางปลอดภัยนะครับ"];
     }else{
-     [sentences addObject:@"สวัสดีตอนค่ำครับคุณพีพุท"];
-     [sentences addObject:@"ระบบพร้อมใช้งาน"];
-     [sentences addObject:@"ขอให้เดินทางปลอดภัยในค่ำคืนนี้นะครับ"];
+     [sentences addObject:@"สวัสดีตอนค่ำครับคุณพีพุท ระบบพร้อมใช้งาน ขอให้เดินทางปลอดภัยในค่ำคืนนี้นะครับ"];
     }
     if(rain){
      [sentences addObject:@"วันนี้มีรายงานฝนตกในพื้นที่ โปรดขับขี่ด้วยความระมัดระวังนะครับ"];
@@ -239,19 +233,13 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
     }
    }else{ // English default
     langCode=@"en-US";
-    rate=0.02f;
+    rate=0.44f;
     if(hour>=5 && hour<12){
-     [sentences addObject:@"Good morning, PeePut."];
-     [sentences addObject:@"System is ready."];
-     [sentences addObject:@"Have a productive day, and travel safely."];
+     [sentences addObject:@"Good morning, PeePut. System is ready. Have a productive day and travel safely."];
     }else if(hour>=12 && hour<18){
-     [sentences addObject:@"Good afternoon, PeePut."];
-     [sentences addObject:@"System is ready."];
-     [sentences addObject:@"Enjoy your drive, and travel safely."];
+     [sentences addObject:@"Good afternoon, PeePut. System is ready. Enjoy your drive and travel safely."];
     }else{
-     [sentences addObject:@"Good evening, PeePut."];
-     [sentences addObject:@"System is ready."];
-     [sentences addObject:@"Enjoy your drive, and travel safely tonight."];
+     [sentences addObject:@"Good evening, PeePut. System is ready. Enjoy your drive and travel safely tonight."];
     }
     if(rain){
      [sentences addObject:@"Rain is reported in your area. Drive carefully on wet roads."];
@@ -283,7 +271,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
    NSInteger eco = self.ecoScore > 0 ? self.ecoScore : 95;
    if(voiceLang==1){
     langCode=@"th-TH";
-    rate=0.03f;
+    rate=0.46f;
     [sentences addObject:@"สิ้นสุดการเดินทาง"];
     [sentences addObject:[NSString stringWithFormat:@"คะแนนขับขี่ประหยัดพลังงาน %ld เต็ม 100", (long)eco]];
     if(eco >= 85){
@@ -293,7 +281,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
     }
    }else{
     langCode=@"en-US";
-    rate=0.02f;
+    rate=0.44f;
     [sentences addObject:@"Trip completed."];
     [sentences addObject:[NSString stringWithFormat:@"Your eco drive score is %ld out of 100.", (long)eco]];
     if(eco >= 85){
@@ -451,8 +439,8 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
  }];
 }
 -(void)previewWelcomeCapture{[self showWelcome];[self.welcome layoutIfNeeded];[self capture];}
--(void)soundProfileSettings{NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];BOOL enabled=[cfg[@"enabled"]boolValue];TRDSettingsMenu *m=[self settingsMenu:@"SOUND PROFILES" message:@"Presets follow the app playing audio. Choosing a preset in EQE also remembers it for that app."];[m addAction:[TRDSettingAction actionWithTitle:enabled?@"Automatic sound: ON (tap to turn off)":@"Automatic sound: OFF (tap to turn on)" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *next=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];next[@"enabled"]=@(!enabled);[next writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();}]];NSArray *names=@[@"Music / audioNINJA",@"YouTube"],*ids=@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine"];for(NSInteger i=0;i<names.count;i++){NSString *bundle=ids[i],*label=names[i];NSString *title=[NSString stringWithFormat:@"%@: %@",label,cfg[@"profiles"][bundle]?:@"Flat"];[m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){[self chooseProfile:bundle title:label];}]];}[self presentSettingsMenu:m];}
--(void)chooseProfile:(NSString *)bundle title:(NSString *)title{TRDSettingsMenu *m=[self settingsMenu:title message:@"Used automatically when this app becomes the audio source."];for(NSString *name in TRDProfileNames())[m addAction:[TRDSettingAction actionWithTitle:name style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy];NSMutableDictionary *profiles=[cfg[@"profiles"]mutableCopy];profiles[bundle]=name;cfg[@"profiles"]=profiles;[cfg writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();}]];[self presentSettingsMenu:m];}
+-(void)soundProfileSettings{NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy]?:[NSMutableDictionary dictionary];BOOL enabled=[cfg[@"enabled"]boolValue];TRDSettingsMenu *m=[self settingsMenu:@"SOUND PROFILES" message:@"Presets follow the app playing audio. Choosing a preset in EQE also remembers it for that app."];[m addAction:[TRDSettingAction actionWithTitle:enabled?@"Automatic sound: ON (tap to turn off)":@"Automatic sound: OFF (tap to turn on)" style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *next=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy]?:[NSMutableDictionary dictionary];next[@"enabled"]=@(!enabled);[next writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();[self soundProfileSettings];}]];NSArray *names=@[@"Music / audioNINJA",@"YouTube"],*ids=@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine"];for(NSInteger i=0;i<names.count;i++){NSString *bundle=ids[i],*label=names[i];NSString *title=[NSString stringWithFormat:@"%@: %@",label,cfg[@"profiles"][bundle]?:@"Flat"];[m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){[self chooseProfile:bundle title:label];}]];}[self presentSettingsMenu:m];}
+-(void)chooseProfile:(NSString *)bundle title:(NSString *)title{TRDSettingsMenu *m=[self settingsMenu:title message:@"Used automatically when this app becomes the audio source."];for(NSString *name in TRDProfileNames())[m addAction:[TRDSettingAction actionWithTitle:name style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy]?:[NSMutableDictionary dictionary];NSMutableDictionary *profiles=[cfg[@"profiles"]mutableCopy]?:[NSMutableDictionary dictionary];profiles[bundle]=name;cfg[@"profiles"]=profiles;[cfg writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();[self soundProfileSettings];}]];[self presentSettingsMenu:m];}
 
 -(void)restoreDisplayBrightness{
  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;

@@ -4899,7 +4899,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
    }
    NSInteger voiceLang = [[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];
    NSString *langCode = (voiceLang == 1) ? @"th-TH" : @"en-US";
-   float rate = (voiceLang == 1) ? 0.03f : 0.02f;
+   float rate = (voiceLang == 1) ? 0.46f : 0.44f;
    TRDEnqueueCalmSpeech(gTRDWelcomeSynth, @[phrase], langCode, rate);
   } @catch(NSException *e){}
  });
@@ -5161,7 +5161,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  }
  if(authorized)return YES;
  NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];
- BOOL guard=[ud objectForKey:@"TRDMapConfirmGuard"]?[ud boolForKey:@"TRDMapConfirmGuard"]:NO;
+ BOOL guard=[ud objectForKey:@"TRDMapConfirmGuard"]?[ud boolForKey:@"TRDMapConfirmGuard"]:YES;
  if(guard){[self confirmOpenMapDestination:isCarPlay];return NO;}
  [self logNavigation:@"map confirmation disabled in settings"];
  return YES;
