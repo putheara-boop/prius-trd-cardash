@@ -11,6 +11,7 @@
     width: 100%; height: 100%; background: #0c0d11;
     overflow: hidden; font-family: -apple-system, "Helvetica Neue", "Sukhumvit Set", Arial, sans-serif;
     -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent; touch-action: none;
   }
   .leaflet-container {
     background-color: #11131a;
@@ -111,9 +112,14 @@
   .quick-chips-wrapper {
     position: relative; margin-top: 8px;
   }
+  @media (min-width: 681px) {
+    .quick-chips-wrapper {
+      width: calc(100vw - 24px); max-width: 960px;
+    }
+  }
   .quick-chips {
     display: -webkit-flex; display: flex; overflow-x: auto;
-    padding-bottom: 4px;
+    padding-bottom: 4px; touch-action: pan-x;
     -webkit-overflow-scrolling: touch;
   }
   .quick-chips::-webkit-scrollbar { display: none; }
@@ -446,6 +452,11 @@ var map = L.map('map', {
   fadeAnimation: false,
   zoomAnimation: false,
   markerZoomAnimation: false,
+  inertia: true,
+  inertiaDeceleration: 3200,
+  inertiaMaxSpeed: 1200,
+  easeLinearity: 0.25,
+  tapTolerance: 20,
   preferCanvas: true
 });
 
@@ -567,38 +578,39 @@ function getDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+var _lastPanLat = 0, _lastPanLng = 0, _lastSpText = '', _lastSpColor = '', _lastNavDistText = '';
 function updateCar(lat, lng, heading, speed) {
-  lastLat = lat; lastLng = lng; lastHeading = heading || 0;
+  var hdg = (heading >= 0) ? Math.round(heading) : lastHeading;
+  var moved = Math.abs(lat - lastLat) >= 0.00001 || Math.abs(lng - lastLng) >= 0.00001;
+  lastLat = lat; lastLng = lng;
   var pos = [lat, lng];
   if (carMarker) {
-    carMarker.setLatLng(pos);
-    var svg = document.getElementById('car-svg');
-    if (svg) {
-      svg.style.transform = 'rotate(' + lastHeading + 'deg)';
-      svg.style.webkitTransform = 'rotate(' + lastHeading + 'deg)';
+    if (moved) carMarker.setLatLng(pos);
+    if (hdg !== lastHeading) {
+      lastHeading = hdg;
+      var svg = document.getElementById('car-svg');
+      if (svg) {
+        svg.style.transform = 'rotate(' + lastHeading + 'deg)';
+        svg.style.webkitTransform = 'rotate(' + lastHeading + 'deg)';
+      }
     }
   }
-  if (tracking) {
+  if (tracking && (Math.abs(lat - _lastPanLat) >= 0.00002 || Math.abs(lng - _lastPanLng) >= 0.00002)) {
+    _lastPanLat = lat; _lastPanLng = lng;
     map.panTo(pos, { animate: false });
   }
   
   // Speed HUD updates with cockpit dynamic color
   var sp = document.getElementById('speed-val');
   if (sp) {
+    var nextText = '--', nextColor = '#888d9a';
     if (speed >= 0) {
       var kmh = Math.round(speed);
-      sp.textContent = kmh;
-      if (kmh > 110) {
-        sp.style.color = '#ff2035';
-      } else if (kmh > 80) {
-        sp.style.color = '#ffffff';
-      } else {
-        sp.style.color = '#00f0ff';
-      }
-    } else {
-      sp.textContent = '--';
-      sp.style.color = '#888d9a';
+      nextText = String(kmh);
+      nextColor = (kmh > 110) ? '#ff2035' : (kmh > 80) ? '#ffffff' : '#00f0ff';
     }
+    if (nextText !== _lastSpText) { _lastSpText = nextText; sp.textContent = nextText; }
+    if (nextColor !== _lastSpColor) { _lastSpColor = nextColor; sp.style.color = nextColor; }
   }
   
   // Turn-by-Turn real-time tracker
@@ -608,7 +620,11 @@ function updateCar(lat, lng, heading, speed) {
     var dist = getDistance(lastLat, lastLng, mLoc[1], mLoc[0]);
     
     var distText = (dist >= 1000) ? (dist / 1000).toFixed(1) + ' กม.' : Math.round(dist) + ' ม.';
-    document.getElementById('nav-dist-next').textContent = 'อีก ' + distText;
+    var nextBanner = 'อีก ' + distText;
+    if (nextBanner !== _lastNavDistText) {
+      _lastNavDistText = nextBanner;
+      document.getElementById('nav-dist-next').textContent = nextBanner;
+    }
     
     // Play chime when approaching turn (at 120m)
     if (dist <= 120 && lastChimeStep !== currentStepIdx) {
@@ -634,8 +650,9 @@ function updateCar(lat, lng, heading, speed) {
 
 function recenter() {
   tracking = true;
+  _lastPanLat = lastLat; _lastPanLng = lastLng;
   document.getElementById('btn-recenter').className = 'trd-btn active';
-  map.setView([lastLat, lastLng], 16);
+  map.setView([lastLat, lastLng], 16, { animate: false });
 }
 
 function setMode(mode) {
@@ -710,6 +727,9 @@ function callNative(scheme, data) {
 
 function quickSearch(q) {
   document.getElementById('search-input').value = q;
+  var resDiv = document.getElementById('search-results');
+  resDiv.innerHTML = '<div class="result-item"><div class="result-name">🔍 กำลังค้นหา "' + q + '"...</div></div>';
+  resDiv.style.display = 'block';
   callNative('cardash-search', q);
 }
 
@@ -753,7 +773,7 @@ function selectLocation(lat, lng, title, address) {
   
   tracking = false;
   document.getElementById('btn-recenter').className = 'trd-btn';
-  map.setView([lat, lng], 15);
+  map.setView([lat, lng], 15, { animate: false });
   
   var distM = getDistance(lastLat, lastLng, lat, lng);
   var distKm = (distM / 1000).toFixed(1);
@@ -822,7 +842,7 @@ function drawRoute(route) {
     lineJoin: 'round'
   }).addTo(map);
   
-  map.fitBounds(routeLine.getBounds(), { padding: [60, 60] });
+  map.fitBounds(routeLine.getBounds(), { padding: [60, 60], animate: false });
   
   navSteps = route.legs[0].steps;
   currentStepIdx = 0;
