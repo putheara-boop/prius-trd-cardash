@@ -91,15 +91,25 @@
 -(void)testTripButton{[self.tripButton sendActionsForControlEvents:UIControlEventTouchUpInside];}
 
 -(void)cancelBrowseReturn{NSString *path=@"/var/mobile/codex-car/browse-return.plist";NSMutableDictionary *arm=[[NSDictionary dictionaryWithContentsOfFile:path]mutableCopy];if([arm[@"pending"]boolValue]){arm[@"pending"]=@NO;arm[@"cancelled"]=@YES;[arm writeToFile:path atomically:YES];}}
--(void)browseSource:(NSString *)bundle{
+-(void)browseSource:(NSString *)bundle target:(NSString *)target{
  if(![@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash"]containsObject:bundle])return;
  if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
  if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
  [self prepareForExternalAppLaunch];
  if([bundle isEqualToString:@"com.legacymusic.app"]){
-  NSDictionary *arm=@{@"bundle":bundle,@"token":[NSUUID UUID].UUIDString,@"pending":@YES,@"created":[NSDate date],@"expires":[NSDate dateWithTimeIntervalSinceNow:180],@"baselineTitle":self.song.text?:@""};
+  BOOL wantSearch=[target isEqualToString:@"search"];
+  NSDictionary *arm=@{@"bundle":bundle,@"target":wantSearch?@"search":@"player",@"targetTab":wantSearch?@(1):@(4),@"token":[NSUUID UUID].UUIDString,@"pending":@YES,@"created":[NSDate date],@"expires":[NSDate dateWithTimeIntervalSinceNow:180],@"baselineTitle":self.song.text?:@""};
   if(![arm writeToFile:@"/var/mobile/codex-car/browse-return.plist" atomically:YES]){self.notice=@"Automatic return unavailable. Return to TRD manually.";self.noticeUntil=[NSDate dateWithTimeIntervalSinceNow:5];}
+  if(wantSearch){
+   NSURL *searchURL=[NSURL URLWithString:@"legacymusic://search"];
+   if(searchURL&&[[UIApplication sharedApplication] openURL:searchURL]){
+    return;
+   }
+  }
  }
  [self send:bundle];
+}
+-(void)browseSource:(NSString *)bundle{
+ [self browseSource:bundle target:nil];
 }

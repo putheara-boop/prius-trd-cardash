@@ -1188,6 +1188,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property UILabel *musicHeading;
 -(void)openMusic;
 -(void)browseSource:(NSString *)bundle;
+-(void)browseSource:(NSString *)bundle target:(NSString *)target;
 -(void)cancelBrowseReturn;
 -(void)homePage;
 -(void)showMusicSources:(UIButton *)anchor;
@@ -2082,6 +2083,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.trackProgress.hidden = hide;
   self.trackTime.hidden = hide;
   self.driveEQ.hidden = hide;
+  self.searchMusicBtn.hidden = hide;
+  self.offlineMusicBtn.hidden = YES;
   self.nowPanel.hidden = hide;
   UIView *pCard = [self.view viewWithTag:701]; if (pCard) pCard.hidden = hide;
   UIView *deltaL = [self.view viewWithTag:706]; if (deltaL) deltaL.hidden = hide;
@@ -3131,16 +3134,26 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
     UILabel *mHead = (UILabel *)[self.nowPanel viewWithTag:750];
     if (!mHead) {
-      mHead = [[UILabel alloc] initWithFrame:CGRectMake(184, 18, centerW - 204, 22)];
+      mHead = [[UILabel alloc] initWithFrame:CGRectMake(184, 18, centerW - 306, 22)];
       mHead.tag = 750;
       mHead.adjustsFontSizeToFitWidth = YES;
       mHead.minimumScaleFactor = 0.75;
       [self.nowPanel addSubview:mHead];
     }
-    mHead.frame = CGRectMake(184, 18, centerW - 204, 22);
+    mHead.frame = CGRectMake(184, 18, centerW - 306, 22);
     mHead.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
     mHead.textColor = accent;
-    mHead.text = @"🎵 CAR MULTIMEDIA  •  JBL PREMIUM AUDIO";
+    mHead.text = @"🎵 CAR MULTIMEDIA  •  JBL AUDIO";
+
+    self.searchMusicBtn.hidden = NO;
+    self.searchMusicBtn.frame = CGRectMake(centerX + centerW - 114, mTop + 12, 98, 28);
+    self.searchMusicBtn.backgroundColor = [accent colorWithAlphaComponent:0.16];
+    self.searchMusicBtn.layer.cornerRadius = 8;
+    self.searchMusicBtn.layer.borderWidth = 1.1;
+    self.searchMusicBtn.layer.borderColor = [accent colorWithAlphaComponent:0.65].CGColor;
+    [self.searchMusicBtn setTitleColor:accent forState:UIControlStateNormal];
+    self.searchMusicBtn.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+    [self.view bringSubviewToFront:self.searchMusicBtn];
 
     self.song.hidden = NO;
     self.song.frame = CGRectMake(centerX + 184, mTop + 44, centerW - 204, 34);
@@ -3408,6 +3421,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self.view bringSubviewToFront:self.trackTime];
     [self.view bringSubviewToFront:self.controls];
     [self.view bringSubviewToFront:self.driveEQ];
+    [self.view bringSubviewToFront:self.searchMusicBtn];
     if (pCard) [self.view bringSubviewToFront:pCard];
     [self.view bringSubviewToFront:self.blockGraphView];
     if (deltaL) [self.view bringSubviewToFront:deltaL];
@@ -3548,7 +3562,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }
  static NowPlayingReader reader;static dispatch_once_t once;dispatch_once(&once,^{reader=(NowPlayingReader)dlsym(RTLD_DEFAULT,"MRMediaRemoteGetNowPlayingInfo");});
  if(!reader){self.song.text=@"Choose music in YouTube or audioNINJA";return;}
- double now=TRDMonotonic();if(self.metadataPending&&now-self.metadataRequestedAt<10)return;
+ double now=TRDMonotonic();if(self.metadataPending&&now-self.metadataRequestedAt<3.0)return;
  self.metadataPending=YES;self.metadataRequestedAt=now;NSUInteger generation=++self.metadataGeneration;__weak Dashboard *weak=self;
  void (*owner)(dispatch_queue_t,void (^)(int))=dlsym(RTLD_DEFAULT,"MRMediaRemoteGetNowPlayingApplicationPID");if(owner)owner(dispatch_get_main_queue(),^(int pid){Dashboard *v=weak;if(!v||generation!=v.metadataGeneration)return;int (*pathfn)(int,void *,uint32_t)=dlsym(RTLD_DEFAULT,"proc_pidpath");char path[4096];path[0]=0;v.youtubeSource=pid>0&&pathfn&&pathfn(pid,path,sizeof(path))>0&&[[[NSString stringWithUTF8String:path]lastPathComponent]isEqualToString:@"YTNine"];});
 
@@ -3607,22 +3621,6 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  NSString *newArtist=title.length?(artist.length?artist:@"NOW PLAYING"):@"YouTube / audioNINJA";
  if(![self.song.text isEqualToString:newSong])self.song.text=newSong;
  if(![self.artist.text isEqualToString:newArtist])self.artist.text=newArtist;
- static NSString *lastPushedTitle=nil;
- static NSString *lastPushedArtist=nil;
- static double lastPushedRate=-1;
- if(![lastPushedTitle isEqualToString:title]||![lastPushedArtist isEqualToString:artist]||lastPushedRate!=self.mediaRate){
-  lastPushedTitle=[title copy];
-  lastPushedArtist=[artist copy];
-  lastPushedRate=self.mediaRate;
-  NSMutableDictionary *carInfo=[NSMutableDictionary dictionary];
-  carInfo[MPMediaItemPropertyTitle]=title.length?title:@"Toyota Prius TRD";
-  carInfo[MPMediaItemPropertyArtist]=artist.length?artist:@"CarDash Audio";
-  carInfo[MPMediaItemPropertyAlbumTitle]=@"Prius Hybrid";
-  carInfo[MPNowPlayingInfoPropertyPlaybackRate]=@(self.mediaRate>0?1.0:0.0);
-  if(self.mediaDuration>0)carInfo[MPMediaItemPropertyPlaybackDuration]=@(self.mediaDuration);
-  if(self.hasElapsed)carInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime]=@(self.mediaElapsed);
-  [[MPNowPlayingInfoCenter defaultCenter]setNowPlayingInfo:carInfo];
- }
  static NSDictionary *cachedSrc=nil;
  static NSDictionary *cachedCfg=nil;
  static NSTimeInterval lastConfigRead=0;
@@ -3655,13 +3653,26 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(NSString *)trackTimeString:(double)value{if(!isfinite(value)||value<0)return @"--:--";long long n=(long long)value;return n>=3600?[NSString stringWithFormat:@"%lld:%02lld:%02lld",n/3600,n/60%60,n%60]:[NSString stringWithFormat:@"%lld:%02lld",n/60,n%60];}
 -(void)refreshTrackProgress{
  if(self.radioPlayer){
+  AVPlayerItem *item=self.radioPlayer.currentItem;
+  CMTime dur=item?item.duration:kCMTimeInvalid;
+  CMTime cur=self.radioPlayer.currentTime;
+  double durSec=CMTIME_IS_NUMERIC(dur)?CMTimeGetSeconds(dur):0;
+  double curSec=CMTIME_IS_NUMERIC(cur)?MAX(0,CMTimeGetSeconds(cur)):0;
+  if(isfinite(durSec)&&durSec>0){
+   curSec=MIN(curSec,durSec);
+   double remSec=MAX(0,durSec-curSec);
+   NSString *tStr=[NSString stringWithFormat:@"เล่นไป %@ / %@ (เหลือ -%@)",[self trackTimeString:curSec],[self trackTimeString:durSec],[self trackTimeString:remSec]];
+   if(![self.trackTime.text isEqualToString:tStr])self.trackTime.text=tStr;
+   self.trackProgress.progress=MAX(0,MIN(1,curSec/durSec));
+   return;
+  }
   if(![self.trackTime.text isEqualToString:@"LIVE STREAM · ON AIR"]){
    self.trackTime.text=@"LIVE STREAM · ON AIR";
    self.trackProgress.progress=1.0;
   }
   return;
  }
- double elapsed=self.mediaElapsed;
+ double elapsed=self.hasElapsed?self.mediaElapsed:0;
  if(self.hasElapsed&&self.mediaTimestamp&&self.mediaRate>0){
   elapsed+=MAX(0,-[self.mediaTimestamp timeIntervalSinceNow])*self.mediaRate;
  }
@@ -3670,7 +3681,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }
  double remaining=(self.mediaDuration>0)?MAX(0,self.mediaDuration-elapsed):0;
  NSString *newTime=nil;
- if(self.hasElapsed&&self.mediaDuration>0){
+ if(self.mediaDuration>0){
   newTime=[NSString stringWithFormat:@"เล่นไป %@ / %@ (เหลือ -%@)",[self trackTimeString:elapsed],[self trackTimeString:self.mediaDuration],[self trackTimeString:remaining]];
  }else if(self.hasElapsed){
   newTime=[NSString stringWithFormat:@"เล่นไป %@ / --:--",[self trackTimeString:elapsed]];
@@ -3679,8 +3690,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }
  if(![self.trackTime.text isEqualToString:newTime]){
   self.trackTime.text=newTime;
-  self.trackProgress.progress=self.hasElapsed&&self.mediaDuration>0?MAX(0,MIN(1,elapsed/self.mediaDuration)):0;
  }
+ self.trackProgress.progress=self.mediaDuration>0?MAX(0,MIN(1,elapsed/self.mediaDuration)):0;
 }
 -(void)applyEQPreset:(NSString *)presetName{
  if(!presetName.length)return;
@@ -4932,7 +4943,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  [menu addAction:[TRDSettingAction actionWithTitle:@"▶️ YouTube" style:0 handler:^(TRDSettingAction *a){[self openYouTubeSource];}]];
  [self presentSettingsMenu:menu];
 }
--(void)openSearchMusic{[self browseSource:@"com.legacymusic.app"];}
+-(void)openSearchMusic{[self browseSource:@"com.legacymusic.app" target:@"search"];}
 -(void)openOfflineMusicMenu{
  NSString *libPath=@"/var/mobile/Documents/LegacyMusic/library.plist";
  NSArray *tracks=[NSArray arrayWithContentsOfFile:libPath];
