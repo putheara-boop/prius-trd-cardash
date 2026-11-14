@@ -7,6 +7,7 @@
 #import "TRDOBDClient.m"
 #import "TRDWelcomeGate.h"
 #import <CoreLocation/CoreLocation.h>
+#import <MapKit/MapKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <SystemConfiguration/CaptiveNetwork.h>
 #include <spawn.h>
@@ -24,6 +25,34 @@ static inline void trd_run_bg(const char *cmd){
  pid_t pid=0;
  char *argv[]={(char *)"/bin/sh",(char *)"-c",(char *)cmd,NULL};
  posix_spawn(&pid,"/bin/sh",NULL,NULL,argv,environ);
+}
+static NSString *TRDDailyTripLogPath(void){
+ NSString *dir=@"/var/mobile/codex-car";
+ NSFileManager *fm=[NSFileManager defaultManager];
+ if([fm isWritableFileAtPath:dir] || [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil]){
+  return [dir stringByAppendingPathComponent:@"trip-daily-history.plist"];
+ }
+ NSString *docs=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+ return [docs stringByAppendingPathComponent:@"trip-daily-history.plist"];
+}
+static NSDateFormatter *TRDGregorianDayFormatter(NSString *fmt){
+ NSDateFormatter *df=[[NSDateFormatter alloc]init];
+ df.calendar=[[NSCalendar alloc]initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+ df.locale=[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+ df.dateFormat=fmt;
+ return df;
+}
+static NSString *TRDDateKeyForDate(NSDate *dt){
+ return [TRDGregorianDayFormatter(@"yyyy-MM-dd") stringFromDate:dt?:[NSDate date]] ?: @"1970-01-01";
+}
+static NSString *TRDFormatThaiDayLabel(NSString *ymd){
+ NSDate *d=[TRDGregorianDayFormatter(@"yyyy-MM-dd") dateFromString:ymd];
+ if(!d) return ymd ?: @"";
+ NSDateFormatter *df=[[NSDateFormatter alloc]init];
+ df.locale=[NSLocale localeWithLocaleIdentifier:@"th_TH"];
+ df.calendar=[[NSCalendar alloc]initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+ df.dateFormat=@"EEE d MMM yy";
+ return [df stringFromDate:d] ?: ymd;
 }
 #import "CarExtras.h"
 #import "TRDSettingsMenu.h"
@@ -509,17 +538,19 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
     self.gearBadge.layer.cornerRadius = 6;
     self.gearBadge.layer.borderWidth = 1.2;
     self.gearBadge.layer.borderColor = [UIColor colorWithRed:0.2 green:0.85 blue:0.45 alpha:0.8].CGColor;
-    UILabel *gl = [[UILabel alloc] initWithFrame:CGRectMake(5, 2, 16, 20)];
+    UILabel *gl = [[UILabel alloc] initWithFrame:CGRectMake(4, 1, 22, 24)];
     gl.tag = 101;
-    gl.font = [UIFont boldSystemFontOfSize:14.5];
+    gl.font = [UIFont boldSystemFontOfSize:19.0];
+    gl.textAlignment = NSTextAlignmentCenter;
     gl.textColor = [UIColor whiteColor];
     gl.text = @"P";
     [self.gearBadge addSubview:gl];
-    UILabel *gw = [[UILabel alloc] initWithFrame:CGRectMake(21, 3, 44, 18)];
+    UILabel *gw = [[UILabel alloc] initWithFrame:CGRectMake(26, 2, 56, 22)];
     gw.tag = 102;
-    gw.font = [UIFont boldSystemFontOfSize:11.0];
+    gw.font = [UIFont boldSystemFontOfSize:14.5];
     gw.adjustsFontSizeToFitWidth = YES;
-    gw.minimumScaleFactor = 0.85;
+    gw.minimumScaleFactor = 0.65;
+    gw.textAlignment = NSTextAlignmentCenter;
     gw.textColor = [UIColor colorWithRed:0.35 green:0.98 blue:0.55 alpha:1];
     gw.text = @"PARK";
     [self.gearBadge addSubview:gw];
@@ -557,8 +588,8 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
     self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:108] ?: [UIFont boldSystemFontOfSize:108];
     self.speedLabel.frame = CGRectMake(8, 8, w - 16, 98);
     self.gearBadge.hidden = NO;
-    self.gearBadge.frame = CGRectMake(10, h - 25, 68, 24);
-    self.unitLabel.frame = CGRectMake(82, h - 23, w - 90, 20);
+    self.gearBadge.frame = CGRectMake(8, h - 28, 86, 26);
+    self.unitLabel.frame = CGRectMake(98, h - 25, w - 104, 20);
     self.unitLabel.font = [UIFont boldSystemFontOfSize:12.0];
     self.unitLabel.adjustsFontSizeToFitWidth = YES;
     self.unitLabel.minimumScaleFactor = 0.85;
@@ -1273,9 +1304,24 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property (nonatomic, strong) UIView *driveClockCard, *driveBatteryCard, *driveTripCard;
 @property (nonatomic, strong) UIButton *driveEqBtn, *driveExitBtn;
 @property (nonatomic, assign) NSInteger activeTripSlot;
+@property (nonatomic, assign) double lastSlotMeters, lastSlotSeconds, lastSlotFuel, lastSlotCost;
+@property (nonatomic, strong) NSMutableDictionary *dailyHistoryCache;
+@property (nonatomic, strong) NSDate *lastDailyHistoryWriteAt;
+@property (nonatomic, assign) BOOL sessionLoggedToday;
+@property (nonatomic, assign) NSInteger activeSummaryTab;
+@property (nonatomic, assign) BOOL lowFuelStage1Alerted, lowFuelStage2Alerted;
+@property (nonatomic, assign) NSInteger lowFuelConfirmTicks;
+@property (nonatomic, strong) UIView *lowFuelBanner;
+@property (nonatomic, strong) AVAudioPlayer *alarmAudioPlayer;
+@property (nonatomic, copy) NSString *nearestStationName, *nearestStationAddress;
+@property (nonatomic, assign) double nearestStationKm, nearestStationLat, nearestStationLon;
+@property (nonatomic, copy) NSString *pendingMapJS;
 -(void)homeTripSlotTapped:(UIButton *)btn;
 -(void)selectTripSlot:(UIButton *)btn;
 -(void)refreshDriveTripDisplay;
+-(void)syncTripSlotsDelta:(BOOL)forceDiskFlush;
+-(NSDictionary *)loadTripSlot:(NSInteger)slot;
+-(void)resetTripSlot:(NSInteger)slot;
 
 
 @property (nonatomic, strong) UILabel *topClockLabel;
@@ -1313,6 +1359,10 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property UIWebView *mapWebView;
 -(void)openMap;
 -(void)updateMapCar;
+-(void)updateMapCarForce:(BOOL)force;
+-(void)executeOrQueueMapJS:(NSString *)js;
+-(void)openMapToLat:(double)lat lon:(double)lon name:(NSString *)name address:(NSString *)address autoStart:(BOOL)autoStart;
+-(void)openMapWithSearchQuery:(NSString *)query;
 -(void)loadMapHTML;
 -(UIWebView *)ensureMapWebView;
 -(void)teardownMapWebView;
@@ -1478,6 +1528,11 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property NSUInteger radioGeneration;
 @property NSString *currentRadioStation;
 -(void)showTripSummary;
+-(void)showTripSummaryWithTab:(NSInteger)tabIndex;
+-(void)checkLowFuelWarning;
+-(void)testLowFuelWarning;
+-(void)dismissLowFuelBanner;
+-(void)navigateToFoundGasStation;
 -(void)batteryStateChanged:(NSNotification *)note;
 -(void)hideTripSummary;
 -(void)immediateSleepFromTripSummary;
@@ -1552,15 +1607,156 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   [[NSUserDefaults standardUserDefaults] synchronize];
   [self refreshDriveTripDisplay];
 }
+-(NSDictionary *)loadTripSlot:(NSInteger)slot{
+  if(slot < 0 || slot > 2) slot = 0;
+  NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+  NSString *key = [NSString stringWithFormat:@"TRDTripSlot_%ld", (long)slot];
+  NSDictionary *d = [ud dictionaryForKey:key];
+  if([d isKindOfClass:[NSDictionary class]]) return d;
+  // First-time non-destructive migration: preserve ongoing Trip A & cumulative Odometer in Trip C
+  if(slot == 0 && self.trip){
+    TRDOBDClient *obd = [TRDOBDClient sharedClient];
+    double km = self.trip.meters / 1000.0;
+    double fuel = obd.tripFuelUsedLiters;
+    double price = (obd.fuelPricePerLiter > 0) ? obd.fuelPricePerLiter : 38.50;
+    double cost = (obd.tripFuelCostTHB > 0) ? obd.tripFuelCostTHB : (fuel * price);
+    NSDictionary *initA = @{@"km":@(km), @"sec":@(self.trip.seconds), @"fuel":@(fuel), @"cost":@(cost), @"maf":@(obd.isConnected)};
+    [ud setObject:initA forKey:key];
+    return initA;
+  }
+  if(slot == 2){
+    double odo = [ud doubleForKey:@"TRDTotalOdometer"];
+    if(odo > 0.01){
+      NSDictionary *initC = @{@"km":@(odo), @"sec":@(0.0), @"fuel":@(0.0), @"cost":@(0.0), @"maf":@(NO)};
+      [ud setObject:initC forKey:key];
+      return initC;
+    }
+  }
+  return @{@"km":@(0.0), @"sec":@(0.0), @"fuel":@(0.0), @"cost":@(0.0), @"maf":@(NO)};
+}
+
+-(NSMutableDictionary *)ensureDailyHistoryLoaded{
+  if(!self.dailyHistoryCache){
+    NSDictionary *disk = [NSDictionary dictionaryWithContentsOfFile:TRDDailyTripLogPath()];
+    if([disk isKindOfClass:[NSDictionary class]] && [disk[@"days"] isKindOfClass:[NSDictionary class]]){
+      self.dailyHistoryCache = [disk mutableCopy];
+      self.dailyHistoryCache[@"days"] = [disk[@"days"] mutableCopy];
+    }else{
+      self.dailyHistoryCache = [@{@"version":@(1), @"days":[NSMutableDictionary dictionary]} mutableCopy];
+    }
+  }
+  NSMutableDictionary *days = self.dailyHistoryCache[@"days"];
+  NSString *todayKey = TRDDateKeyForDate([NSDate date]);
+  if(![days[todayKey] isKindOfClass:[NSDictionary class]]){
+    days[todayKey] = [@{@"date":todayKey, @"km":@(0.0), @"fuelL":@(0.0), @"cost":@(0.0), @"sec":@(0.0), @"trips":@(self.sessionLoggedToday ? 1 : 0), @"maf":@(NO)} mutableCopy];
+  }
+  return days;
+}
+
+-(void)flushDailyHistoryToPlist{
+  if(!self.dailyHistoryCache) return;
+  [self.dailyHistoryCache writeToFile:TRDDailyTripLogPath() atomically:YES];
+  self.lastDailyHistoryWriteAt = [NSDate date];
+}
+
+-(void)syncTripSlotsDelta:(BOOL)forceDiskFlush{
+  NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+  TRDOBDClient *obd = [TRDOBDClient sharedClient];
+  double curM = self.trip ? self.trip.meters : 0.0;
+  double curS = self.trip ? self.trip.seconds : 0.0;
+  double curF = obd.tripFuelUsedLiters;
+  double price = (obd.fuelPricePerLiter > 0) ? obd.fuelPricePerLiter : 38.50;
+  double curC = (obd.tripFuelCostTHB > 0.001) ? obd.tripFuelCostTHB : (curF * price);
+
+  if(curM < self.lastSlotMeters) self.lastSlotMeters = 0.0;
+  if(curS < self.lastSlotSeconds) self.lastSlotSeconds = 0.0;
+  if(curF < self.lastSlotFuel) self.lastSlotFuel = 0.0;
+  if(curC < self.lastSlotCost) self.lastSlotCost = 0.0;
+
+  double dKm = MAX(0.0, (curM - self.lastSlotMeters) / 1000.0);
+  double dSec = MAX(0.0, curS - self.lastSlotSeconds);
+  double dFuel = MAX(0.0, curF - self.lastSlotFuel);
+  double dCost = MAX(0.0, curC - self.lastSlotCost);
+
+  // Ensure initial migration seeds Trip A / C / Today cleanly without losing prior state
+  NSMutableDictionary *days = [self ensureDailyHistoryLoaded];
+
+  BOOL changed = (dKm > 0.0001 || dSec >= 1.0 || dFuel > 0.0001 || dCost > 0.001);
+  if(changed){
+    for(NSInteger i = 0; i < 3; i++){
+      NSMutableDictionary *slotDict = [[self loadTripSlot:i] mutableCopy];
+      slotDict[@"km"] = @([slotDict[@"km"] doubleValue] + dKm);
+      slotDict[@"sec"] = @([slotDict[@"sec"] doubleValue] + dSec);
+      slotDict[@"fuel"] = @([slotDict[@"fuel"] doubleValue] + dFuel);
+      slotDict[@"cost"] = @([slotDict[@"cost"] doubleValue] + dCost);
+      if(obd.isConnected) slotDict[@"maf"] = @(YES);
+      [ud setObject:slotDict forKey:[NSString stringWithFormat:@"TRDTripSlot_%ld", (long)i]];
+    }
+
+    NSString *todayKey = TRDDateKeyForDate([NSDate date]);
+    NSMutableDictionary *dayRec = [days[todayKey] mutableCopy] ?: [@{@"date":todayKey, @"km":@(0.0), @"fuelL":@(0.0), @"cost":@(0.0), @"sec":@(0.0), @"trips":@(0), @"maf":@(NO)} mutableCopy];
+    dayRec[@"km"] = @([dayRec[@"km"] doubleValue] + dKm);
+    dayRec[@"sec"] = @([dayRec[@"sec"] doubleValue] + dSec);
+    dayRec[@"fuelL"] = @([dayRec[@"fuelL"] doubleValue] + dFuel);
+    dayRec[@"cost"] = @([dayRec[@"cost"] doubleValue] + dCost);
+    if(obd.isConnected) dayRec[@"maf"] = @(YES);
+    if(!self.sessionLoggedToday && curM > 20.0){
+      dayRec[@"trips"] = @([dayRec[@"trips"] integerValue] + 1);
+      self.sessionLoggedToday = YES;
+    }
+    days[todayKey] = dayRec;
+
+    self.lastSlotMeters = curM;
+    self.lastSlotSeconds = curS;
+    self.lastSlotFuel = curF;
+    self.lastSlotCost = curC;
+    [ud setDouble:curM forKey:@"TRDLastSyncedTripMeters"];
+    [ud setDouble:curS forKey:@"TRDLastSyncedTripSeconds"];
+    [ud setDouble:curF forKey:@"TRDLastSyncedTripFuel"];
+    [ud setDouble:curC forKey:@"TRDLastSyncedTripCost"];
+  }
+
+  BOOL dueForDisk = forceDiskFlush || !self.lastDailyHistoryWriteAt || (-[self.lastDailyHistoryWriteAt timeIntervalSinceNow] >= 8.0);
+  if((changed || forceDiskFlush) && dueForDisk){
+    [self flushDailyHistoryToPlist];
+    [ud synchronize];
+  }
+}
+
+-(void)resetTripSlot:(NSInteger)slot{
+  if(slot < 0 || slot > 2) slot = 0;
+  // Always flush pending live trip deltas to all other slots & daily history BEFORE clearing the chosen slot!
+  [self syncTripSlotsDelta:YES];
+  NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+  [ud setObject:@{@"km":@(0.0), @"sec":@(0.0), @"fuel":@(0.0), @"cost":@(0.0), @"maf":@(NO)}
+         forKey:[NSString stringWithFormat:@"TRDTripSlot_%ld", (long)slot]];
+  if(slot == 0){
+    self.trip = [TRDTrip new];
+    [self saveTrip];
+    [[TRDOBDClient sharedClient] resetTripFuel];
+    self.lastSlotMeters = 0.0;
+    self.lastSlotSeconds = 0.0;
+    self.lastSlotFuel = 0.0;
+    self.lastSlotCost = 0.0;
+    [ud setDouble:0.0 forKey:@"TRDLastSyncedTripMeters"];
+    [ud setDouble:0.0 forKey:@"TRDLastSyncedTripSeconds"];
+    [ud setDouble:0.0 forKey:@"TRDLastSyncedTripFuel"];
+    [ud setDouble:0.0 forKey:@"TRDLastSyncedTripCost"];
+    self.sessionLoggedToday = NO;
+  }
+  [ud synchronize];
+  [self refreshTrip];
+  [self refreshDriveTripDisplay];
+}
+
 -(void)refreshDriveTripDisplay{
+  [self syncTripSlotsDelta:NO];
   double liveKm = self.trip ? (self.trip.meters / 1000.0) : 0.0;
   long liveSec = self.trip ? (long)self.trip.seconds : 0;
   TRDOBDClient *obd = [TRDOBDClient sharedClient];
-  double liveKml = (obd.isConnected && obd.tripFuelUsedLiters > 0.02 && liveKm > 0.2)
-    ? MAX(5.0, MIN(45.0, liveKm / obd.tripFuelUsedLiters))
-    : ((obd.tripAverageKmPerL > 0.1) ? obd.tripAverageKmPerL : 21.5);
-  double liveLiters = (obd.isConnected && obd.tripFuelUsedLiters > 0.001) ? obd.tripFuelUsedLiters : (liveKm / liveKml);
-  double liveCost = (obd.tripFuelCostTHB > 0.01) ? obd.tripFuelCostTHB : (liveLiters * (obd.fuelPricePerLiter > 0 ? obd.fuelPricePerLiter : 38.50));
+  double price = (obd.fuelPricePerLiter > 0) ? obd.fuelPricePerLiter : 38.50;
+  double liveLiters = obd.tripFuelUsedLiters;
+  double liveCost = (obd.tripFuelCostTHB > 0.001) ? obd.tripFuelCostTHB : (liveLiters * price);
   NSString *liveTimeMin = (liveSec >= 3600)
     ? [NSString stringWithFormat:@"%02ld:%02ld ชม.", liveSec / 3600, (liveSec / 60) % 60]
     : [NSString stringWithFormat:@"%02ld:%02ld นาที", (liveSec / 60) % 60, liveSec % 60];
@@ -1594,54 +1790,64 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
     [lModeB setTitle:mText forState:UIControlStateNormal];
   }
 
-  if(!self.driveTripCard) return;
   NSInteger slot = self.activeTripSlot;
-  NSArray *slotNames = @[@"TRIP A", @"TRIP B", @"TRIP C"];
-  for(int i=0; i<3; i++){
-    UIButton *tb = (UIButton *)[self.driveTripCard viewWithTag:840+i];
-    if(tb){
-      if(i == slot){
-        tb.backgroundColor = [UIColor colorWithRed:0.0 green:0.75 blue:0.95 alpha:0.30];
-        tb.layer.borderColor = [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:0.95].CGColor;
-        [tb setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-      }else{
-        tb.backgroundColor = [UIColor colorWithWhite:0.10 alpha:1.0];
-        tb.layer.borderColor = [UIColor colorWithWhite:0.26 alpha:1.0].CGColor;
-        [tb setTitleColor:[UIColor colorWithWhite:0.75 alpha:1.0] forState:UIControlStateNormal];
+  if(slot < 0 || slot > 2) slot = 0;
+  NSDictionary *slotData = [self loadTripSlot:slot];
+  double dist = [slotData[@"km"] doubleValue];
+  long slotSec = (long)[slotData[@"sec"] doubleValue];
+  double fuelL = [slotData[@"fuel"] doubleValue];
+  double cost = [slotData[@"cost"] doubleValue];
+  BOOL usedMAF = [slotData[@"maf"] boolValue] || obd.isConnected;
+  double avgSpd = (slotSec > 5 && dist > 0.001) ? ((dist * 1000.0) / slotSec * 3.6) : 0.0;
+  NSString *timeStr = (slotSec >= 3600)
+    ? [NSString stringWithFormat:@"%02ld:%02ld ชม.", slotSec / 3600, (slotSec / 60) % 60]
+    : [NSString stringWithFormat:@"%02ld:%02ld นาที", (slotSec / 60) % 60, slotSec % 60];
+
+  BOOL hasRealFuel = (dist > 0.05 && fuelL > 0.005);
+  double kml = hasRealFuel ? MAX(3.0, MIN(99.9, dist / fuelL)) : 0.0;
+  NSString *kmlDisplay = hasRealFuel
+    ? [NSString stringWithFormat:@"%.1f km/L", kml]
+    : ((dist > 0.05 && usedMAF) ? @"EV 0.0 L" : @"--.- km/L");
+  NSString *kmlNote = hasRealFuel
+    ? (usedMAF ? (kml >= 18.0 ? @"MAF จริง • ประหยัด" : @"MAF จริง • เรียลไทม์") : @"GPS คำนวณจริงตามความเร็ว")
+    : ((dist > 0.05 && usedMAF) ? @"วิ่งไฟฟ้าล้วน (EV)" : @"รอรถเคลื่อนที่");
+
+  if(self.driveTripCard){
+    for(int i=0; i<3; i++){
+      UIButton *tb = (UIButton *)[self.driveTripCard viewWithTag:840+i];
+      if(tb){
+        if(i == slot){
+          tb.backgroundColor = [UIColor colorWithRed:0.0 green:0.75 blue:0.95 alpha:0.30];
+          tb.layer.borderColor = [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:0.95].CGColor;
+          [tb setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        }else{
+          tb.backgroundColor = [UIColor colorWithWhite:0.10 alpha:1.0];
+          tb.layer.borderColor = [UIColor colorWithWhite:0.26 alpha:1.0].CGColor;
+          [tb setTitleColor:[UIColor colorWithWhite:0.75 alpha:1.0] forState:UIControlStateNormal];
+        }
       }
     }
+    UILabel *subL = (UILabel *)[self.driveTripCard viewWithTag:823];
+    if(subL){
+      subL.adjustsFontSizeToFitWidth = YES;
+      subL.minimumScaleFactor = 0.80;
+      if(slot == 0) subL.text = @"📍 ทริปนี้ A ➔ B (คำนวณจริงแยกอิสระ)";
+      else if(slot == 1) subL.text = @"⛽ ทริปถังน้ำมันนี้ B (สะสมจริงต่อเนื่อง)";
+      else subL.text = @"🏁 ทริประยะยาว C (สะสมจริงต่อเนื่อง)";
+    }
+    UILabel *vDist = (UILabel *)[self.driveTripCard viewWithTag:851];
+    UILabel *vKml  = (UILabel *)[self.driveTripCard viewWithTag:852];
+    UILabel *vCost = (UILabel *)[self.driveTripCard viewWithTag:853];
+    UILabel *vTime = (UILabel *)[self.driveTripCard viewWithTag:854];
+    if(vDist){
+      vDist.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:22.0] ?: [UIFont boldSystemFontOfSize:22.0];
+      vDist.textColor = [UIColor colorWithRed:0.20 green:1.0 blue:0.65 alpha:1.0];
+      vDist.text = (dist < 100.0) ? [NSString stringWithFormat:@"%.2f km", dist] : [NSString stringWithFormat:@"%.1f km", dist];
+    }
+    if(vKml)  vKml.text  = kmlDisplay;
+    if(vCost) vCost.text = [NSString stringWithFormat:@"฿ %.2f", cost];
+    if(vTime) vTime.text = [NSString stringWithFormat:@"%@ • %.0f km/h", [timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@""], avgSpd];
   }
-  double dist = liveKm;
-  double kml = liveKml;
-  double cost = liveCost;
-  double avgSpd = (self.trip && self.trip.seconds > 5) ? (self.trip.meters / self.trip.seconds * 3.6) : 0.0;
-  NSString *timeStr = liveTimeMin;
-  if(slot == 1){
-    dist = 186.4 + liveKm; kml = 23.6; cost = 304.50 + liveCost; avgSpd = 54.0; timeStr = @"03:26 ชม.";
-  }else if(slot == 2){
-    double odo = [[NSUserDefaults standardUserDefaults] doubleForKey:@"TRDTotalOdometer"];
-    dist = ((odo > 50) ? odo : 1420.8) + liveKm; kml = 23.9; cost = 2285.00 + liveCost; avgSpd = 52.4; timeStr = @"27:08 ชม.";
-  }
-  UILabel *subL = (UILabel *)[self.driveTripCard viewWithTag:823];
-  if(subL){
-    subL.adjustsFontSizeToFitWidth = YES;
-    subL.minimumScaleFactor = 0.80;
-    if(slot == 0) subL.text = @"📍 ทริปนี้ A ➔ B (ตั้งแต่สตาร์ทรถ)";
-    else if(slot == 1) subL.text = @"⛽ ทริปถังน้ำมันนี้ (Tank Trip B)";
-    else subL.text = @"🏁 ทริปสะสมระยะยาว (Long-Term C)";
-  }
-  UILabel *vDist = (UILabel *)[self.driveTripCard viewWithTag:851];
-  UILabel *vKml  = (UILabel *)[self.driveTripCard viewWithTag:852];
-  UILabel *vCost = (UILabel *)[self.driveTripCard viewWithTag:853];
-  UILabel *vTime = (UILabel *)[self.driveTripCard viewWithTag:854];
-  if(vDist){
-    vDist.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:22.0] ?: [UIFont boldSystemFontOfSize:22.0];
-    vDist.textColor = [UIColor colorWithRed:0.20 green:1.0 blue:0.65 alpha:1.0];
-    vDist.text = (slot == 0) ? [NSString stringWithFormat:@"%.2f km", dist] : [NSString stringWithFormat:@"%.1f km", dist];
-  }
-  if(vKml)  vKml.text  = [NSString stringWithFormat:@"%.1f km/L", kml];
-  if(vCost) vCost.text = [NSString stringWithFormat:@"฿ %.2f", cost];
-  if(vTime) vTime.text = [NSString stringWithFormat:@"%@ • %.0f km/h", [timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@""], avgSpd];
 
   UIView *hTripCard = [self.view viewWithTag:711];
   if(hTripCard){
@@ -1661,16 +1867,12 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
     }
     UILabel *htbL = (UILabel *)[hTripCard viewWithTag:713];
     if(htbL){
-      NSString *slotTitle = (slot == 0) ? @"START-TO-STOP • ทริปนี้ A➔B" : (slot == 1) ? @"TANK TRIP • ถังน้ำมันนี้ (B)" : @"LONG-TERM • สะสมระยะยาว (C)";
+      NSString *slotTitle = (slot == 0) ? @"TRIP A • ทริปนี้ (คำนวณจริง)" : (slot == 1) ? @"TRIP B • ถังน้ำมันนี้ (คำนวณจริง)" : @"TRIP C • สะสมระยะยาว (คำนวณจริง)";
       NSString *enTimeStr = [[timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@" hrs"] stringByReplacingOccurrencesOfString:@" นาที" withString:@" min"];
-      NSString *distFmt = (slot == 0) ? [NSString stringWithFormat:@"%.2f km", dist] : [NSString stringWithFormat:@"%.1f km", dist];
-      NSString *kmlNote = (obd.isConnected && obd.tripFuelUsedLiters > 0.02 && dist > 0.2)
-        ? (kml >= 18.0 ? @"MAF จริง • ประหยัด" : @"MAF จริง")
-        : @"ค่าประมาณตั้งต้น";
-      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %@\nECONOMY: %.1f km/L (%@)\nFUEL COST: ฿ %.2f (ค่าน้ำมัน)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, distFmt, kml, kmlNote, cost, avgSpd, enTimeStr];
+      NSString *distFmt = (dist < 100.0) ? [NSString stringWithFormat:@"%.2f km", dist] : [NSString stringWithFormat:@"%.1f km", dist];
+      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %@ (น้ำมัน %.2f L)\nECONOMY: %@ (%@)\nFUEL COST: ฿ %.2f (ค่าน้ำมันจริง)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, distFmt, fuelL, kmlDisplay, kmlNote, cost, avgSpd, enTimeStr];
     }
   }
-  (void)slotNames;
 }
 -(void)driveShifterTapped:(UITapGestureRecognizer *)tap{
   CGPoint pt = [tap locationInView:self.driveShifter];
@@ -1692,15 +1894,41 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   self.driveShifter.gear = g;
   [self.driveShifter setNeedsDisplay];
 
-  UILabel *l = (UILabel *)[self.gearBadge viewWithTag:801]; if(l) l.text = g;
+  UILabel *l = (UILabel *)[self.gearBadge viewWithTag:801];
   UILabel *w = (UILabel *)[self.gearBadge viewWithTag:802];
-  if(w){
-    if([g isEqualToString:@"P"]) w.text = @"PARK";
-    else if([g isEqualToString:@"R"]) w.text = @"REVERSE";
-    else if([g isEqualToString:@"N"]) w.text = @"NEUTRAL";
-    else if([g isEqualToString:@"D"]) w.text = @"DRIVE";
-    else if([g isEqualToString:@"B"]) w.text = @"ENGINE BRAKE";
+  NSString *gearCode = g ?: @"P";
+  if(l) l.text = gearCode;
+  UIColor *gColor = [UIColor colorWithRed:.35 green:.95 blue:.50 alpha:1];
+  UIColor *gBg = [UIColor colorWithRed:.03 green:.14 blue:.08 alpha:.94];
+  NSString *gWordStr = @"PARK";
+  if([gearCode isEqualToString:@"P"]){
+    gWordStr = @"PARK";
+    gColor = [UIColor colorWithRed:.30 green:.98 blue:.58 alpha:1];
+    gBg = [UIColor colorWithRed:.03 green:.14 blue:.08 alpha:.94];
+  }else if([gearCode isEqualToString:@"R"]){
+    gWordStr = @"REVERSE";
+    gColor = [UIColor colorWithRed:1.0 green:.32 blue:.38 alpha:1];
+    gBg = [UIColor colorWithRed:.20 green:.03 blue:.05 alpha:.95];
+  }else if([gearCode isEqualToString:@"N"]){
+    gWordStr = @"NEUTRAL";
+    gColor = [UIColor colorWithRed:1.0 green:.80 blue:.22 alpha:1];
+    gBg = [UIColor colorWithRed:.18 green:.12 blue:.02 alpha:.95];
+  }else if([gearCode isEqualToString:@"B"]){
+    gWordStr = @"BRAKE";
+    gColor = [UIColor colorWithRed:1.0 green:.56 blue:.18 alpha:1];
+    gBg = [UIColor colorWithRed:.19 green:.08 blue:.02 alpha:.95];
+  }else{
+    gWordStr = @"DRIVE";
+    gColor = [UIColor colorWithRed:.20 green:.92 blue:1.0 alpha:1];
+    gBg = [UIColor colorWithRed:.02 green:.10 blue:.16 alpha:.95];
   }
+  if(w){
+    w.text = gWordStr;
+    w.textColor = gColor;
+  }
+  if(l) l.textColor = [UIColor whiteColor];
+  self.gearBadge.backgroundColor = gBg;
+  self.gearBadge.layer.borderColor = [gColor colorWithAlphaComponent:.75].CGColor;
   for(int i=0; i<self.gearButtons.count; i++){
     UIButton *b = self.gearButtons[i];
     if(i == idx){
@@ -1746,7 +1974,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 #import "TRDTripMethods.h"
 -(UILabel *)label:(CGFloat)size color:(UIColor *)color{UILabel *l=[UILabel new];l.font=[UIFont systemFontOfSize:size];l.textColor=color;[self.view addSubview:l];return l;}
 -(void)viewDidLoad{
- [super viewDidLoad];[[TRDOBDClient sharedClient] startScanning];[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(obdGearChanged:) name:TRDOBDGearChangedNotification object:nil];[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(obdDataUpdated:) name:TRDOBDDataDidUpdateNotification object:nil];self.trip=[TRDTrip new];[self.trip restore:[[NSUserDefaults standardUserDefaults]dictionaryForKey:@"TRDTripSummary"]];self.activeTripSlot=[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDActiveTripSlot"];TRDTheme=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDTheme"]));self.displayMode=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDDisplayMode"]));self.panel=[[SportPanel alloc]initWithFrame:self.view.bounds];self.panel.userInteractionEnabled=NO;self.panel.opaque=YES;self.panel.clockOnly=YES;[self.view addSubview:self.panel];self.view.backgroundColor=[UIColor colorWithRed:.025 green:.025 blue:.03 alpha:1];UIColor *blue=TRDAccent();self.heading=[self label:18 color:blue];self.heading.text=@"PRIUS TRD SPORTIVO";self.heading.font=[UIFont boldSystemFontOfSize:16];self.owner=[self label:10.5 color:[UIColor colorWithRed:0 green:.85 blue:1 alpha:1]];self.owner.text=@"LUXURY EV SMART COCKPIT • FULLSCREEN KIOSK READY";self.owner.font=[UIFont boldSystemFontOfSize:10];
+ [super viewDidLoad];[[TRDOBDClient sharedClient] startScanning];[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(obdGearChanged:) name:TRDOBDGearChangedNotification object:nil];[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(obdDataUpdated:) name:TRDOBDDataDidUpdateNotification object:nil];self.trip=[TRDTrip new];[self.trip restore:[[NSUserDefaults standardUserDefaults]dictionaryForKey:@"TRDTripSummary"]];self.activeTripSlot=[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDActiveTripSlot"];NSUserDefaults *syncUd=[NSUserDefaults standardUserDefaults];if([syncUd objectForKey:@"TRDLastSyncedTripMeters"]){self.lastSlotMeters=[syncUd doubleForKey:@"TRDLastSyncedTripMeters"];self.lastSlotSeconds=[syncUd doubleForKey:@"TRDLastSyncedTripSeconds"];self.lastSlotFuel=[syncUd doubleForKey:@"TRDLastSyncedTripFuel"];self.lastSlotCost=[syncUd doubleForKey:@"TRDLastSyncedTripCost"];}else{self.lastSlotMeters=self.trip.meters;self.lastSlotSeconds=self.trip.seconds;self.lastSlotFuel=[TRDOBDClient sharedClient].tripFuelUsedLiters;self.lastSlotCost=[TRDOBDClient sharedClient].tripFuelCostTHB;[self loadTripSlot:0];[self loadTripSlot:2];}[self ensureDailyHistoryLoaded];[self flushDailyHistoryToPlist];TRDTheme=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDTheme"]));self.displayMode=MAX(0,MIN(2,[[NSUserDefaults standardUserDefaults]integerForKey:@"TRDDisplayMode"]));self.panel=[[SportPanel alloc]initWithFrame:self.view.bounds];self.panel.userInteractionEnabled=NO;self.panel.opaque=YES;self.panel.clockOnly=YES;[self.view addSubview:self.panel];self.view.backgroundColor=[UIColor colorWithRed:.025 green:.025 blue:.03 alpha:1];UIColor *blue=TRDAccent();self.heading=[self label:18 color:blue];self.heading.text=@"PRIUS TRD SPORTIVO";self.heading.font=[UIFont boldSystemFontOfSize:16];self.owner=[self label:10.5 color:[UIColor colorWithRed:0 green:.85 blue:1 alpha:1]];self.owner.text=@"LUXURY EV SMART COCKPIT • FULLSCREEN KIOSK READY";self.owner.font=[UIFont boldSystemFontOfSize:10];
  NSUserDefaults *wheelPrefs=[NSUserDefaults standardUserDefaults];if(![wheelPrefs boolForKey:@"TRDOptimizedWheelEnabledV1"]){[wheelPrefs setBool:NO forKey:@"TRDCalmDrive"];[wheelPrefs setBool:YES forKey:@"TRDOptimizedWheelEnabledV1"];[wheelPrefs synchronize];}self.calmDrive=[wheelPrefs boolForKey:@"TRDCalmDrive"];self.nightMode=[[NSUserDefaults standardUserDefaults]boolForKey:@"nightMode"];TRDLowLight=self.nightMode;self.dayBrightness=[[NSUserDefaults standardUserDefaults]objectForKey:@"dayBrightness"]?[[NSUserDefaults standardUserDefaults]doubleForKey:@"dayBrightness"]:.6;if(self.dayBrightness<.15)self.dayBrightness=.6;
  NSUserDefaults *p=[NSUserDefaults standardUserDefaults];
   self.hotCarSaverEnabled=[p objectForKey:@"TRDHotCarSaver"]?[p boolForKey:@"TRDHotCarSaver"]:YES;
@@ -1845,20 +2073,26 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   [self.view addSubview:self.readyPill];
 
   self.gearBadge = [[UIView alloc]init];
-  self.gearBadge.backgroundColor = [UIColor colorWithRed:.03 green:.14 blue:.08 alpha:.9];
-  self.gearBadge.layer.cornerRadius = 6;
-  self.gearBadge.layer.borderWidth = 1.0;
-  self.gearBadge.layer.borderColor = [UIColor colorWithRed:.25 green:.75 blue:.40 alpha:.6].CGColor;
-  UILabel *gLetter = [[UILabel alloc]initWithFrame:CGRectMake(6,2,18,20)];
+  self.gearBadge.backgroundColor = [UIColor colorWithRed:.03 green:.14 blue:.08 alpha:.94];
+  self.gearBadge.layer.cornerRadius = 8;
+  self.gearBadge.layer.borderWidth = 1.3;
+  self.gearBadge.layer.borderColor = [UIColor colorWithRed:.25 green:.85 blue:.45 alpha:.75].CGColor;
+  UILabel *gLetter = [[UILabel alloc]initWithFrame:CGRectMake(6, 1, 36, 40)];
   gLetter.tag = 801;
-  gLetter.font = [UIFont boldSystemFontOfSize:16.5];
+  gLetter.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:34.0] ?: [UIFont boldSystemFontOfSize:32.0];
+  gLetter.textAlignment = NSTextAlignmentCenter;
+  gLetter.adjustsFontSizeToFitWidth = YES;
+  gLetter.minimumScaleFactor = 0.70;
   gLetter.textColor = [UIColor whiteColor];
   gLetter.text = @"D";
   [self.gearBadge addSubview:gLetter];
-  UILabel *gWord = [[UILabel alloc]initWithFrame:CGRectMake(25,4,46,16)];
+  UILabel *gWord = [[UILabel alloc]initWithFrame:CGRectMake(44, 2, 114, 38)];
   gWord.tag = 802;
-  gWord.font = [UIFont boldSystemFontOfSize:11.5];
-  gWord.textColor = [UIColor colorWithRed:.35 green:.95 blue:.50 alpha:1];
+  gWord.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:27.0] ?: [UIFont boldSystemFontOfSize:25.0];
+  gWord.textAlignment = NSTextAlignmentCenter;
+  gWord.adjustsFontSizeToFitWidth = YES;
+  gWord.minimumScaleFactor = 0.60;
+  gWord.textColor = [UIColor colorWithRed:.20 green:.92 blue:1.0 alpha:1];
   gWord.text = @"DRIVE";
   [self.gearBadge addSubview:gWord];
   [self.view addSubview:self.gearBadge];
@@ -2321,13 +2555,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 }
 
 -(void)quickResetABTrip{
-  self.trip = [TRDTrip new];
-  self.activeTripSlot = 0;
-  [self saveTrip];
-  [[TRDOBDClient sharedClient] resetTripFuel];
+  [self resetTripSlot:self.activeTripSlot];
   AudioServicesPlaySystemSound(1057);
-  [self refreshTrip];
-  [self refreshDriveTripDisplay];
 }
 
 -(void)viewDidLayoutSubviews{
@@ -2704,6 +2933,10 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 
     self.gearBadge.hidden = NO;
     self.gearBadge.frame = CGRectMake(leftX + 14, topY + 200, 164, 42);
+    UILabel *gbL = (UILabel *)[self.gearBadge viewWithTag:801];
+    UILabel *gbW = (UILabel *)[self.gearBadge viewWithTag:802];
+    if (gbL) gbL.frame = CGRectMake(6, 1, 36, 40);
+    if (gbW) gbW.frame = CGRectMake(44, 2, 114, 38);
 
     UIButton *lModeB = (UIButton *)[self.view viewWithTag:905];
     if (!lModeB) {
@@ -4452,7 +4685,17 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  }]];
  [self presentSettingsMenu:m];
 }
+-(void)switchTripSummaryToThis{
+  [self showTripSummaryWithTab:0];
+}
+-(void)switchTripSummaryToDaily{
+  [self showTripSummaryWithTab:1];
+}
 -(void)showTripSummary{
+  [self showTripSummaryWithTab:0];
+}
+-(void)showTripSummaryWithTab:(NSInteger)tabIndex{
+  [self syncTripSlotsDelta:YES];
   if(self.welcome)[self hideWelcome];
   if(!self.trip) self.trip=[TRDTrip new];
   [self.settingsSheet dismiss];
@@ -4463,6 +4706,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    [self.tripSummaryCard removeFromSuperview];
    self.tripSummaryCard=nil;
   }
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
+  self.activeSummaryTab = (tabIndex == 1) ? 1 : 0;
+
   CGFloat w=self.view.bounds.size.width;
   CGFloat h=self.view.bounds.size.height;
   if(w<=0) w=1024;
@@ -4474,9 +4720,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   fullOverlay.opaque=YES;
   fullOverlay.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
 
-  // 2. EXECUTIVE DIALOG CARD (840 x 580 px)
-  CGFloat cardW=840;
-  CGFloat cardH=580;
+  // 2. EXECUTIVE DIALOG CARD (880 x 630 px)
+  CGFloat cardW=880;
+  CGFloat cardH=630;
   CGFloat cardX=(w-cardW)/2;
   CGFloat cardY=(h-cardH)/2;
   UIView *card=[[UIView alloc]initWithFrame:CGRectMake(cardX,cardY,cardW,cardH)];
@@ -4491,8 +4737,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   topGlow.backgroundColor=[UIColor colorWithRed:0.95 green:0.12 blue:0.18 alpha:1.0];
   [card addSubview:topGlow];
 
-  // Header Title (iOS 9 clean plain text - no emoji boxes)
-  UILabel *title=[[UILabel alloc]initWithFrame:CGRectMake(24,14,cardW-88,26)];
+  // Header Title
+  UILabel *title=[[UILabel alloc]initWithFrame:CGRectMake(24,12,410,26)];
   title.font=[UIFont boldSystemFontOfSize:19];
   title.textColor=[UIColor colorWithRed:0.98 green:0.15 blue:0.20 alpha:1.0];
   title.text=@"PRIUS TRD SPORTIVO  •  TRIP SUMMARY";
@@ -4502,17 +4748,53 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   NSDateFormatter *df=[[NSDateFormatter alloc]init];
   [df setDateFormat:@"d MMM yyyy • HH:mm"];
   NSString *timeStr=[df stringFromDate:[NSDate date]]?:@"";
-  UILabel *hdrSub=[[UILabel alloc]initWithFrame:CGRectMake(24,42,cardW-88,20)];
-  hdrSub.font=[UIFont boldSystemFontOfSize:13.5];
+  UILabel *hdrSub=[[UILabel alloc]initWithFrame:CGRectMake(24,40,420,20)];
+  hdrSub.font=[UIFont boldSystemFontOfSize:13.0];
   hdrSub.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
-  hdrSub.text=[NSString stringWithFormat:@"%@  •  ENGINE SHUTDOWN  •  สรุปข้อมูลการขับขี่ประจำรอบ", timeStr];
+  BOOL isUnplugged = ([UIDevice currentDevice].batteryState == UIDeviceBatteryStateUnplugged);
+  hdrSub.text=[NSString stringWithFormat:@"%@  •  %@", timeStr, isUnplugged ? @"ENGINE SHUTDOWN • สรุปทริป" : @"สถิติทริป & ประวัติสะสมรายวัน (.plist)"];
   [card addSubview:hdrSub];
+
+  // Top-right Segmented Tabs: [ทริปรอบนี้] | [รายวัน/สัปดาห์/เดือน]
+  UIButton *tabThis = [UIButton buttonWithType:UIButtonTypeCustom];
+  tabThis.frame = CGRectMake(cardW - 418, 14, 152, 38);
+  tabThis.layer.cornerRadius = 10;
+  tabThis.layer.borderWidth = 1.2;
+  [tabThis setTitle:@"📍 ทริปรอบนี้" forState:UIControlStateNormal];
+  tabThis.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
+  [tabThis addTarget:self action:@selector(switchTripSummaryToThis) forControlEvents:UIControlEventTouchUpInside];
+  [card addSubview:tabThis];
+
+  UIButton *tabDaily = [UIButton buttonWithType:UIButtonTypeCustom];
+  tabDaily.frame = CGRectMake(cardW - 258, 14, 194, 38);
+  tabDaily.layer.cornerRadius = 10;
+  tabDaily.layer.borderWidth = 1.2;
+  [tabDaily setTitle:@"📅 รายวัน / สัปดาห์ / เดือน" forState:UIControlStateNormal];
+  tabDaily.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
+  [tabDaily addTarget:self action:@selector(switchTripSummaryToDaily) forControlEvents:UIControlEventTouchUpInside];
+  [card addSubview:tabDaily];
+
+  if(self.activeSummaryTab == 0){
+    tabThis.backgroundColor = [UIColor colorWithRed:0.85 green:0.12 blue:0.18 alpha:0.92];
+    tabThis.layer.borderColor = [UIColor colorWithRed:1.0 green:0.35 blue:0.40 alpha:1.0].CGColor;
+    [tabThis setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    tabDaily.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
+    tabDaily.layer.borderColor = [UIColor colorWithWhite:0.28 alpha:1.0].CGColor;
+    [tabDaily setTitleColor:[UIColor colorWithWhite:0.82 alpha:1.0] forState:UIControlStateNormal];
+  }else{
+    tabDaily.backgroundColor = [UIColor colorWithRed:0.05 green:0.45 blue:0.65 alpha:0.95];
+    tabDaily.layer.borderColor = [UIColor colorWithRed:0.10 green:0.88 blue:1.0 alpha:1.0].CGColor;
+    [tabDaily setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    tabThis.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
+    tabThis.layer.borderColor = [UIColor colorWithWhite:0.28 alpha:1.0].CGColor;
+    [tabThis setTitleColor:[UIColor colorWithWhite:0.82 alpha:1.0] forState:UIControlStateNormal];
+  }
 
   // Close [✕] button at top right
   UIButton *closeBtn=[UIButton buttonWithType:UIButtonTypeCustom];
-  closeBtn.frame=CGRectMake(cardW-52,14,36,36);
+  closeBtn.frame=CGRectMake(cardW-52,14,38,38);
   closeBtn.backgroundColor=[UIColor colorWithWhite:0.16 alpha:0.9];
-  closeBtn.layer.cornerRadius=18;
+  closeBtn.layer.cornerRadius=19;
   closeBtn.layer.borderWidth=1;
   closeBtn.layer.borderColor=[UIColor colorWithWhite:0.32 alpha:0.6].CGColor;
   [closeBtn setTitle:@"✕" forState:UIControlStateNormal];
@@ -4522,205 +4804,416 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   [card addSubview:closeBtn];
 
   // Divider
-  UIView *div1=[[UIView alloc]initWithFrame:CGRectMake(20,68,cardW-40,1)];
+  UIView *div1=[[UIView alloc]initWithFrame:CGRectMake(20,66,cardW-40,1)];
   div1.backgroundColor=[UIColor colorWithWhite:0.18 alpha:1.0];
   [card addSubview:div1];
 
-  // Stats calculation
-  double km=self.trip.meters/1000.0;
-  long min=self.trip.seconds/60;
-  double avg=(self.trip.seconds>0)?(self.trip.meters/self.trip.seconds*3.6):0;
-  double top=self.trip.maximum;
+  // Compute cumulative rollups from persistent daily plist (Today, Last 7 Days, This Month, All-Time)
+  NSMutableDictionary *daysDict = [self ensureDailyHistoryLoaded];
+  NSString *todayKey = TRDDateKeyForDate([NSDate date]);
+  NSString *monthPrefix = ([todayKey length] >= 7) ? [todayKey substringToIndex:7] : @"";
+  NSDate *sevenDaysAgo = [[NSDate date] dateByAddingTimeInterval:-6 * 86400.0];
+  NSString *weekMinKey = TRDDateKeyForDate(sevenDaysAgo);
 
-  TRDOBDClient *obd=[TRDOBDClient sharedClient];
-  double fuelL=obd.tripFuelUsedLiters;
-  double fuelCost=obd.tripFuelCostTHB;
-  if(fuelL<=0.0&&km>0.0){
-   fuelL=km/21.5;
-   fuelCost=fuelL*obd.fuelPricePerLiter;
-  }
-  if(fuelCost<=0.0&&fuelL>0.0) fuelCost=fuelL*(obd.fuelPricePerLiter>0?obd.fuelPricePerLiter:38.50);
+  double todayKm = 0, todayFuel = 0, todayCost = 0; NSInteger todayTrips = 0;
+  double weekKm = 0, weekFuel = 0, weekCost = 0; NSInteger weekDays = 0;
+  double monthKm = 0, monthFuel = 0, monthCost = 0; NSInteger monthDays = 0;
+  double allKm = 0, allFuel = 0, allCost = 0; NSInteger allDays = 0;
 
-  NSInteger ecoVal = self.ecoScore > 0 ? self.ecoScore : 94;
-  float batLvl = [UIDevice currentDevice].batteryLevel;
-  NSString *batStr = batLvl >= 0 ? [NSString stringWithFormat:@"%.0f%% %@", batLvl*100, batLvl>=0.80?@"Optimal":@"Normal"] : @"68% Ready";
-
-  // 3. HERO HIGHLIGHT BAR (3 Big Columns: Distance, Duration, Cost)
-  UIView *heroBox=[[UIView alloc]initWithFrame:CGRectMake(20,78,cardW-40,102)];
-  heroBox.backgroundColor=[UIColor colorWithRed:0.035 green:0.043 blue:0.065 alpha:0.95];
-  heroBox.layer.cornerRadius=14;
-  heroBox.layer.borderWidth=1;
-  heroBox.layer.borderColor=[UIColor colorWithWhite:0.18 alpha:1.0].CGColor;
-  [card addSubview:heroBox];
-
-  CGFloat hColW=(cardW-40)/3;
-  // Hero Col 1: Distance
-  UILabel *hLbl1=[[UILabel alloc]initWithFrame:CGRectMake(10,12,hColW-20,18)];
-  hLbl1.font=[UIFont boldSystemFontOfSize:11];
-  hLbl1.textColor=[UIColor colorWithWhite:0.65 alpha:1.0];
-  hLbl1.textAlignment=NSTextAlignmentCenter;
-  hLbl1.text=@"TOTAL DISTANCE";
-  [heroBox addSubview:hLbl1];
-
-  UILabel *hVal1=[[UILabel alloc]initWithFrame:CGRectMake(5,32,hColW-10,42)];
-  hVal1.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:34]?:[UIFont boldSystemFontOfSize:32];
-  hVal1.textColor=[UIColor whiteColor];
-  hVal1.textAlignment=NSTextAlignmentCenter;
-  hVal1.text=[NSString stringWithFormat:@"%.1f km",km];
-  [heroBox addSubview:hVal1];
-
-  UILabel *hSub1=[[UILabel alloc]initWithFrame:CGRectMake(10,76,hColW-20,18)];
-  hSub1.font=[UIFont boldSystemFontOfSize:13];
-  hSub1.textColor=[UIColor colorWithRed:0.40 green:0.80 blue:1.0 alpha:0.95];
-  hSub1.textAlignment=NSTextAlignmentCenter;
-  hSub1.text=@"ระยะทางรวมรอบนี้";
-  [heroBox addSubview:hSub1];
-
-  // Hero Col 2: Driving Time
-  UILabel *hLbl2=[[UILabel alloc]initWithFrame:CGRectMake(hColW+10,12,hColW-20,18)];
-  hLbl2.font=[UIFont boldSystemFontOfSize:11];
-  hLbl2.textColor=[UIColor colorWithWhite:0.65 alpha:1.0];
-  hLbl2.textAlignment=NSTextAlignmentCenter;
-  hLbl2.text=@"DRIVING TIME";
-  [heroBox addSubview:hLbl2];
-
-  UILabel *hVal2=[[UILabel alloc]initWithFrame:CGRectMake(hColW+5,32,hColW-10,42)];
-  hVal2.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:34]?:[UIFont boldSystemFontOfSize:32];
-  hVal2.textColor=[UIColor colorWithRed:0.22 green:0.74 blue:0.97 alpha:1.0];
-  hVal2.textAlignment=NSTextAlignmentCenter;
-  hVal2.text=[NSString stringWithFormat:@"%ld min",min];
-  [heroBox addSubview:hVal2];
-
-  UILabel *hSub2=[[UILabel alloc]initWithFrame:CGRectMake(hColW+10,76,hColW-20,18)];
-  hSub2.font=[UIFont boldSystemFontOfSize:13];
-  hSub2.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
-  hSub2.textAlignment=NSTextAlignmentCenter;
-  hSub2.text=@"เวลาในการขับขี่";
-  [heroBox addSubview:hSub2];
-
-  // Hero Col 3: Fuel Cost
-  UILabel *hLbl3=[[UILabel alloc]initWithFrame:CGRectMake(hColW*2+10,12,hColW-20,18)];
-  hLbl3.font=[UIFont boldSystemFontOfSize:11];
-  hLbl3.textColor=[UIColor colorWithWhite:0.65 alpha:1.0];
-  hLbl3.textAlignment=NSTextAlignmentCenter;
-  hLbl3.text=@"ESTIMATED FUEL COST";
-  [heroBox addSubview:hLbl3];
-
-  UILabel *hVal3=[[UILabel alloc]initWithFrame:CGRectMake(hColW*2+5,32,hColW-10,42)];
-  hVal3.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:34]?:[UIFont boldSystemFontOfSize:32];
-  hVal3.textColor=[UIColor colorWithRed:0.29 green:0.87 blue:0.50 alpha:1.0];
-  hVal3.textAlignment=NSTextAlignmentCenter;
-  hVal3.text=[NSString stringWithFormat:@"฿ %.1f",fuelCost];
-  [heroBox addSubview:hVal3];
-
-  UILabel *hSub3=[[UILabel alloc]initWithFrame:CGRectMake(hColW*2+10,76,hColW-20,18)];
-  hSub3.font=[UIFont boldSystemFontOfSize:13];
-  hSub3.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
-  hSub3.textAlignment=NSTextAlignmentCenter;
-  hSub3.text=@"ค่าน้ำมันโดยประมาณ";
-  [heroBox addSubview:hSub3];
-
-  // 4. DETAILED 6-TILE METRIC GRID (2 rows x 3 columns)
-  NSArray *gridLabels=@[
-    @"FUEL CONSUMED",
-    @"AVERAGE SPEED",
-    @"MAXIMUM SPEED",
-    @"ECO DRIVE SCORE",
-    @"HYBRID BATTERY",
-    @"GASOHOL RATE"
-  ];
-  double kmPerL = (fuelL > 0) ? (km / fuelL) : 21.5;
-  double tripFuelCost = (obd.tripFuelCostTHB > 0) ? obd.tripFuelCostTHB : (fuelL * (obd.fuelPricePerLiter > 0 ? obd.fuelPricePerLiter : 38.50));
-  NSArray *gridValues=@[
-    [NSString stringWithFormat:@"%.2f L", fuelL],
-    [NSString stringWithFormat:@"%.0f km/h", avg],
-    [NSString stringWithFormat:@"%.0f km/h", top],
-    [NSString stringWithFormat:@"%ld / 100", (long)ecoVal],
-    batStr,
-    [NSString stringWithFormat:@"฿ %.1f", tripFuelCost]
-  ];
-  NSArray *gridSubs=@[
-    [NSString stringWithFormat:@"อัตราสิ้นเปลือง %.1f km/L", kmPerL],
-    @"ความเร็วเฉลี่ยตลอดทาง",
-    @"ความเร็วสูงสุดที่ทำได้",
-    @"คะแนนการขับขี่ประหยัด",
-    @"สถานะแบตเตอรี่ไฮบริด",
-    [NSString stringWithFormat:@"ค่าน้ำมันทริปนี้ (฿%.2f/L)", (obd.fuelPricePerLiter > 0 ? obd.fuelPricePerLiter : 38.50)]
-  ];
-
-  CGFloat tileGap=12;
-  CGFloat tileW=(cardW-40-tileGap*2)/3;
-  CGFloat tileH=98;
-  CGFloat gridStartY=192;
-
-  for(int i=0;i<6;i++){
-    CGFloat tx=20+(i%3)*(tileW+tileGap);
-    CGFloat ty=gridStartY+(i/3)*(tileH+tileGap);
-    UIView *tile=[[UIView alloc]initWithFrame:CGRectMake(tx,ty,tileW,tileH)];
-    tile.backgroundColor=[UIColor colorWithRed:0.040 green:0.050 blue:0.072 alpha:0.95];
-    tile.layer.cornerRadius=12;
-    tile.layer.borderWidth=1;
-    tile.layer.borderColor=[UIColor colorWithWhite:0.16 alpha:1.0].CGColor;
-    [card addSubview:tile];
-
-    UILabel *tLbl=[[UILabel alloc]initWithFrame:CGRectMake(12,10,tileW-24,16)];
-    tLbl.font=[UIFont boldSystemFontOfSize:10];
-    tLbl.textColor=[UIColor colorWithWhite:0.62 alpha:1.0];
-    tLbl.text=gridLabels[i];
-    [tile addSubview:tLbl];
-
-    UILabel *tVal=[[UILabel alloc]initWithFrame:CGRectMake(12,28,tileW-24,36)];
-    tVal.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:26]?:[UIFont boldSystemFontOfSize:24];
-    if(i==0||i==3){
-      tVal.textColor=[UIColor colorWithRed:0.35 green:0.88 blue:0.45 alpha:1.0];
-    }else if(i==1||i==2){
-      tVal.textColor=[UIColor colorWithRed:0.25 green:0.75 blue:1.0 alpha:1.0];
-    }else{
-      tVal.textColor=[UIColor whiteColor];
+  NSArray *sortedKeys = [[daysDict allKeys] sortedArrayUsingComparator:^NSComparisonResult(NSString *a, NSString *b){
+    return [b compare:a];
+  }];
+  for(NSString *dk in sortedKeys){
+    NSDictionary *rec = daysDict[dk];
+    if(![rec isKindOfClass:[NSDictionary class]]) continue;
+    double dKm = [rec[@"km"] doubleValue];
+    double dF = [rec[@"fuelL"] doubleValue];
+    double dC = [rec[@"cost"] doubleValue];
+    NSInteger dTrips = [rec[@"trips"] integerValue];
+    allKm += dKm; allFuel += dF; allCost += dC; allDays++;
+    if([dk isEqualToString:todayKey]){
+      todayKm += dKm; todayFuel += dF; todayCost += dC; todayTrips = dTrips;
     }
-    tVal.text=gridValues[i];
-    [tile addSubview:tVal];
-
-    UILabel *tSub=[[UILabel alloc]initWithFrame:CGRectMake(12,66,tileW-24,22)];
-    tSub.font=[UIFont boldSystemFontOfSize:13];
-    tSub.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
-    tSub.text=gridSubs[i];
-    [tile addSubview:tSub];
+    if([dk compare:weekMinKey] != NSOrderedAscending){
+      weekKm += dKm; weekFuel += dF; weekCost += dC; weekDays++;
+    }
+    if(monthPrefix.length && [dk hasPrefix:monthPrefix]){
+      monthKm += dKm; monthFuel += dF; monthCost += dC; monthDays++;
+    }
   }
 
-  // 5. BOTTOM FOOTER & ACTIONS
-  UILabel *subNote=[[UILabel alloc]initWithFrame:CGRectMake(20,418,cardW-40,22)];
-  subNote.font=[UIFont boldSystemFontOfSize:14];
-  subNote.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
-  subNote.textAlignment=NSTextAlignmentCenter;
-  subNote.text=@"เครื่องยนต์ดับแล้ว • หน้าจอจะพักอัตโนมัติในอีก 15 วินาที (Auto-sleep in 15s)";
-  [card addSubview:subNote];
+  if(self.activeSummaryTab == 0){
+    // === TAB 0: THIS TRIP SUMMARY + 7-DAY / MONTHLY CUMULATIVE BANNER ===
+    double km=self.trip.meters/1000.0;
+    long min=self.trip.seconds/60;
+    double avg=(self.trip.seconds>5 && km>0.001)?(self.trip.meters/self.trip.seconds*3.6):0;
+    double top=self.trip.maximum;
 
-  // Action Button 1: Return Home
-  UIButton *btnHome=[UIButton buttonWithType:UIButtonTypeCustom];
-  btnHome.frame=CGRectMake(50,455,(cardW-130)/2,56);
-  btnHome.backgroundColor=[UIColor colorWithRed:0.12 green:0.15 blue:0.22 alpha:0.95];
-  btnHome.layer.cornerRadius=14;
-  btnHome.layer.borderWidth=1;
-  btnHome.layer.borderColor=[UIColor colorWithWhite:0.32 alpha:0.6].CGColor;
-  [btnHome setTitle:@"✕  ปิดหน้าต่าง / RETURN" forState:UIControlStateNormal];
-  [btnHome setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-  btnHome.titleLabel.font=[UIFont boldSystemFontOfSize:16];
-  [btnHome addTarget:self action:@selector(hideTripSummary) forControlEvents:UIControlEventTouchUpInside];
-  [card addSubview:btnHome];
+    TRDOBDClient *obd=[TRDOBDClient sharedClient];
+    double price = (obd.fuelPricePerLiter > 0) ? obd.fuelPricePerLiter : 38.50;
+    double fuelL=obd.tripFuelUsedLiters;
+    double fuelCost=(obd.tripFuelCostTHB > 0.001) ? obd.tripFuelCostTHB : (fuelL * price);
 
-  // Action Button 2: Sleep Screen Now
-  UIButton *btnSleep=[UIButton buttonWithType:UIButtonTypeCustom];
-  btnSleep.frame=CGRectMake(80+(cardW-130)/2,455,(cardW-130)/2,56);
-  btnSleep.backgroundColor=[UIColor colorWithRed:0.75 green:0.12 blue:0.16 alpha:0.95];
-  btnSleep.layer.cornerRadius=14;
-  btnSleep.layer.borderWidth=1;
-  btnSleep.layer.borderColor=[UIColor colorWithRed:0.95 green:0.25 blue:0.30 alpha:0.8].CGColor;
-  [btnSleep setTitle:@"●  พักหน้าจอทันที / SLEEP" forState:UIControlStateNormal];
-  [btnSleep setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-  btnSleep.titleLabel.font=[UIFont boldSystemFontOfSize:16];
-  [btnSleep addTarget:self action:@selector(immediateSleepFromTripSummary) forControlEvents:UIControlEventTouchUpInside];
-  [card addSubview:btnSleep];
+    NSInteger ecoVal = self.ecoScore > 0 ? self.ecoScore : 94;
+    float batLvl = [UIDevice currentDevice].batteryLevel;
+    NSString *batStr = batLvl >= 0 ? [NSString stringWithFormat:@"%.0f%% %@", batLvl*100, batLvl>=0.80?@"Optimal":@"Normal"] : @"68% Ready";
+
+    UIView *heroBox=[[UIView alloc]initWithFrame:CGRectMake(20,76,cardW-40,96)];
+    heroBox.backgroundColor=[UIColor colorWithRed:0.035 green:0.043 blue:0.065 alpha:1.0];
+    heroBox.opaque=YES;
+    heroBox.layer.cornerRadius=14;
+    heroBox.layer.borderWidth=1;
+    heroBox.layer.borderColor=[UIColor colorWithWhite:0.18 alpha:1.0].CGColor;
+    [card addSubview:heroBox];
+
+    CGFloat hColW=(cardW-40)/3;
+    NSArray *hTitles = @[@"TOTAL DISTANCE", @"DRIVING TIME", @"REAL FUEL COST"];
+    NSArray *hVals = @[
+      [NSString stringWithFormat:@"%.2f km", km],
+      [NSString stringWithFormat:@"%ld min", min],
+      [NSString stringWithFormat:@"฿ %.2f", fuelCost]
+    ];
+    NSArray *hSubs = @[@"ระยะทางรวมรอบนี้", @"เวลาในการขับขี่", obd.isConnected ? @"ค่าน้ำมันจริง (MAF)" : @"ค่าน้ำมันคำนวณจริง (GPS)"];
+    NSArray *hColors = @[
+      [UIColor whiteColor],
+      [UIColor colorWithRed:0.22 green:0.74 blue:0.97 alpha:1.0],
+      [UIColor colorWithRed:0.29 green:0.87 blue:0.50 alpha:1.0]
+    ];
+    for(int c=0; c<3; c++){
+      UILabel *hl=[[UILabel alloc]initWithFrame:CGRectMake(c*hColW+10,10,hColW-20,16)];
+      hl.font=[UIFont boldSystemFontOfSize:11];
+      hl.textColor=[UIColor colorWithWhite:0.65 alpha:1.0];
+      hl.textAlignment=NSTextAlignmentCenter;
+      hl.text=hTitles[c];
+      [heroBox addSubview:hl];
+
+      UILabel *hv=[[UILabel alloc]initWithFrame:CGRectMake(c*hColW+6,28,hColW-12,40)];
+      hv.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:33]?:[UIFont boldSystemFontOfSize:31];
+      hv.textColor=hColors[c];
+      hv.textAlignment=NSTextAlignmentCenter;
+      hv.text=hVals[c];
+      [heroBox addSubview:hv];
+
+      UILabel *hs=[[UILabel alloc]initWithFrame:CGRectMake(c*hColW+10,70,hColW-20,18)];
+      hs.font=[UIFont boldSystemFontOfSize:12.5];
+      hs.textColor=(c==0)?[UIColor colorWithRed:0.40 green:0.80 blue:1.0 alpha:0.95]:[UIColor colorWithWhite:0.78 alpha:1.0];
+      hs.textAlignment=NSTextAlignmentCenter;
+      hs.text=hSubs[c];
+      [heroBox addSubview:hs];
+    }
+
+    // 6-Tile Grid
+    NSString *kmlSubStr = (km > 0.05 && fuelL > 0.005)
+      ? [NSString stringWithFormat:@"เฉลี่ย %.1f km/L (%@)", MAX(3.0, MIN(99.9, km / fuelL)), obd.isConnected ? @"MAF จริง" : @"GPS"]
+      : ((km > 0.05 && obd.isConnected) ? @"EV ไฟฟ้าล้วน (0.0 L)" : @"รอรถเคลื่อนที่");
+
+    NSArray *gridLabels=@[@"FUEL CONSUMED", @"AVERAGE SPEED", @"MAXIMUM SPEED", @"ECO DRIVE SCORE", @"IPAD BATTERY", @"GASOHOL RATE"];
+    NSArray *gridValues=@[
+      [NSString stringWithFormat:@"%.2f L", fuelL],
+      [NSString stringWithFormat:@"%.0f km/h", avg],
+      [NSString stringWithFormat:@"%.0f km/h", top],
+      [NSString stringWithFormat:@"%ld / 100", (long)ecoVal],
+      batStr,
+      [NSString stringWithFormat:@"฿ %.2f/L", price]
+    ];
+    NSArray *gridSubs=@[
+      kmlSubStr,
+      @"ความเร็วเฉลี่ยตลอดทาง",
+      @"ความเร็วสูงสุดที่ทำได้",
+      @"คะแนนการขับขี่ประหยัด",
+      @"สถานะแบตเตอรี่ iPad Mini 2",
+      obd.selectedFuelTypeName ?: @"แก๊สโซฮอล์ 95"
+    ];
+
+    CGFloat tileGap=12;
+    CGFloat tileW=(cardW-40-tileGap*2)/3;
+    CGFloat tileH=92;
+    CGFloat gridStartY=182;
+    for(int i=0;i<6;i++){
+      CGFloat tx=20+(i%3)*(tileW+tileGap);
+      CGFloat ty=gridStartY+(i/3)*(tileH+tileGap);
+      UIView *tile=[[UIView alloc]initWithFrame:CGRectMake(tx,ty,tileW,tileH)];
+      tile.backgroundColor=[UIColor colorWithRed:0.040 green:0.050 blue:0.072 alpha:1.0];
+      tile.opaque=YES;
+      tile.layer.cornerRadius=12;
+      tile.layer.borderWidth=1;
+      tile.layer.borderColor=[UIColor colorWithWhite:0.16 alpha:1.0].CGColor;
+      [card addSubview:tile];
+
+      UILabel *tLbl=[[UILabel alloc]initWithFrame:CGRectMake(12,8,tileW-24,15)];
+      tLbl.font=[UIFont boldSystemFontOfSize:10];
+      tLbl.textColor=[UIColor colorWithWhite:0.62 alpha:1.0];
+      tLbl.text=gridLabels[i];
+      [tile addSubview:tLbl];
+
+      UILabel *tVal=[[UILabel alloc]initWithFrame:CGRectMake(12,25,tileW-24,34)];
+      tVal.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:25]?:[UIFont boldSystemFontOfSize:23];
+      tVal.textColor=(i==0||i==3)?[UIColor colorWithRed:0.35 green:0.88 blue:0.45 alpha:1.0]:((i==1||i==2)?[UIColor colorWithRed:0.25 green:0.75 blue:1.0 alpha:1.0]:[UIColor whiteColor]);
+      tVal.text=gridValues[i];
+      [tile addSubview:tVal];
+
+      UILabel *tSub=[[UILabel alloc]initWithFrame:CGRectMake(12,62,tileW-24,22)];
+      tSub.font=[UIFont boldSystemFontOfSize:12.5];
+      tSub.adjustsFontSizeToFitWidth=YES;
+      tSub.minimumScaleFactor=0.80;
+      tSub.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
+      tSub.text=gridSubs[i];
+      [tile addSubview:tSub];
+    }
+
+    // Persistent Rollup Strip right on Main Summary (Today / 7-Day Week / This Month)
+    UIView *rollupStrip=[[UIView alloc]initWithFrame:CGRectMake(20,388,cardW-40,104)];
+    rollupStrip.backgroundColor=[UIColor colorWithRed:0.025 green:0.065 blue:0.105 alpha:1.0];
+    rollupStrip.opaque=YES;
+    rollupStrip.layer.cornerRadius=12;
+    rollupStrip.layer.borderWidth=1.2;
+    rollupStrip.layer.borderColor=[UIColor colorWithRed:0.05 green:0.72 blue:0.95 alpha:0.55].CGColor;
+    [card addSubview:rollupStrip];
+
+    UILabel *rTitle=[[UILabel alloc]initWithFrame:CGRectMake(14,8,cardW-70,18)];
+    rTitle.font=[UIFont boldSystemFontOfSize:12];
+    rTitle.textColor=[UIColor colorWithRed:0.25 green:0.88 blue:1.0 alpha:1.0];
+    rTitle.text=@"📊 ยอดสะสมต่อเนื่องจากไฟล์ .plist (ไม่รีเซ็ตเมื่อปิดรถหรือรีเซ็ตทริป)";
+    [rollupStrip addSubview:rTitle];
+
+    CGFloat rColW=(cardW-40-24)/3;
+    NSString *tKml = (todayFuel > 0.005 && todayKm > 0.05) ? [NSString stringWithFormat:@"%.1f km/L", todayKm/todayFuel] : @"-- km/L";
+    NSString *wKml = (weekFuel > 0.005 && weekKm > 0.05) ? [NSString stringWithFormat:@"%.1f km/L", weekKm/weekFuel] : @"-- km/L";
+    NSString *mKml = (monthFuel > 0.005 && monthKm > 0.05) ? [NSString stringWithFormat:@"%.1f km/L", monthKm/monthFuel] : @"-- km/L";
+    NSArray *rNames=@[
+      [NSString stringWithFormat:@"📅 วันนี้ (%ld รอบ)", (long)todayTrips],
+      [NSString stringWithFormat:@"📆 7 วันล่าสุด (%ld วัน)", (long)weekDays],
+      [NSString stringWithFormat:@"🗓️ เดือนนี้ (%ld วัน)", (long)monthDays]
+    ];
+    NSArray *rMain=@[
+      [NSString stringWithFormat:@"%.1f km • %.2f L", todayKm, todayFuel],
+      [NSString stringWithFormat:@"%.1f km • %.2f L", weekKm, weekFuel],
+      [NSString stringWithFormat:@"%.1f km • %.2f L", monthKm, monthFuel]
+    ];
+    NSArray *rSub=@[
+      [NSString stringWithFormat:@"฿ %.1f  (%@)", todayCost, tKml],
+      [NSString stringWithFormat:@"฿ %.1f  (%@)", weekCost, wKml],
+      [NSString stringWithFormat:@"฿ %.1f  (%@)", monthCost, mKml]
+    ];
+    for(int c=0; c<3; c++){
+      UIView *rBox=[[UIView alloc]initWithFrame:CGRectMake(12+c*rColW,30,rColW-8,66)];
+      rBox.backgroundColor=[UIColor colorWithRed:0.04 green:0.08 blue:0.13 alpha:1.0];
+      rBox.layer.cornerRadius=8;
+      [rollupStrip addSubview:rBox];
+
+      UILabel *l1=[[UILabel alloc]initWithFrame:CGRectMake(8,4,rColW-24,16)];
+      l1.font=[UIFont boldSystemFontOfSize:11.5];
+      l1.textColor=[UIColor colorWithWhite:0.75 alpha:1.0];
+      l1.text=rNames[c];
+      [rBox addSubview:l1];
+
+      UILabel *l2=[[UILabel alloc]initWithFrame:CGRectMake(8,21,rColW-24,22)];
+      l2.font=[UIFont boldSystemFontOfSize:16.0];
+      l2.adjustsFontSizeToFitWidth=YES; l2.minimumScaleFactor=0.75;
+      l2.textColor=[UIColor colorWithRed:0.35 green:0.95 blue:0.65 alpha:1.0];
+      l2.text=rMain[c];
+      [rBox addSubview:l2];
+
+      UILabel *l3=[[UILabel alloc]initWithFrame:CGRectMake(8,44,rColW-24,18)];
+      l3.font=[UIFont boldSystemFontOfSize:12.5];
+      l3.textColor=[UIColor colorWithRed:1.0 green:0.86 blue:0.35 alpha:1.0];
+      l3.text=rSub[c];
+      [rBox addSubview:l3];
+    }
+
+    UILabel *subNote=[[UILabel alloc]initWithFrame:CGRectMake(20,504,cardW-40,22)];
+    subNote.font=[UIFont boldSystemFontOfSize:13.5];
+    subNote.textColor=[UIColor colorWithWhite:0.78 alpha:1.0];
+    subNote.textAlignment=NSTextAlignmentCenter;
+    subNote.text=isUnplugged ? @"เครื่องยนต์ดับแล้ว • บันทึกลงสถิติรายวันเรียบร้อย (Auto-sleep in 15s)" : @"ข้อมูลสะสมบันทึกลงไฟล์ plist อัตโนมัติ (ไม่ลบข้อมูลเดิม)";
+    [card addSubview:subNote];
+
+    CGFloat btnW = (cardW - 80) / 3.0;
+    UIButton *btnDaily=[UIButton buttonWithType:UIButtonTypeCustom];
+    btnDaily.frame=CGRectMake(20,540,btnW,56);
+    btnDaily.backgroundColor=[UIColor colorWithRed:0.05 green:0.35 blue:0.55 alpha:0.95];
+    btnDaily.layer.cornerRadius=14; btnDaily.layer.borderWidth=1;
+    btnDaily.layer.borderColor=[UIColor colorWithRed:0.15 green:0.80 blue:1.0 alpha:0.75].CGColor;
+    [btnDaily setTitle:@"📅 ดูแยกรายวันทีละวัน" forState:UIControlStateNormal];
+    [btnDaily setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    btnDaily.titleLabel.font=[UIFont boldSystemFontOfSize:15.5];
+    [btnDaily addTarget:self action:@selector(switchTripSummaryToDaily) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:btnDaily];
+
+    UIButton *btnHome=[UIButton buttonWithType:UIButtonTypeCustom];
+    btnHome.frame=CGRectMake(40+btnW,540,btnW,56);
+    btnHome.backgroundColor=[UIColor colorWithRed:0.12 green:0.15 blue:0.22 alpha:0.95];
+    btnHome.layer.cornerRadius=14; btnHome.layer.borderWidth=1;
+    btnHome.layer.borderColor=[UIColor colorWithWhite:0.32 alpha:0.6].CGColor;
+    [btnHome setTitle:@"✕ ปิดหน้าต่าง / RETURN" forState:UIControlStateNormal];
+    [btnHome setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    btnHome.titleLabel.font=[UIFont boldSystemFontOfSize:15.5];
+    [btnHome addTarget:self action:@selector(hideTripSummary) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:btnHome];
+
+    UIButton *btnSleep=[UIButton buttonWithType:UIButtonTypeCustom];
+    btnSleep.frame=CGRectMake(60+btnW*2,540,btnW,56);
+    btnSleep.backgroundColor=[UIColor colorWithRed:0.75 green:0.12 blue:0.16 alpha:0.95];
+    btnSleep.layer.cornerRadius=14; btnSleep.layer.borderWidth=1;
+    btnSleep.layer.borderColor=[UIColor colorWithRed:0.95 green:0.25 blue:0.30 alpha:0.8].CGColor;
+    [btnSleep setTitle:@"● พักหน้าจอทันที / SLEEP" forState:UIControlStateNormal];
+    [btnSleep setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    btnSleep.titleLabel.font=[UIFont boldSystemFontOfSize:15.5];
+    [btnSleep addTarget:self action:@selector(immediateSleepFromTripSummary) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:btnSleep];
+  }else{
+    // === TAB 1: DAILY / 7-DAY / MONTHLY LOG BREAKDOWN ===
+    CGFloat sColW = (cardW - 56) / 3.0;
+    NSArray *sHeads = @[
+      [NSString stringWithFormat:@"📅 วันนี้ (%ld รอบ)", (long)todayTrips],
+      [NSString stringWithFormat:@"📆 รวม 7 วันล่าสุด (%ld วัน)", (long)weekDays],
+      [NSString stringWithFormat:@"🗓️ รวมเดือนนี้ (%ld วัน)", (long)monthDays]
+    ];
+    NSArray *sDistances = @[
+      [NSString stringWithFormat:@"%.1f km  •  %.2f L", todayKm, todayFuel],
+      [NSString stringWithFormat:@"%.1f km  •  %.2f L", weekKm, weekFuel],
+      [NSString stringWithFormat:@"%.1f km  •  %.2f L", monthKm, monthFuel]
+    ];
+    NSArray *sCosts = @[
+      [NSString stringWithFormat:@"ค่าน้ำมัน ฿ %.2f", todayCost],
+      [NSString stringWithFormat:@"ค่าน้ำมัน ฿ %.2f", weekCost],
+      [NSString stringWithFormat:@"ค่าน้ำมัน ฿ %.2f", monthCost]
+    ];
+    for(int c=0; c<3; c++){
+      UIView *box=[[UIView alloc]initWithFrame:CGRectMake(20+c*(sColW+8),76,sColW,88)];
+      box.backgroundColor=[UIColor colorWithRed:0.032 green:0.055 blue:0.095 alpha:1.0];
+      box.opaque=YES;
+      box.layer.cornerRadius=12;
+      box.layer.borderWidth=1.2;
+      box.layer.borderColor=(c==1?[UIColor colorWithRed:0.10 green:0.82 blue:1.0 alpha:0.75]:(c==2?[UIColor colorWithRed:0.30 green:0.92 blue:0.55 alpha:0.70]:[UIColor colorWithWhite:0.25 alpha:1.0])).CGColor;
+      [card addSubview:box];
+
+      UILabel *l1=[[UILabel alloc]initWithFrame:CGRectMake(12,8,sColW-24,18)];
+      l1.font=[UIFont boldSystemFontOfSize:13];
+      l1.textColor=[UIColor colorWithWhite:0.80 alpha:1.0];
+      l1.text=sHeads[c];
+      [box addSubview:l1];
+
+      UILabel *l2=[[UILabel alloc]initWithFrame:CGRectMake(12,28,sColW-24,28)];
+      l2.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:24]?:[UIFont boldSystemFontOfSize:22];
+      l2.adjustsFontSizeToFitWidth=YES; l2.minimumScaleFactor=0.72;
+      l2.textColor=[UIColor colorWithRed:0.32 green:0.95 blue:0.65 alpha:1.0];
+      l2.text=sDistances[c];
+      [box addSubview:l2];
+
+      UILabel *l3=[[UILabel alloc]initWithFrame:CGRectMake(12,58,sColW-24,20)];
+      l3.font=[UIFont boldSystemFontOfSize:14];
+      l3.textColor=[UIColor colorWithRed:1.0 green:0.85 blue:0.32 alpha:1.0];
+      l3.text=sCosts[c];
+      [box addSubview:l3];
+    }
+
+    // All-time total bar
+    NSString *allKml = (allFuel > 0.005 && allKm > 0.05) ? [NSString stringWithFormat:@"%.1f km/L", allKm/allFuel] : @"--.- km/L";
+    UILabel *allBar=[[UILabel alloc]initWithFrame:CGRectMake(20,172,cardW-40,28)];
+    allBar.backgroundColor=[UIColor colorWithRed:0.04 green:0.08 blue:0.12 alpha:1.0];
+    allBar.layer.cornerRadius=8; allBar.clipsToBounds=YES;
+    allBar.font=[UIFont boldSystemFontOfSize:13];
+    allBar.textAlignment=NSTextAlignmentCenter;
+    allBar.textColor=[UIColor colorWithRed:0.45 green:0.90 blue:1.0 alpha:1.0];
+    allBar.text=[NSString stringWithFormat:@"🏆 สะสมทั้งหมด (%ld วัน): %.1f km  •  ใช้น้ำมัน %.2f L  •  ฿ %.2f  •  เฉลี่ย %@", (long)allDays, allKm, allFuel, allCost, allKml];
+    [card addSubview:allBar];
+
+    // Table header
+    UIView *hdrRow=[[UIView alloc]initWithFrame:CGRectMake(20,208,cardW-40,32)];
+    hdrRow.backgroundColor=[UIColor colorWithWhite:0.12 alpha:1.0];
+    hdrRow.layer.cornerRadius=8;
+    [card addSubview:hdrRow];
+    NSArray *colX = @[@14, @200, @290, @435, @570, @700];
+    NSArray *colW = @[@180, @80, @135, @125, @120, @130];
+    NSArray *colT = @[@"วัน / เดือน / ปี", @"รอบ", @"ระยะทาง (km)", @"น้ำมัน (L)", @"เฉลี่ย km/L", @"ค่าน้ำมัน (฿)"];
+    for(int c=0; c<6; c++){
+      UILabel *hl=[[UILabel alloc]initWithFrame:CGRectMake([colX[c] doubleValue], 6, [colW[c] doubleValue], 20)];
+      hl.font=[UIFont boldSystemFontOfSize:12.5];
+      hl.textColor=[UIColor colorWithWhite:0.82 alpha:1.0];
+      hl.textAlignment=(c==0)?NSTextAlignmentLeft:NSTextAlignmentRight;
+      hl.text=colT[c];
+      [hdrRow addSubview:hl];
+    }
+
+    // Scrollable daily breakdown rows (lightweight plist records)
+    UIScrollView *dailyScroll=[[UIScrollView alloc]initWithFrame:CGRectMake(20,244,cardW-40,282)];
+    dailyScroll.backgroundColor=[UIColor colorWithRed:0.03 green:0.04 blue:0.06 alpha:1.0];
+    dailyScroll.opaque=YES;
+    dailyScroll.layer.cornerRadius=10;
+    dailyScroll.layer.borderWidth=1;
+    dailyScroll.layer.borderColor=[UIColor colorWithWhite:0.16 alpha:1.0].CGColor;
+    [card addSubview:dailyScroll];
+
+    CGFloat rowH=44;
+    CGFloat cy=4;
+    for(NSString *dk in sortedKeys){
+      NSDictionary *rec = daysDict[dk];
+      if(![rec isKindOfClass:[NSDictionary class]]) continue;
+      double dKm = [rec[@"km"] doubleValue];
+      double dF = [rec[@"fuelL"] doubleValue];
+      double dC = [rec[@"cost"] doubleValue];
+      NSInteger dT = [rec[@"trips"] integerValue];
+      BOOL isToday = [dk isEqualToString:todayKey];
+      NSString *dayText = isToday ? [NSString stringWithFormat:@"วันนี้ • %@", TRDFormatThaiDayLabel(dk)] : TRDFormatThaiDayLabel(dk);
+      NSString *dKml = (dF > 0.005 && dKm > 0.05) ? [NSString stringWithFormat:@"%.1f", MAX(3.0, MIN(99.9, dKm/dF))] : @"--.-";
+
+      UIView *row=[[UIView alloc]initWithFrame:CGRectMake(6,cy,cardW-52,rowH-4)];
+      row.backgroundColor=isToday?[UIColor colorWithRed:0.04 green:0.13 blue:0.18 alpha:1.0]:[UIColor colorWithRed:0.05 green:0.06 blue:0.09 alpha:1.0];
+      row.opaque=YES;
+      row.layer.cornerRadius=8;
+      if(isToday){
+        row.layer.borderWidth=1;
+        row.layer.borderColor=[UIColor colorWithRed:0.15 green:0.80 blue:1.0 alpha:0.55].CGColor;
+      }
+      [dailyScroll addSubview:row];
+
+      NSArray *vals = @[
+        dayText,
+        [NSString stringWithFormat:@"%ld", (long)dT],
+        [NSString stringWithFormat:@"%.2f km", dKm],
+        [NSString stringWithFormat:@"%.2f L", dF],
+        [NSString stringWithFormat:@"%@ km/L", dKml],
+        [NSString stringWithFormat:@"฿ %.2f", dC]
+      ];
+      for(int c=0; c<6; c++){
+        UILabel *rl=[[UILabel alloc]initWithFrame:CGRectMake([colX[c] doubleValue]-6, 8, [colW[c] doubleValue], 24)];
+        rl.font=[UIFont monospacedDigitSystemFontOfSize:14.0 weight:(c==0||c==2||c==5)?UIFontWeightBold:UIFontWeightSemibold];
+        rl.adjustsFontSizeToFitWidth=YES; rl.minimumScaleFactor=0.75;
+        rl.textAlignment=(c==0)?NSTextAlignmentLeft:NSTextAlignmentRight;
+        if(c==5) rl.textColor=[UIColor colorWithRed:1.0 green:0.86 blue:0.35 alpha:1.0];
+        else if(c==2||c==3) rl.textColor=[UIColor colorWithRed:0.35 green:0.95 blue:0.65 alpha:1.0];
+        else if(c==4) rl.textColor=[UIColor colorWithRed:0.30 green:0.85 blue:1.0 alpha:1.0];
+        else rl.textColor=[UIColor whiteColor];
+        rl.text=vals[c];
+        [row addSubview:rl];
+      }
+      cy += rowH;
+    }
+    dailyScroll.contentSize = CGSizeMake(cardW-40, MAX(dailyScroll.bounds.size.height + 1, cy + 6));
+
+    UIButton *btnBackThis=[UIButton buttonWithType:UIButtonTypeCustom];
+    btnBackThis.frame=CGRectMake(20,540,(cardW-60)/2,56);
+    btnBackThis.backgroundColor=[UIColor colorWithRed:0.12 green:0.16 blue:0.24 alpha:0.95];
+    btnBackThis.layer.cornerRadius=14; btnBackThis.layer.borderWidth=1;
+    btnBackThis.layer.borderColor=[UIColor colorWithWhite:0.34 alpha:0.7].CGColor;
+    [btnBackThis setTitle:@"📍 กลับหน้าสรุปทริปรอบนี้ (THIS TRIP)" forState:UIControlStateNormal];
+    [btnBackThis setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    btnBackThis.titleLabel.font=[UIFont boldSystemFontOfSize:15.5];
+    [btnBackThis addTarget:self action:@selector(switchTripSummaryToThis) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:btnBackThis];
+
+    UIButton *btnClose=[UIButton buttonWithType:UIButtonTypeCustom];
+    btnClose.frame=CGRectMake(40+(cardW-60)/2,540,(cardW-60)/2,56);
+    btnClose.backgroundColor=[UIColor colorWithRed:0.75 green:0.12 blue:0.16 alpha:0.95];
+    btnClose.layer.cornerRadius=14; btnClose.layer.borderWidth=1;
+    btnClose.layer.borderColor=[UIColor colorWithRed:0.95 green:0.25 blue:0.30 alpha:0.8].CGColor;
+    [btnClose setTitle:@"✕ ปิดหน้าต่าง / CLOSE" forState:UIControlStateNormal];
+    [btnClose setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    btnClose.titleLabel.font=[UIFont boldSystemFontOfSize:15.5];
+    [btnClose addTarget:self action:@selector(hideTripSummary) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:btnClose];
+  }
 
   // Add card to full overlay
   [fullOverlay addSubview:card];
@@ -4728,11 +5221,12 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   self.tripSummaryCard=fullOverlay;
   [self.view addSubview:fullOverlay];
   [self.view bringSubviewToFront:fullOverlay];
-  [self speakGoodbyeMessage];
 
-  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
-  NSTimeInterval hideDelay=self.hotCarSaverEnabled?10.0:15.0;
-  [self performSelector:@selector(hideTripSummary) withObject:nil afterDelay:hideDelay];
+  if(isUnplugged && self.activeSummaryTab == 0){
+    [self speakGoodbyeMessage];
+    NSTimeInterval hideDelay=self.hotCarSaverEnabled?10.0:15.0;
+    [self performSelector:@selector(hideTripSummary) withObject:nil afterDelay:hideDelay];
+  }
 }
 
 -(void)immediateSleepFromTripSummary{
@@ -4816,6 +5310,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    self.view.userInteractionEnabled = YES;
   });
 
+  [self syncTripSlotsDelta:YES];
   [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];
   if(self.tripSummaryCard){
    [self.tripSummaryCard removeFromSuperview];
@@ -4824,6 +5319,17 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   self.trip=[TRDTrip new];
   [self saveTrip];
   [[TRDOBDClient sharedClient] resetTripFuel];
+  self.lastSlotMeters = 0.0;
+  self.lastSlotSeconds = 0.0;
+  self.lastSlotFuel = 0.0;
+  self.lastSlotCost = 0.0;
+  [ud setDouble:0.0 forKey:@"TRDLastSyncedTripMeters"];
+  [ud setDouble:0.0 forKey:@"TRDLastSyncedTripSeconds"];
+  [ud setDouble:0.0 forKey:@"TRDLastSyncedTripFuel"];
+  [ud setDouble:0.0 forKey:@"TRDLastSyncedTripCost"];
+  [ud setObject:@{@"km":@(0.0), @"sec":@(0.0), @"fuel":@(0.0), @"cost":@(0.0), @"maf":@(NO)} forKey:@"TRDTripSlot_0"];
+  [ud synchronize];
+  self.sessionLoggedToday = NO;
   [[TRDOBDClient sharedClient] ensureConnectedOrScan];
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
    if(![[TRDOBDClient sharedClient] isConnected]){
@@ -4960,27 +5466,331 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
     [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
    }
    NSInteger voiceLang = [[NSUserDefaults standardUserDefaults] integerForKey:@"TRDVoiceLanguage"];
-   NSString *langCode = (voiceLang == 1) ? @"th-TH" : @"en-US";
-   float rate = (voiceLang == 1) ? 0.46f : 0.44f;
+   BOOL hasThai = ([phrase rangeOfCharacterFromSet:[NSCharacterSet characterSetWithRange:NSMakeRange(0x0E00, 128)]].location != NSNotFound);
+   NSString *langCode = (voiceLang == 1 || hasThai) ? @"th-TH" : @"en-US";
+   float rate = [langCode isEqualToString:@"th-TH"] ? 0.46f : 0.44f;
    TRDEnqueueCalmSpeech(gTRDWelcomeSynth, @[phrase], langCode, rate);
   } @catch(NSException *e){}
  });
 }
 
+static NSString *TRDJSStringLiteral(NSString *str){
+  NSArray *arr = @[str ?: @""];
+  NSData *d = [NSJSONSerialization dataWithJSONObject:arr options:0 error:nil];
+  if(!d) return @"\"\"";
+  NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+  if(s.length >= 2) return [s substringWithRange:NSMakeRange(1, s.length - 2)];
+  return @"\"\"";
+}
+
 -(void)navigateToNearestGasStation{
- NSURL *url = [NSURL URLWithString:@"comgooglemaps://?q=gas+station"];
- if(![[UIApplication sharedApplication] canOpenURL:url]){
-  url = [NSURL URLWithString:@"http://maps.apple.com/?q=gas+station"];
- }
- [[UIApplication sharedApplication] openURL:url];
+  [self dismissLowFuelBanner];
+  [self.settingsSheet dismiss];
+  if(self.fix){
+    CLLocation *curLoc = self.fix;
+    MKLocalSearchRequest *req = [[MKLocalSearchRequest alloc] init];
+    req.naturalLanguageQuery = @"ปั๊มน้ำมัน";
+    req.region = MKCoordinateRegionMakeWithDistance(curLoc.coordinate, 25000, 25000);
+    MKLocalSearch *search = [[MKLocalSearch alloc] initWithRequest:req];
+    __weak Dashboard *weak = self;
+    [search startWithCompletionHandler:^(MKLocalSearchResponse *resp, NSError *err){
+      dispatch_async(dispatch_get_main_queue(), ^{
+        MKMapItem *best = nil;
+        double bestDist = 1e12;
+        for(MKMapItem *item in resp.mapItems){
+          CLLocation *loc = item.placemark.location;
+          if(!loc) continue;
+          double d = [curLoc distanceFromLocation:loc];
+          if(d <= 50000.0 && d < bestDist){ bestDist = d; best = item; }
+        }
+        if(best){
+          weak.nearestStationName = best.name ?: @"ปั๊มน้ำมัน";
+          weak.nearestStationKm = bestDist / 1000.0;
+          weak.nearestStationLat = best.placemark.coordinate.latitude;
+          weak.nearestStationLon = best.placemark.coordinate.longitude;
+          weak.nearestStationAddress = best.placemark.title ?: @"";
+          [weak openMapToLat:weak.nearestStationLat lon:weak.nearestStationLon name:weak.nearestStationName address:weak.nearestStationAddress autoStart:YES];
+        }else{
+          [weak openMapWithSearchQuery:@"ปั๊มน้ำมัน"];
+        }
+      });
+    }];
+    return;
+  }
+  [self openMapWithSearchQuery:@"ปั๊มน้ำมัน"];
+}
+
+static NSData *TRDBuildLoudBeepWAVData(void){
+  const int sampleRate = 22050;
+  const double totalSec = 0.85;
+  const int numSamples = (int)(sampleRate * totalSec);
+  int dataBytes = numSamples * 2;
+  int riffSize = 36 + dataBytes;
+  NSMutableData *wav = [NSMutableData dataWithCapacity:44 + dataBytes];
+  unsigned char hdr[44] = {
+    'R','I','F','F',
+    (unsigned char)(riffSize & 0xff), (unsigned char)((riffSize>>8)&0xff), (unsigned char)((riffSize>>16)&0xff), (unsigned char)((riffSize>>24)&0xff),
+    'W','A','V','E','f','m','t',' ',
+    16,0,0,0, 1,0, 1,0,
+    (unsigned char)(sampleRate & 0xff), (unsigned char)((sampleRate>>8)&0xff), 0,0,
+    (unsigned char)((sampleRate*2)&0xff), (unsigned char)(((sampleRate*2)>>8)&0xff), 0,0,
+    2,0, 16,0,
+    'd','a','t','a',
+    (unsigned char)(dataBytes & 0xff), (unsigned char)((dataBytes>>8)&0xff), (unsigned char)((dataBytes>>16)&0xff), (unsigned char)((dataBytes>>24)&0xff)
+  };
+  [wav appendBytes:hdr length:44];
+  int16_t *pcm = (int16_t *)calloc((size_t)numSamples, sizeof(int16_t));
+  if(pcm){
+    // 3 sharp dual-tone beeps (0.00-0.18s, 0.28-0.46s, 0.56-0.80s) at 1760Hz + 2349Hz
+    double starts[3] = {0.0, 0.28, 0.56};
+    double ends[3]   = {0.18, 0.46, 0.80};
+    for(int i=0; i<numSamples; i++){
+      double t = (double)i / (double)sampleRate;
+      double amp = 0.0;
+      for(int p=0; p<3; p++){
+        if(t >= starts[p] && t <= ends[p]){
+          double env = 1.0;
+          double dtEnd = ends[p] - t;
+          if(t - starts[p] < 0.008) env = (t - starts[p]) / 0.008;
+          else if(dtEnd < 0.015) env = dtEnd / 0.015;
+          amp = 0.92 * env * (0.60 * sin(2.0 * M_PI * 1760.0 * t) + 0.40 * sin(2.0 * M_PI * 2349.0 * t));
+          break;
+        }
+      }
+      if(amp > 1.0) amp = 1.0; if(amp < -1.0) amp = -1.0;
+      pcm[i] = (int16_t)(amp * 32000.0);
+    }
+    [wav appendBytes:pcm length:(NSUInteger)dataBytes];
+    free(pcm);
+  }
+  return wav;
+}
+
+-(void)playLoudLowFuelAlarmSound{
+  @try {
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+    [session setActive:YES error:nil];
+    NSData *wav = TRDBuildLoudBeepWAVData();
+    if(wav.length > 44){
+      NSError *err = nil;
+      self.alarmAudioPlayer = [[AVAudioPlayer alloc] initWithData:wav error:&err];
+      if(self.alarmAudioPlayer && !err){
+        self.alarmAudioPlayer.volume = 1.0f;
+        [self.alarmAudioPlayer prepareToPlay];
+        [self.alarmAudioPlayer play];
+      }
+    }
+  } @catch(NSException *e){}
+  AudioServicesPlaySystemSound(1005);
+}
+
+-(void)dismissLowFuelBanner{
+  if(self.lowFuelBanner){
+    UIView *b = self.lowFuelBanner;
+    self.lowFuelBanner = nil;
+    [UIView animateWithDuration:0.2 animations:^{ b.alpha = 0; } completion:^(BOOL fin){ [b removeFromSuperview]; }];
+  }
+}
+
+-(void)navigateToFoundGasStation{
+  [self dismissLowFuelBanner];
+  [self.settingsSheet dismiss];
+  if(fabs(self.nearestStationLat) > 0.001 && fabs(self.nearestStationLon) > 0.001){
+    [self openMapToLat:self.nearestStationLat
+                   lon:self.nearestStationLon
+                  name:(self.nearestStationName ?: @"ปั๊มน้ำมันใกล้ที่สุด")
+               address:(self.nearestStationAddress ?: @"")
+             autoStart:YES];
+    return;
+  }
+  [self navigateToNearestGasStation];
+}
+
+-(void)checkLowFuelWarning{
+  TRDOBDClient *obd = [TRDOBDClient sharedClient];
+  if(!obd.isConnected || !obd.obdInitialized || !obd.hasLiveFuelLevel){
+    self.lowFuelConfirmTicks = 0;
+    return;
+  }
+  double fuelL = obd.fuelRemainingLiters;
+  double pct = obd.fuelLevelPercent;
+  // Ignore cluster 0x00 sweep when switching car IG-OFF
+  if(fuelL < 0.8 || pct < 1.5){
+    self.lowFuelConfirmTicks = 0;
+    return;
+  }
+  NSDictionary *slotA = [self loadTripSlot:0];
+  double aKm = [slotA[@"km"] doubleValue];
+  double aFuel = [slotA[@"fuel"] doubleValue];
+  double avgKmL = (aKm > 0.2 && aFuel > 0.02) ? MAX(8.0, MIN(35.0, aKm / aFuel)) : 20.0;
+  double rangeKm = MAX(0.0, fuelL * avgKmL);
+
+  if(fuelL > 9.5 && pct > 21.0){
+    self.lowFuelConfirmTicks = 0;
+    self.lowFuelStage1Alerted = NO;
+    self.lowFuelStage2Alerted = NO;
+    return;
+  }
+  if(fuelL <= 7.0 || pct <= 15.5 || rangeKm <= 100.0){
+    if(self.lowFuelConfirmTicks < 3){
+      self.lowFuelConfirmTicks++;
+      if(self.lowFuelConfirmTicks < 2) return;
+    }
+  }else{
+    self.lowFuelConfirmTicks = 0;
+  }
+  if(!self.lowFuelStage2Alerted && (fuelL <= 4.5 || pct <= 10.0 || rangeKm <= 60.0)){
+    self.lowFuelStage2Alerted = YES;
+    self.lowFuelStage1Alerted = YES;
+    [self showLowFuelPopupWithLiters:fuelL pct:pct rangeKm:rangeKm critical:YES isDemo:NO];
+  }else if(!self.lowFuelStage1Alerted && (fuelL <= 7.0 || pct <= 15.5 || rangeKm <= 100.0)){
+    self.lowFuelStage1Alerted = YES;
+    [self showLowFuelPopupWithLiters:fuelL pct:pct rangeKm:rangeKm critical:NO isDemo:NO];
+  }
+}
+
+-(void)testLowFuelWarning{
+  [self showLowFuelPopupWithLiters:5.2 pct:11.6 rangeKm:98.0 critical:YES isDemo:YES];
+}
+
+-(void)showLowFuelPopupWithLiters:(double)fuelL pct:(double)pct rangeKm:(double)rangeKm critical:(BOOL)critical isDemo:(BOOL)isDemo{
+  [self dismissLowFuelBanner];
+  [self playLoudLowFuelAlarmSound];
+
+  CGFloat w = self.view.bounds.size.width ?: 1024;
+  CGFloat h = self.view.bounds.size.height ?: 768;
+  UIView *dim = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, h)];
+  dim.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.65];
+  dim.layer.zPosition = 99990;
+
+  CGFloat cw = 600, ch = 290;
+  UIView *card = [[UIView alloc] initWithFrame:CGRectMake((w - cw)/2.0, (h - ch)/2.0, cw, ch)];
+  card.backgroundColor = critical ? [UIColor colorWithRed:0.14 green:0.02 blue:0.03 alpha:0.98] : [UIColor colorWithRed:0.12 green:0.07 blue:0.01 alpha:0.98];
+  card.opaque = YES;
+  card.layer.cornerRadius = 18;
+  card.layer.borderWidth = 2.5;
+  card.layer.borderColor = critical ? [UIColor colorWithRed:1.0 green:0.20 blue:0.24 alpha:1.0].CGColor : [UIColor colorWithRed:1.0 green:0.75 blue:0.12 alpha:1.0].CGColor;
+  [dim addSubview:card];
+
+  UILabel *hdr = [[UILabel alloc] initWithFrame:CGRectMake(20, 14, cw - 40, 32)];
+  hdr.font = [UIFont boldSystemFontOfSize:22];
+  hdr.textColor = critical ? [UIColor colorWithRed:1.0 green:0.30 blue:0.34 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.82 blue:0.22 alpha:1.0];
+  hdr.text = isDemo
+    ? (critical ? @"🚨 [ตัวอย่าง] แจ้งเตือนน้ำมันใกล้หมด!" : @"⚠️ [ตัวอย่าง] เตือนน้ำมันใกล้หมดล่วงหน้า")
+    : (critical ? @"🚨 แจ้งเตือนด่วน: น้ำมันใกล้หมดถังแล้ว!" : @"⚠️ แจ้งเตือนล่วงหน้า: ควรเตรียมเติมน้ำมัน");
+  [card addSubview:hdr];
+
+  UILabel *mainStat = [[UILabel alloc] initWithFrame:CGRectMake(20, 52, cw - 40, 44)];
+  mainStat.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:32] ?: [UIFont boldSystemFontOfSize:30];
+  mainStat.textColor = [UIColor whiteColor];
+  mainStat.text = [NSString stringWithFormat:@"เหลือ %.1f ลิตร (%.0f%%)  •  วิ่งต่อได้ ~%.0f กม.", fuelL, pct, rangeKm];
+  mainStat.adjustsFontSizeToFitWidth = YES; mainStat.minimumScaleFactor = 0.72;
+  [card addSubview:mainStat];
+
+  UILabel *pumpLbl = [[UILabel alloc] initWithFrame:CGRectMake(20, 104, cw - 40, 62)];
+  pumpLbl.tag = 951;
+  pumpLbl.numberOfLines = 2;
+  pumpLbl.font = [UIFont boldSystemFontOfSize:17.5];
+  pumpLbl.textColor = [UIColor colorWithRed:0.35 green:0.95 blue:1.0 alpha:1.0];
+  pumpLbl.text = self.fix ? @"🔍 กำลังค้นหาปั๊มน้ำมันที่ใกล้พิกัด GPS ที่สุด..." : @"📍 รอสัญญาณ GPS เพื่อเช็คระยะทางไปยังปั๊มน้ำมันใกล้เคียง (แตะปุ่มด้านล่างเพื่อนำทาง)";
+  [card addSubview:pumpLbl];
+
+  UILabel *subInfo = [[UILabel alloc] initWithFrame:CGRectMake(20, 174, cw - 40, 22)];
+  subInfo.font = [UIFont boldSystemFontOfSize:13.0];
+  subInfo.textColor = [UIColor colorWithWhite:0.78 alpha:1.0];
+  subInfo.text = @"🔊 เสียงบี๊บเตือน + เสียงพูดไทยออกลำโพง iPad Mini 2 / รถยนต์ (เกณฑ์เตือน <15% และ <10%)";
+  [card addSubview:subInfo];
+
+  UIButton *navBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+  navBtn.frame = CGRectMake(20, 212, cw - 200, 56);
+  navBtn.backgroundColor = [UIColor colorWithRed:0.06 green:0.55 blue:0.28 alpha:1.0];
+  navBtn.layer.cornerRadius = 12; navBtn.layer.borderWidth = 1.5;
+  navBtn.layer.borderColor = [UIColor colorWithRed:0.30 green:1.0 blue:0.60 alpha:0.9].CGColor;
+  [navBtn setTitle:@"🗺️ นำทางไปปั๊มน้ำมันใกล้ที่สุด" forState:UIControlStateNormal];
+  [navBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+  navBtn.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
+  [navBtn addTarget:self action:@selector(navigateToFoundGasStation) forControlEvents:UIControlEventTouchUpInside];
+  [card addSubview:navBtn];
+
+  UIButton *okBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+  okBtn.frame = CGRectMake(cw - 166, 212, 146, 56);
+  okBtn.backgroundColor = [UIColor colorWithWhite:0.18 alpha:1.0];
+  okBtn.layer.cornerRadius = 12; okBtn.layer.borderWidth = 1.2;
+  okBtn.layer.borderColor = [UIColor colorWithWhite:0.45 alpha:0.8].CGColor;
+  [okBtn setTitle:@"✓ รับทราบ" forState:UIControlStateNormal];
+  [okBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+  okBtn.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
+  [okBtn addTarget:self action:@selector(dismissLowFuelBanner) forControlEvents:UIControlEventTouchUpInside];
+  [card addSubview:okBtn];
+
+  self.lowFuelBanner = dim;
+  [self.view addSubview:dim];
+  [self.view bringSubviewToFront:dim];
+
+  self.nearestStationName = nil;
+  self.nearestStationAddress = nil;
+  self.nearestStationKm = 0.0;
+  self.nearestStationLat = 0.0;
+  self.nearestStationLon = 0.0;
+
+  if(self.fix){
+    CLLocation *curLoc = self.fix;
+    MKLocalSearchRequest *req = [[MKLocalSearchRequest alloc] init];
+    req.naturalLanguageQuery = @"ปั๊มน้ำมัน";
+    req.region = MKCoordinateRegionMakeWithDistance(curLoc.coordinate, 25000, 25000);
+    MKLocalSearch *search = [[MKLocalSearch alloc] initWithRequest:req];
+    __weak Dashboard *weak = self;
+    [search startWithCompletionHandler:^(MKLocalSearchResponse *resp, NSError *err){
+      dispatch_async(dispatch_get_main_queue(), ^{
+        MKMapItem *best = nil;
+        double bestDist = 1e12;
+        for(MKMapItem *item in resp.mapItems){
+          CLLocation *loc = item.placemark.location;
+          if(!loc) continue;
+          double d = [curLoc distanceFromLocation:loc];
+          if(d <= 50000.0 && d < bestDist){ bestDist = d; best = item; }
+        }
+        NSString *voiceMsg = nil;
+        if(best){
+          double dKm = bestDist / 1000.0;
+          weak.nearestStationName = best.name ?: @"ปั๊มน้ำมัน";
+          weak.nearestStationAddress = best.placemark.title ?: @"";
+          weak.nearestStationKm = dKm;
+          weak.nearestStationLat = best.placemark.coordinate.latitude;
+          weak.nearestStationLon = best.placemark.coordinate.longitude;
+          if(weak.lowFuelBanner){
+            UILabel *pl = (UILabel *)[weak.lowFuelBanner viewWithTag:951];
+            if(pl){
+              pl.text = [NSString stringWithFormat:@"⛽ ปั๊มใกล้ที่สุด: %@ (ห่าง %.1f กม.)\n%@ — แตะปุ่มสีเขียวเพื่อนำทางทันที",
+                         weak.nearestStationName, dKm, weak.nearestStationAddress];
+            }
+          }
+          voiceMsg = [NSString stringWithFormat:@"แจ้งเตือน น้ำมันใกล้หมด เหลือ %.1f ลิตร วิ่งได้อีกประมาณ %.0f กิโลเมตร ปั๊มน้ำมันที่ใกล้ที่สุด %@ ห่าง %.1f กิโลเมตรครับ", fuelL, rangeKm, weak.nearestStationName, dKm];
+        }else{
+          if(weak.lowFuelBanner){
+            UILabel *pl = (UILabel *)[weak.lowFuelBanner viewWithTag:951];
+            if(pl) pl.text = @"⛽ แตะปุ่มสีเขียวด้านล่างเพื่อเปิดแผนที่ค้นหาปั๊มน้ำมันใกล้ที่สุด";
+          }
+          voiceMsg = [NSString stringWithFormat:@"แจ้งเตือน น้ำมันใกล้หมด เหลือ %.1f ลิตร วิ่งได้อีกประมาณ %.0f กิโลเมตร แนะนำให้แวะเติมน้ำมันครับ", fuelL, rangeKm];
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+          [weak speakQuickAlert:voiceMsg];
+        });
+      });
+    }];
+  }else{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      NSString *voiceMsg = [NSString stringWithFormat:@"แจ้งเตือน น้ำมันใกล้หมด เหลือ %.1f ลิตร วิ่งได้อีกประมาณ %.0f กิโลเมตร กรุณาแวะเติมน้ำมันครับ", fuelL, rangeKm];
+      [self speakQuickAlert:voiceMsg];
+    });
+  }
 }
 
 -(void)navigateToNearestRestArea{
- NSURL *url = [NSURL URLWithString:@"comgooglemaps://?q=rest+area+coffee"];
- if(![[UIApplication sharedApplication] canOpenURL:url]){
-  url = [NSURL URLWithString:@"http://maps.apple.com/?q=rest+area+coffee"];
- }
- [[UIApplication sharedApplication] openURL:url];
+  [self dismissLowFuelBanner];
+  [self.settingsSheet dismiss];
+  [self openMapWithSearchQuery:@"คาเฟ่ จุดพักรถ"];
 }
 
 -(void)openSpeedDial{
@@ -5109,7 +5919,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 }
 -(void)teardownMapWebView{if(self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}self.mapContainer.hidden=YES;}
 -(UIWebView *)ensureMapWebView{if(!self.mapWebView){NSURLCache *cache=[NSURLCache sharedURLCache];cache.memoryCapacity=12*1024*1024;cache.diskCapacity=48*1024*1024;self.mapWebView=[[UIWebView alloc]initWithFrame:self.mapContainer.bounds];self.mapWebView.backgroundColor=[UIColor clearColor];self.mapWebView.opaque=NO;self.mapWebView.scrollView.backgroundColor=[UIColor colorWithRed:0.067 green:0.075 blue:0.10 alpha:1.0];self.mapWebView.scalesPageToFit=NO;self.mapWebView.scrollView.scrollEnabled=NO;self.mapWebView.scrollView.bounces=NO;self.mapWebView.delegate=self;[self.mapContainer addSubview:self.mapWebView];}return self.mapWebView;}
--(void)openCarPlay{if(![self authorizeMapNavigation:YES])return;[self logNavigation:@"opened CarPlay"];self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.18;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.carplayMode=YES;self.carplayGridMode=NO;[self.view setNeedsLayout];[self.view layoutIfNeeded];[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];else if(!self.mapWebView.loading)[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(false);}"];[self update];}
+-(void)openCarPlay{if(![self authorizeMapNavigation:YES])return;[self logNavigation:@"opened CarPlay"];self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.18;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self dismissLowFuelBanner];[self.settingsSheet dismiss];notify_post("com.codex.trd.network.internet");self.tripMode=NO;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.carplayMode=YES;self.carplayGridMode=NO;[self.view setNeedsLayout];[self.view layoutIfNeeded];[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];else if(!self.mapWebView.loading)[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(false);}if(!window.navActive){var sc=document.getElementById('search-container');if(sc)sc.style.display='block';var lb=document.getElementById('layer-bar');if(lb){lb.style.display='-webkit-flex';lb.style.display='flex';}}"];[self updateMapCarForce:YES];[self update];}
 -(void)toggleCarPlayGrid{self.carplayGridMode=!self.carplayGridMode;[self.view setNeedsLayout];}
 -(void)carplayTapMap{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}else if(self.mapWebView.request && !self.mapWebView.loading){[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.recenter)window.recenter();"];}}
 -(void)carplayTapMusic{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}[self showMusicSources:nil];}
@@ -5305,15 +6115,212 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 }
 -(void)homePage{[self cancelNavigationTouch:nil forEvent:nil];self.mapConfirmationGeneration++;self.mapURLRequestGeneration++;self.mapNavigationAuthorized=NO;self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.18;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];self.mapContainer.hidden=YES;self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)openMusic{if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
--(void)openMap{if(![self authorizeMapNavigation:NO])return;[self logNavigation:@"opened Maps"];self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.18;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self.view setNeedsLayout];[self.view layoutIfNeeded];[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];else if(!self.mapWebView.loading)[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(false);}"];[self updateMapCar];}
+-(void)executeOrQueueMapJS:(NSString *)js{
+  if(!js.length) return;
+  if(self.mapWebView && self.mapWebView.request && !self.mapWebView.loading){
+    [self updateMapCarForce:YES];
+    [self.mapWebView stringByEvaluatingJavaScriptFromString:js];
+  }else{
+    self.pendingMapJS = js;
+  }
+}
+-(void)openMapToLat:(double)lat lon:(double)lon name:(NSString *)name address:(NSString *)address autoStart:(BOOL)autoStart{
+  self.mapNavigationAuthorized = YES;
+  self.navGuardUntil = 0;
+  [self openMap];
+  NSString *jsName = TRDJSStringLiteral(name ?: @"จุดหมาย");
+  NSString *jsAddr = TRDJSStringLiteral(address ?: @"");
+  NSString *js = [NSString stringWithFormat:@"if(window.selectLocation){window.selectLocation(%.6f,%.6f,%@,%@);if(%@&&window.startNavigation){window.startNavigation();}}",
+                  lat, lon, jsName, jsAddr, autoStart ? @"true" : @"false"];
+  [self executeOrQueueMapJS:js];
+}
+-(void)openMapWithSearchQuery:(NSString *)query{
+  self.mapNavigationAuthorized = YES;
+  self.navGuardUntil = 0;
+  [self openMap];
+  NSString *jsQ = TRDJSStringLiteral(query ?: @"ปั๊มน้ำมัน");
+  NSString *js = [NSString stringWithFormat:@"if(window.quickSearch){window.quickSearch(%@);}", jsQ];
+  [self executeOrQueueMapJS:js];
+}
+-(void)openMap{if(![self authorizeMapNavigation:NO])return;[self logNavigation:@"opened Maps"];self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.18;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self dismissLowFuelBanner];[self.settingsSheet dismiss];self.tripMode=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.carplayMode=NO;self.carplayGridMode=NO;self.returnTap.enabled=NO;[self.driveCar stop];self.mapMode=YES;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];UIView *p=[self.view viewWithTag:701];if(p)p.hidden=YES;UIView *t=[self.view viewWithTag:711];if(t)t.hidden=YES;[self.view setNeedsLayout];[self.view layoutIfNeeded];[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];else if(!self.mapWebView.loading)[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(false);}if(!window.navActive){var sc=document.getElementById('search-container');if(sc)sc.style.display='block';var lb=document.getElementById('layer-bar');if(lb){lb.style.display='-webkit-flex';lb.style.display='flex';}}"];[self updateMapCarForce:YES];}
 -(void)syncMapAppearance:(BOOL)initial{if(!self.mapWebView || !self.mapWebView.request || self.mapWebView.loading)return;NSString *mode=self.nightMode?@"night":@"traffic";NSString *js=initial?[NSString stringWithFormat:@"if(window.setMode && !window.__trdInitialThemeDone){window.__trdInitialThemeDone=true;window.setMode('%@');}",mode]:[NSString stringWithFormat:@"if(window.setMode){window.setMode('%@');}",mode];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
--(void)webViewDidFinishLoad:(UIWebView *)webView{if(webView==self.mapWebView){NSString *state=[self.mapWebView stringByEvaluatingJavaScriptFromString:@"document.readyState+'|'+typeof L+'|'+(window.map?'map':'nomap')"];[[TRDOBDClient sharedClient] obdLog:@"map webViewDidFinishLoad (%@)",state?:@""];[self syncMapAppearance:YES];[self updateMapCar];}}
+-(void)webViewDidFinishLoad:(UIWebView *)webView{if(webView==self.mapWebView){NSString *state=[self.mapWebView stringByEvaluatingJavaScriptFromString:@"document.readyState+'|'+typeof L+'|'+(window.map?'map':'nomap')"];[[TRDOBDClient sharedClient] obdLog:@"map webViewDidFinishLoad (%@)",state?:@""];[self syncMapAppearance:YES];[self updateMapCarForce:YES];if(self.pendingMapJS.length){NSString *pending=self.pendingMapJS;self.pendingMapJS=nil;[self.mapWebView stringByEvaluatingJavaScriptFromString:pending];}}}
 -(void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error{if(webView==self.mapWebView){[[TRDOBDClient sharedClient] obdLog:@"map webView didFailLoadWithError: %@",error.localizedDescription?:error.description];}}
 -(void)loadMapHTML{[self ensureMapWebView];NSString *path=@"/Applications/CarDash.app/map.html";if([[NSFileManager defaultManager]fileExistsAtPath:path])[self.mapWebView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:path]]];}
--(void)updateMapCar{if((!self.mapMode&&!self.carplayMode)||!self.mapWebView||!self.mapWebView.request||self.mapWebView.loading)return;if(!self.fix)return;static CLLocationDegrees lastLat=0,lastLng=0;static double lastKmh=-999;static UIWebView *lastWebView=nil;CLLocationDegrees lat=self.fix.coordinate.latitude;CLLocationDegrees lng=self.fix.coordinate.longitude;double kmh=(self.fix.speed>=0)?(self.fix.speed*3.6):-1;if(lastWebView==self.mapWebView&&fabs(lat-lastLat)<0.000015&&fabs(lng-lastLng)<0.000015&&fabs(kmh-lastKmh)<2.0)return;lastWebView=self.mapWebView;lastLat=lat;lastLng=lng;lastKmh=kmh;BOOL courseValid=self.fix.course>=0&&self.fix.course<360&&kmh>=5&&self.fix.horizontalAccuracy>=0&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;double course=courseValid?self.fix.course:-1;NSString *js=[NSString stringWithFormat:@"if(window.updateCar){window.updateCar(%f,%f,%f,%f);}",lat,lng,course,kmh];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
--(BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)type{NSString *scheme=request.URL.scheme;if([scheme isEqualToString:@"cardash-route"]){NSString *coords=[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""];[self fetchRouteWithCoords:coords];return NO;}if([scheme isEqualToString:@"cardash-search"]){NSString *query=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchSearchWithQuery:query];return NO;}return YES;}
--(void)fetchRouteWithCoords:(NSString *)coords{NSString *urlStr=[NSString stringWithFormat:@"http://router.project-osrm.org/route/v1/driving/%@?overview=full&geometries=geojson&steps=true",coords];NSURL *url=[NSURL URLWithString:urlStr];if(!url)return;NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url];[req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6)" forHTTPHeaderField:@"User-Agent"];__weak Dashboard *weak=self;[[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){if(data&&!err){NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];if(json){dispatch_async(dispatch_get_main_queue(),^{[weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}",json]];});}}}]resume];}
--(void)fetchSearchWithQuery:(NSString *)query{if(!query.length)return;NSString *encoded=[query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];CLLocationDegrees lat=self.fix?self.fix.coordinate.latitude:13.7563;CLLocationDegrees lng=self.fix?self.fix.coordinate.longitude:100.5018;NSString *viewbox=[NSString stringWithFormat:@"%.3f,%.3f,%.3f,%.3f",lng-.4,lat+.4,lng+.4,lat-.4];NSString *urlStr=[NSString stringWithFormat:@"http://nominatim.openstreetmap.org/search?q=%@&format=json&countrycodes=th&limit=5&viewbox=%@",encoded,viewbox];NSURL *url=[NSURL URLWithString:urlStr];if(!url)return;NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url];[req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6; Prius)" forHTTPHeaderField:@"User-Agent"];__weak Dashboard *weak=self;[[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){if(data&&!err){NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];if(json){dispatch_async(dispatch_get_main_queue(),^{[weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window._onNominatimResult){window._onNominatimResult(%@);}",json]];});}}}]resume];}
+-(void)updateMapCar{[self updateMapCarForce:NO];}
+-(void)updateMapCarForce:(BOOL)force{if((!self.mapMode&&!self.carplayMode)||!self.mapWebView||!self.mapWebView.request||self.mapWebView.loading)return;if(!self.fix)return;static CLLocationDegrees lastLat=0,lastLng=0;static double lastKmh=-999;static UIWebView *lastWebView=nil;CLLocationDegrees lat=self.fix.coordinate.latitude;CLLocationDegrees lng=self.fix.coordinate.longitude;double kmh=(self.fix.speed>=0)?(self.fix.speed*3.6):-1;if(!force&&lastWebView==self.mapWebView&&fabs(lat-lastLat)<0.000015&&fabs(lng-lastLng)<0.000015&&fabs(kmh-lastKmh)<2.0)return;lastWebView=self.mapWebView;lastLat=lat;lastLng=lng;lastKmh=kmh;BOOL courseValid=self.fix.course>=0&&self.fix.course<360&&kmh>=5&&self.fix.horizontalAccuracy>=0&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;double course=courseValid?self.fix.course:-1;NSString *js=[NSString stringWithFormat:@"if(window.updateCar){window.updateCar(%f,%f,%f,%f);}",lat,lng,course,kmh];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
+-(BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)type{NSString *scheme=request.URL.scheme;if([scheme isEqualToString:@"cardash-route"]){NSString *coords=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchRouteWithCoords:coords];return NO;}if([scheme isEqualToString:@"cardash-search"]){NSString *query=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchSearchWithQuery:query];return NO;}return YES;}
+-(void)dispatchFallbackRouteFrom:(CLLocationCoordinate2D)src to:(CLLocationCoordinate2D)dst{
+  MKPlacemark *p1 = [[MKPlacemark alloc] initWithCoordinate:src addressDictionary:nil];
+  MKPlacemark *p2 = [[MKPlacemark alloc] initWithCoordinate:dst addressDictionary:nil];
+  MKDirectionsRequest *req = [[MKDirectionsRequest alloc] init];
+  req.source = [[MKMapItem alloc] initWithPlacemark:p1];
+  req.destination = [[MKMapItem alloc] initWithPlacemark:p2];
+  req.transportType = MKDirectionsTransportTypeAutomobile;
+  MKDirections *dirs = [[MKDirections alloc] initWithRequest:req];
+  __weak Dashboard *weak = self;
+  [dirs calculateDirectionsWithCompletionHandler:^(MKDirectionsResponse *resp, NSError *err){
+    NSDictionary *routePayload = nil;
+    MKRoute *mkRoute = resp.routes.firstObject;
+    if(mkRoute && mkRoute.polyline.pointCount > 0){
+      NSUInteger cnt = mkRoute.polyline.pointCount;
+      CLLocationCoordinate2D *pts = (CLLocationCoordinate2D *)malloc(sizeof(CLLocationCoordinate2D) * cnt);
+      if(pts){
+        [mkRoute.polyline getCoordinates:pts range:NSMakeRange(0, cnt)];
+        NSMutableArray *coordArr = [NSMutableArray arrayWithCapacity:cnt];
+        for(NSUInteger i=0; i<cnt; i++){
+          [coordArr addObject:@[@(pts[i].longitude), @(pts[i].latitude)]];
+        }
+        free(pts);
+        NSMutableArray *stepsArr = [NSMutableArray array];
+        for(MKRouteStep *st in mkRoute.steps){
+          CLLocationCoordinate2D sc = (st.polyline.pointCount > 0) ? st.polyline.coordinate : src;
+          [stepsArr addObject:@{
+            @"distance": @(st.distance),
+            @"name": st.instructions ?: @"",
+            @"maneuver": @{@"type": @"turn", @"modifier": @"", @"location": @[@(sc.longitude), @(sc.latitude)]}
+          }];
+        }
+        if(stepsArr.count == 0){
+          [stepsArr addObject:@{@"distance":@(mkRoute.distance), @"name":@"มุ่งหน้าสู่จุดหมาย", @"maneuver":@{@"type":@"depart",@"modifier":@"",@"location":@[@(src.longitude),@(src.latitude)]}}];
+        }
+        [stepsArr addObject:@{@"distance":@(0), @"name":@"ถึงจุดหมายปลายทาง", @"maneuver":@{@"type":@"arrive",@"modifier":@"",@"location":@[@(dst.longitude),@(dst.latitude)]}}];
+        routePayload = @{@"routes":@[@{
+          @"distance": @(mkRoute.distance),
+          @"duration": @(mkRoute.expectedTravelTime),
+          @"geometry": @{@"coordinates": coordArr},
+          @"legs": @[@{@"steps": stepsArr}]
+        }]};
+        [[TRDOBDClient sharedClient] obdLog:@"MKDirections fallback OK: %.0f m (%lu pts)", mkRoute.distance, (unsigned long)cnt];
+      }
+    }
+    if(!routePayload){
+      CLLocation *l1 = [[CLLocation alloc] initWithLatitude:src.latitude longitude:src.longitude];
+      CLLocation *l2 = [[CLLocation alloc] initWithLatitude:dst.latitude longitude:dst.longitude];
+      double dist = [l1 distanceFromLocation:l2];
+      double dur = MAX(60.0, dist / (35000.0 / 3600.0));
+      [[TRDOBDClient sharedClient] obdLog:@"MKDirections failed (%@) -> straight fallback %.0f m", err.localizedDescription?:@"offline", dist];
+      routePayload = @{@"routes":@[@{
+        @"distance": @(dist),
+        @"duration": @(dur),
+        @"geometry": @{@"coordinates": @[@[@(src.longitude), @(src.latitude)], @[@(dst.longitude), @(dst.latitude)]]},
+        @"legs": @[@{@"steps": @[
+          @{@"distance":@(dist), @"name":@"มุ่งหน้าไปยังจุดหมาย", @"maneuver":@{@"type":@"depart",@"modifier":@"",@"location":@[@(src.longitude),@(src.latitude)]}},
+          @{@"distance":@(0), @"name":@"ถึงจุดหมายปลายทาง", @"maneuver":@{@"type":@"arrive",@"modifier":@"",@"location":@[@(dst.longitude),@(dst.latitude)]}}
+        ]}]
+      }]};
+    }
+    NSData *d = [NSJSONSerialization dataWithJSONObject:routePayload options:0 error:nil];
+    NSString *json = d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : @"{\"routes\":[]}";
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}", json]];
+    });
+  }];
+}
+-(void)fetchRouteWithCoords:(NSString *)coords{
+  NSArray *pairs = [coords componentsSeparatedByString:@";"];
+  CLLocationCoordinate2D src = CLLocationCoordinate2DMake(13.7563, 100.5018);
+  CLLocationCoordinate2D dst = src;
+  BOOL hasCoords = NO;
+  if(pairs.count >= 2){
+    NSArray *p1 = [pairs[0] componentsSeparatedByString:@","];
+    NSArray *p2 = [pairs[1] componentsSeparatedByString:@","];
+    if(p1.count == 2 && p2.count == 2){
+      src = CLLocationCoordinate2DMake([p1[1] doubleValue], [p1[0] doubleValue]);
+      dst = CLLocationCoordinate2DMake([p2[1] doubleValue], [p2[0] doubleValue]);
+      hasCoords = (fabs(src.latitude) > 0.001 && fabs(dst.latitude) > 0.001);
+    }
+  }
+  NSString *urlStr=[NSString stringWithFormat:@"http://router.project-osrm.org/route/v1/driving/%@?overview=full&geometries=geojson&steps=true",coords];
+  NSURL *url=[NSURL URLWithString:urlStr];
+  if(!url){
+    if(hasCoords) [self dispatchFallbackRouteFrom:src to:dst];
+    else dispatch_async(dispatch_get_main_queue(),^{ [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.onNativeRoute){window.onNativeRoute({routes:[]});}"]; });
+    return;
+  }
+  NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:4.0];
+  [req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6)" forHTTPHeaderField:@"User-Agent"];
+  __weak Dashboard *weak=self;
+  [[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){
+    NSString *json=(data&&!err)?[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding]:nil;
+    if(json.length && [json rangeOfString:@"\"routes\""].location!=NSNotFound){
+      [[TRDOBDClient sharedClient] obdLog:@"OSRM route OK (%lu bytes)", (unsigned long)data.length];
+      dispatch_async(dispatch_get_main_queue(),^{
+        [weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}",json]];
+      });
+    }else{
+      [[TRDOBDClient sharedClient] obdLog:@"OSRM route unavailable (%@), switching to MKDirections", err.localizedDescription?:@"empty"];
+      dispatch_async(dispatch_get_main_queue(),^{
+        if(hasCoords) [weak dispatchFallbackRouteFrom:src to:dst];
+        else [weak.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.onNativeRoute){window.onNativeRoute({routes:[]});}"];
+      });
+    }
+  }]resume];
+}
+-(void)fetchSearchWithQuery:(NSString *)query{
+  if(!query.length)return;
+  CLLocationDegrees lat=self.fix?self.fix.coordinate.latitude:13.7563;
+  CLLocationDegrees lng=self.fix?self.fix.coordinate.longitude:100.5018;
+  CLLocation *curLoc = self.fix ?: [[CLLocation alloc] initWithLatitude:lat longitude:lng];
+  MKLocalSearchRequest *mkReq = [[MKLocalSearchRequest alloc] init];
+  mkReq.naturalLanguageQuery = query;
+  mkReq.region = MKCoordinateRegionMakeWithDistance(CLLocationCoordinate2DMake(lat, lng), 35000, 35000);
+  MKLocalSearch *mkSearch = [[MKLocalSearch alloc] initWithRequest:mkReq];
+  __weak Dashboard *weak = self;
+  [mkSearch startWithCompletionHandler:^(MKLocalSearchResponse *resp, NSError *mkErr){
+    if(resp.mapItems.count > 0){
+      NSArray *sorted = [resp.mapItems sortedArrayUsingComparator:^NSComparisonResult(MKMapItem *a, MKMapItem *b){
+        double da = a.placemark.location ? [curLoc distanceFromLocation:a.placemark.location] : 1e12;
+        double db = b.placemark.location ? [curLoc distanceFromLocation:b.placemark.location] : 1e12;
+        if(da < db) return NSOrderedAscending;
+        if(da > db) return NSOrderedDescending;
+        return NSOrderedSame;
+      }];
+      NSMutableArray *items = [NSMutableArray array];
+      NSUInteger limit = MIN((NSUInteger)6, sorted.count);
+      for(NSUInteger i=0; i<limit; i++){
+        MKMapItem *it = sorted[i];
+        double dKm = it.placemark.location ? ([curLoc distanceFromLocation:it.placemark.location] / 1000.0) : 0.0;
+        NSString *name = it.name ?: query;
+        NSString *addr = it.placemark.title ?: @"";
+        NSString *disp = [NSString stringWithFormat:@"%@ (%.1f กม.), %@", name, dKm, addr];
+        [items addObject:@{
+          @"display_name": disp,
+          @"lat": [NSString stringWithFormat:@"%.6f", it.placemark.coordinate.latitude],
+          @"lon": [NSString stringWithFormat:@"%.6f", it.placemark.coordinate.longitude]
+        }];
+      }
+      NSData *jsonData = [NSJSONSerialization dataWithJSONObject:items options:0 error:nil];
+      if(jsonData){
+        NSString *jsonStr = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window._onNominatimResult){window._onNominatimResult(%@);}", jsonStr]];
+        });
+        return;
+      }
+    }
+    // Fallback to Nominatim if Apple MKLocalSearch finds nothing
+    NSString *encoded=[query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+    NSString *viewbox=[NSString stringWithFormat:@"%.3f,%.3f,%.3f,%.3f",lng-.4,lat+.4,lng+.4,lat-.4];
+    NSString *urlStr=[NSString stringWithFormat:@"https://nominatim.openstreetmap.org/search?q=%@&format=json&countrycodes=th&limit=5&viewbox=%@",encoded,viewbox];
+    NSURL *url=[NSURL URLWithString:urlStr];
+    if(!url){
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [weak.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window._onNominatimResult){window._onNominatimResult([]);}"];
+      });
+      return;
+    }
+    NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:6.0];
+    [req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6; Prius)" forHTTPHeaderField:@"User-Agent"];
+    [[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){
+      NSString *json=(data&&!err)?[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding]:@"[]";
+      if(!json.length) json=@"[]";
+      dispatch_async(dispatch_get_main_queue(),^{
+        [weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window._onNominatimResult){window._onNominatimResult(%@);}",json]];
+      });
+    }]resume];
+  }];
+}
 -(void)openActiveSourceApp{NSDictionary *src=[NSDictionary dictionaryWithContentsOfFile:TRDSourcePath];NSString *bundle=src[@"bundle"]?:(self.youtubeSource?@"com.himais0giiiin.ytnine":@"com.legacymusic.app");if([bundle isEqualToString:@"com.legacymusic.app"])[self browseSource:bundle];else [self send:bundle];}
 -(void)showMusicSources:(UIButton *)button{
  TRDSettingsMenu *menu=[self settingsMenu:@"AUDIO & MUSIC SOURCES" message:@"Select music, search songs, or online radio"];
@@ -5753,8 +6760,12 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   [obd setCustomFuelPrice:obd.fuelPricePerLiter-0.5];
   [self openFuelPriceSettings];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🔄 Reset Trip Fuel Counter" style:0 handler:^(TRDSettingAction *a){
-  [obd resetTripFuel];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🚨 ทดสอบแจ้งเตือนน้ำมันใกล้หมด + ค้นหาปั๊ม (Demo)" style:0 handler:^(TRDSettingAction *a){
+  [self.settingsSheet dismiss];
+  [self testLowFuelWarning];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔄 Reset Trip A Fuel Counter" style:0 handler:^(TRDSettingAction *a){
+  [self resetTripSlot:0];
   [self openFuelPriceSettings];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🔄 เชื่อมต่อ OBD2 ใหม่ (%@)",obd.connectionStatus] style:0 handler:^(TRDSettingAction *a){
@@ -6134,9 +7145,15 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 }
 
 -(void)obdDataUpdated:(NSNotification *)note{
- if(!self.carplayMode && !self.mapMode && !self.focused)[self refreshBrakeStatus];
+ if(!self.carplayMode && !self.mapMode && !self.focused){
+  [self refreshBrakeStatus];
+  [self refreshDriveTripDisplay];
+ }else{
+  [self syncTripSlotsDelta:NO];
+ }
  [self refreshHybridStatus];
  [self refreshLiveOBDDashboard];
+ [self checkLowFuelWarning];
 }
 
 -(void)refreshHybridStatus{
@@ -6249,6 +7266,9 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   else [v openRadioStationsMenu];
  }
  if([url.host isEqualToString:@"tripsummary"])[v showTripSummary];
+ if([url.host isEqualToString:@"triplog"])[v showTripSummaryWithTab:1];
+ if([url.host isEqualToString:@"lowfueltest"])[v testLowFuelWarning];
+ if([url.host isEqualToString:@"gasnav"])[v navigateToFoundGasStation];
  if([url.host isEqualToString:@"fuel"])[v openFuelPriceSettings];
  if([url.host isEqualToString:@"obd"])[v openFuelPriceSettings];
  if([url.host isEqualToString:@"brake"])[v openBrakeDiagnosticsMenu];

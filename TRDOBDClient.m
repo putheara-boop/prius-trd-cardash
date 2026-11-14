@@ -140,6 +140,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 @property (nonatomic, assign, readwrite) BOOL autoDoorLockEnabled;
 @property (nonatomic, assign, readwrite) BOOL autoDoorUnlockOnParkEnabled;
 @property (nonatomic, assign, readwrite) BOOL autoDoorLockedForDrive;
+@property (nonatomic, assign, readwrite) BOOL hasLiveFuelLevel;
 @end
 
 @implementation TRDOBDClient
@@ -305,6 +306,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     self.fastCycleCount = 0;
     self.consecutiveTimeouts = 0;
     self.hasLive7C4CabinTemp = NO;
+    self.hasLiveFuelLevel = NO;
     self.activePollSchedule = nil;
     self.lastCAN127At = nil;
     self.lastLoggedCAN127Gear = nil;
@@ -639,31 +641,43 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     }
 }
 
-// Fallback estimator for when OBD is not yet connected physically (uses Prius 21.5 km/L baseline)
+// Fallback estimator for when OBD is not yet connected physically (accumulates incrementally by distance delta & speed)
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt {
     if (self.isConnected) {
         // If connected to OBD2, real MAF/injector data handles this!
         return;
     }
     if (distanceKm <= 0.0) return;
-    
+
+    double prevKm = _totalTripMeters / 1000.0;
+    double deltaKm = distanceKm - prevKm;
+    if (deltaKm < 0.0) {
+        // Trip was reset cleanly; restart accumulation from new baseline.
+        deltaKm = distanceKm;
+        _tripFuelUsedLiters = 0.0;
+        _evTripMeters = 0.0;
+    }
     _totalTripMeters = distanceKm * 1000.0;
-    
-    // Prius averages ~21.5 km/L in city/highway mixed
-    double avgKmL = 21.5;
+
+    // Prius real-world segmented estimator: slow EV-assisted city vs cruise vs highway
+    double segKmL = 21.5;
     if (kmh > 0 && kmh <= 45.0) {
-        // City / EV heavy driving
-        avgKmL = 23.5;
+        segKmL = 23.5;
         _evTripMeters += (kmh * (1000.0 / 3600.0)) * dt;
     } else if (kmh > 90.0) {
-        // High speed highway
-        avgKmL = 19.0;
+        segKmL = 19.0;
     }
-    
-    _tripFuelUsedLiters = (CGFloat)(distanceKm / avgKmL);
-    _tripFuelCostTHB = _tripFuelUsedLiters * _fuelPricePerLiter;
-    _tripAverageKmPerL = (CGFloat)avgKmL;
-    
+
+    if (deltaKm > 0.0001) {
+        _tripFuelUsedLiters += (CGFloat)(deltaKm / segKmL);
+    } else if (_tripFuelUsedLiters <= 0.0 && distanceKm > 0.01) {
+        _tripFuelUsedLiters = (CGFloat)(distanceKm / segKmL);
+    }
+
+    double price = (_fuelPricePerLiter > 0.0) ? _fuelPricePerLiter : 38.50;
+    _tripFuelCostTHB = _tripFuelUsedLiters * price;
+    _tripAverageKmPerL = (CGFloat)((_tripFuelUsedLiters > 0.0001) ? MAX(5.0, MIN(60.0, distanceKm / _tripFuelUsedLiters)) : segKmL);
+
     if (_totalTripMeters > 0) {
         _tripEVDistancePercent = (CGFloat)((_evTripMeters / _totalTripMeters) * 100.0);
         if (_tripEVDistancePercent > 100.0) _tripEVDistancePercent = 100.0;
@@ -959,6 +973,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     self.fastCycleCount = 0;
     self.consecutiveTimeouts = 0;
     self.hasLive7C4CabinTemp = NO;
+    self.hasLiveFuelLevel = NO;
     self.activePollSchedule = nil;
     self.lastCAN127At = nil;
     self.lastLoggedCAN127Gear = nil;
@@ -1494,6 +1509,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         if (liters >= 0.0 && liters <= 48.0) {
             self.fuelRemainingLiters = MIN(45.0, liters);
             self.fuelLevelPercent = (self.fuelRemainingLiters / 45.0) * 100.0;
+            self.hasLiveFuelLevel = YES;
             if (self.lastLoggedFuelLiters < 0.0 || fabs(self.fuelRemainingLiters - self.lastLoggedFuelLiters) >= 1.0) {
                 self.lastLoggedFuelLiters = self.fuelRemainingLiters;
                 [self obdLog:@"7C0_6129 FUEL -> %.1f L (%.0f%% raw=0x%02X)",

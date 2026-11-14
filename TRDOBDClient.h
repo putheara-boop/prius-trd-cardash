@@ -44,6 +44,7 @@ extern NSString * const TRDOBDGearChangedNotification;
 @property (nonatomic, assign, readonly) BOOL parkSwitchEngaged;
 
 // Fuel & Trip Cost Metrics
+@property (nonatomic, assign, readonly) BOOL hasLiveFuelLevel;        // YES after real 7C0 2129 fuel tank frame
 @property (nonatomic, assign, readonly) CGFloat fuelLevelPercent;     // 0% - 100%
 @property (nonatomic, assign, readonly) CGFloat fuelRemainingLiters;  // Liters left in 45L tank
 @property (nonatomic, assign, readonly) CGFloat fuelPricePerLiter;    // Baht / Liter (e.g. 39.84)

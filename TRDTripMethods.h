@@ -15,13 +15,13 @@
       [self refreshDriveTripDisplay];
     }]];
   }
-  [menu addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🔄 รีเซ็ตค่า %@ เป็น 0.0 km", slotNames[curSlot]] style:0 handler:^(TRDSettingAction *a){
-    self.trip=[TRDTrip new];
-    [self saveTrip];
-    [self refreshTrip];
-    [self refreshDriveTripDisplay];
+  [menu addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🔄 รีเซ็ตค่าเฉพาะ %@ เป็น 0.0 km (ไม่ลบประวัติรายวัน)", slotNames[curSlot]] style:0 handler:^(TRDSettingAction *a){
+    [self resetTripSlot:curSlot];
   }]];
-  [menu addAction:[TRDSettingAction actionWithTitle:@"📊 เปิดหน้าจอสรุปทริปแบบเต็มจอ (Trip Summary)" style:0 handler:^(TRDSettingAction *a){
+  [menu addAction:[TRDSettingAction actionWithTitle:@"📅 ดูประวัติรายวัน / ยอดสัปดาห์-เดือน (Daily Log)" style:0 handler:^(TRDSettingAction *a){
+    [self showTripSummaryWithTab:1];
+  }]];
+  [menu addAction:[TRDSettingAction actionWithTitle:@"📊 เปิดหน้าจอ Prius Trip Summary (รอบนี้ + ยอดสะสม)" style:0 handler:^(TRDSettingAction *a){
     [self showTripSummary];
   }]];
   [menu addAction:[TRDSettingAction actionWithTitle:@"⏱️ เปิดหน้าจอวัดความเร็ว GPS เต็มจอ (Trip / GPS)" style:0 handler:^(TRDSettingAction *a){

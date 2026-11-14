@@ -19,6 +19,10 @@
                       linear-gradient(90deg, rgba(0, 240, 255, 0.045) 1px, transparent 1px);
     background-size: 40px 40px;
   }
+  #map.night-tiles .leaflet-tile-pane {
+    -webkit-filter: invert(90%) hue-rotate(180deg) brightness(95%) contrast(94%);
+    filter: invert(90%) hue-rotate(180deg) brightness(95%) contrast(94%);
+  }
   
   /* Top Right TRD Layer Bar */
   .trd-bar {
@@ -60,10 +64,10 @@
     #search-container {
       top: 10px; left: 8px;
       width: auto;
-      right: 288px; max-width: none;
+      right: 256px; max-width: none;
     }
     #search-input {
-      font-size: 12px; padding: 4px 6px; min-width: 0; width: 0;
+      font-size: 13px; padding: 5px 8px; min-width: 60px; width: 100%;
     }
     .btn-search-action {
       padding: 0 9px; font-size: 12px;
@@ -418,7 +422,6 @@
 </div>
 
 <script>
-var API_KEY = "AIzaSyASOJCRJ1JJn7ZXani0vhGTV-Lv9OewXAM";
 var lastLat = 13.7563, lastLng = 100.5018, lastHeading = 0;
 var tracking = true, currentMode = 'traffic';
 var selectedDest = null, destMarker = null, routeLine = null, routeGlow = null;
@@ -427,20 +430,20 @@ var soundEnabled = true, lastChimeStep = -1;
 
 var subdomains = ['0', '1', '2', '3'];
 
-var trafficLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}&key=' + API_KEY, {
+var trafficLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m,traffic&hl=th&x={x}&y={y}&z={z}', {
   maxZoom: 20, subdomains: subdomains, attribution: '© Google'
 });
 
-var roadLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=' + API_KEY, {
+var roadLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=th&x={x}&y={y}&z={z}', {
   maxZoom: 20, subdomains: subdomains, attribution: '© Google'
 });
 
-var satLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&key=' + API_KEY, {
+var satLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&hl=th&x={x}&y={y}&z={z}', {
   maxZoom: 20, subdomains: subdomains, attribution: '© Google'
 });
 
-var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  maxZoom: 19, subdomains: ['a', 'b', 'c', 'd'], attribution: '© CARTO'
+var darkLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m,traffic&hl=th&x={x}&y={y}&z={z}', {
+  maxZoom: 20, subdomains: subdomains, attribution: '© Google Night'
 });
 
 var map = L.map('map', {
@@ -664,12 +667,15 @@ function setMode(mode) {
   document.getElementById('btn-traffic').className = 'trd-btn';
   document.getElementById('btn-sat').className = 'trd-btn';
   document.getElementById('btn-night').className = 'trd-btn';
+  var mapEl = document.getElementById('map');
+  if (mapEl) mapEl.classList.remove('night-tiles');
   
   if (mode === 'sat') {
     map.addLayer(satLayer);
     document.getElementById('btn-sat').className = 'trd-btn active';
     currentMode = 'sat';
   } else if (mode === 'night') {
+    if (mapEl) mapEl.classList.add('night-tiles');
     map.addLayer(darkLayer);
     document.getElementById('btn-night').className = 'trd-btn active';
     currentMode = 'night';
@@ -796,20 +802,23 @@ function closeDestCard() {
   }
 }
 
-// Navigation Engine with Native Bridge to OSRM
+// Navigation Engine with Native Bridge to OSRM + MKDirections fallback
 function startNavigation() {
   if (!selectedDest) return;
-  document.getElementById('dest-card').style.display = 'none';
-  document.getElementById('search-container').style.display = 'none';
-  document.getElementById('layer-bar').style.display = 'none';
-  
+  var navBtnSpan = document.querySelector('.btn-navigate span');
+  if (navBtnSpan) navBtnSpan.textContent = 'กำลังคำนวณเส้นทาง...';
   playChime('start');
   var coords = lastLng + ',' + lastLat + ';' + selectedDest.lng + ',' + selectedDest.lat;
   callNative('cardash-route', coords);
 }
 
 window.onNativeRoute = function(res) {
+  var navBtnSpan = document.querySelector('.btn-navigate span');
+  if (navBtnSpan) navBtnSpan.textContent = 'เริ่มนำทาง';
   if (res && res.routes && res.routes.length > 0) {
+    document.getElementById('dest-card').style.display = 'none';
+    document.getElementById('search-container').style.display = 'none';
+    document.getElementById('layer-bar').style.display = 'none';
     drawRoute(res.routes[0]);
   } else {
     alert('ไม่พบเส้นทางรถยนต์สำหรับจุดนี้');
