@@ -24,6 +24,7 @@ static void (*Schedule)(WiFiRef,CFRunLoopRef,CFStringRef);
 static int (*Associate)(WiFiRef,WiFiRef,AssociationCallback,CFDictionaryRef);
 static void (*CancelAssociation)(WiFiRef);
 static int (*Disassociate)(WiFiRef);
+static int (*ScanAsync)(WiFiRef,CFDictionaryRef,void *,const void *);
 
 static NSString *CurrentSSID(void){
  NSDictionary *r=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));
@@ -96,6 +97,7 @@ static void AssociationReturned(WiFiRef device,WiFiRef network,CFDictionaryRef i
  Associate=dlsym(library,"WiFiDeviceClientAssociateAsync");
  CancelAssociation=dlsym(library,"WiFiDeviceClientAssociateCancel");
  Disassociate=dlsym(library,"WiFiDeviceClientDisassociate");
+ ScanAsync=dlsym(library,"WiFiDeviceClientScanAsync");
  if(!ManagerCreate||!CopyDevices||!CopyNetworks||!GetSSID||!Schedule||!Associate||!CancelAssociation)return NO;
  _manager=ManagerCreate(kCFAllocatorDefault,0);
  if(!_manager)return NO;
@@ -186,6 +188,11 @@ static void AssociationReturned(WiFiRef device,WiFiRef network,CFDictionaryRef i
  NSString *currentAddr=CurrentAddress();
  BOOL currentIsCamera=([current localizedCaseInsensitiveContainsString:@"H109"]||[currentAddr hasPrefix:self.cameraPrefix]);
  
+ // If already switching to the same target mode, do not cancel and restart mid-flight!
+ if([self.mode isEqual:mode]&&self.timer){
+  return;
+ }
+
  // If already connected to target network and IP is valid, complete immediately!
  if([self.mode isEqual:mode]&&[self isCurrentOnTarget]&&[self addressReady]){
   self.target=current;
@@ -285,6 +292,9 @@ static void AssociationReturned(WiFiRef device,WiFiRef network,CFDictionaryRef i
  if(networks)CFRelease(networks);
  
  if(!_network){
+  if(ScanAsync&&_device&&(self.attempt==1||self.attempt%3==0)){
+   ScanAsync(_device,(__bridge CFDictionaryRef)@{},NULL,NULL);
+  }
   if(self.attempt<25){
    // Rapid retry scan interval: 0.5s
    self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.5];

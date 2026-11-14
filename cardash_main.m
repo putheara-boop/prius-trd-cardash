@@ -4820,6 +4820,21 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   NSString *vId=track[@"videoId"]?:@"";
   NSString *btnTitle=artist.length?[NSString stringWithFormat:@"▶️ %@ — %@",title,artist]:[NSString stringWithFormat:@"▶️ %@",title];
   [menu addAction:[TRDSettingAction actionWithTitle:btnTitle style:0 handler:^(TRDSettingAction *a){
+   NSString *audioPath=[NSString stringWithFormat:@"/var/mobile/Documents/LegacyMusic/audio/%@.mp4",vId];
+   if(![[NSFileManager defaultManager]fileExistsAtPath:audioPath]){
+    audioPath=[NSString stringWithFormat:@"/var/mobile/Documents/LegacyMusic/audio/%@.m4a",vId];
+   }
+   if([[NSFileManager defaultManager]fileExistsAtPath:audioPath]&&![[NSFileManager defaultManager]fileExistsAtPath:@"/Applications/LegacyMusic.app/LegacyMusic"]){
+    if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
+    [[AVAudioSession sharedInstance]setCategory:AVAudioSessionCategoryPlayback error:nil];
+    [[AVAudioSession sharedInstance]setActive:YES error:nil];
+    self.radioPlayer=[AVPlayer playerWithURL:[NSURL fileURLWithPath:audioPath]];
+    [self.radioPlayer play];
+    self.song.text=title;
+    self.artist.text=artist.length?artist:@"OFFLINE MUSIC";
+    self.sourceBadge.text=@"OFFLINE";
+    return;
+   }
    NSDictionary *req=@{@"id":vId,@"token":[[NSUUID UUID]UUIDString],@"expires":[NSDate dateWithTimeIntervalSinceNow:60.0],@"pending":@YES};
    [req writeToFile:@"/var/mobile/codex-car/download-play-request.plist" atomically:YES];
    [self browseSource:@"com.legacymusic.app"];
