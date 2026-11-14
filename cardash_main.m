@@ -1297,6 +1297,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)showPhoneContinuityGuide;
 -(void)speakGoodbyeMessage;
 -(void)voiceLanguageSettings;
+-(void)topAuxPillTapped;
+-(void)updateDrive12VPill;
 -(void)openFuelPriceSettings;
 @property UIButton *brakeStatusCard;
 -(void)openBrakeDiagnosticsMenu;
@@ -1596,7 +1598,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   [self.thaiVoicePill setTitle:@"🔊 THAI VOICE" forState:UIControlStateNormal];
   [self.thaiVoicePill setTitleColor:[UIColor colorWithRed:0 green:.85 blue:1 alpha:1] forState:UIControlStateNormal];
   self.thaiVoicePill.titleLabel.font = [UIFont boldSystemFontOfSize:12.5];
-  [self.thaiVoicePill addTarget:self action:@selector(voiceLanguageSettings) forControlEvents:UIControlEventTouchUpInside];
+  [self.thaiVoicePill addTarget:self action:@selector(topAuxPillTapped) forControlEvents:UIControlEventTouchUpInside];
   [self.view addSubview:self.thaiVoicePill];
 
   self.settingsPill = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -2377,33 +2379,34 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
     // Center Clock in Header
     self.clock.hidden = NO;
-    self.clock.frame = CGRectMake(w/2 - 50, barY, 90, 24);
+    self.clock.frame = CGRectMake(416, barY, 86, 26);
     self.clock.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:22] ?: [UIFont boldSystemFontOfSize:22];
     self.clock.textColor = [UIColor whiteColor];
     self.clock.textAlignment = NSTextAlignmentCenter;
     self.date.hidden = YES;
 
-    // Right Pills: Day/Night, OBD2, 12V
+    // Right Pills: Help, Day/Night, OBD2, Live 12V
     CGFloat curRx = w - 18;
-    CGFloat pillH = 30;
-    curRx -= 108;
+    CGFloat pillH = 34;
+    curRx -= 118;
     self.thaiVoicePill.hidden = NO;
-    self.thaiVoicePill.frame = CGRectMake(curRx, barY - 3, 108, pillH);
-    [self.thaiVoicePill setTitle:@"🔋 12V: 13.8V" forState:UIControlStateNormal];
+    self.thaiVoicePill.frame = CGRectMake(curRx, barY - 5, 118, pillH);
+    [self updateDrive12VPill];
 
-    curRx -= 154;
+    curRx -= 156;
     self.obdStatusPill.hidden = NO;
-    self.obdStatusPill.frame = CGRectMake(curRx, barY - 3, 146, pillH);
-    [self.obdStatusPill setTitle:@"● OBD-II: DEMO SIM" forState:UIControlStateNormal];
+    self.obdStatusPill.frame = CGRectMake(curRx, barY - 5, 148, pillH);
+    BOOL obdLiveNow = [TRDOBDClient sharedClient].isConnected;
+    [self.obdStatusPill setTitle:(obdLiveNow ? @"● OBD2: LIVE BLE" : @"● OBD2: SCAN BLE") forState:UIControlStateNormal];
 
-    curRx -= 114;
+    curRx -= 112;
     self.dayNightPill.hidden = NO;
-    self.dayNightPill.frame = CGRectMake(curRx, barY - 3, 106, pillH);
+    self.dayNightPill.frame = CGRectMake(curRx, barY - 5, 104, pillH);
     [self.dayNightPill setTitle:self.nightMode?@"🌙 กลางคืน":@"☀️ กลางวัน" forState:UIControlStateNormal];
 
     curRx -= 86;
     self.helpPill.hidden = NO;
-    self.helpPill.frame = CGRectMake(curRx, barY - 3, 80, pillH);
+    self.helpPill.frame = CGRectMake(curRx, barY - 5, 78, pillH);
 
     // Balanced 3-Column Layout: Left (264px), Center (432px), Right (272px)
     CGFloat leftX = 18, leftW = 264;
@@ -2521,12 +2524,14 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.driveCameraButton.layer.borderWidth = 1.2;
     self.driveCameraButton.layer.borderColor = [UIColor colorWithWhite:.28 alpha:1].CGColor;
     self.driveCameraButton.backgroundColor = [UIColor colorWithRed:.06 green:.10 blue:.15 alpha:.95];
+    self.driveCameraButton.showsTouchWhenHighlighted = YES;
 
     // Luxury Start-to-Stop (A -> B) Live Distance HUD Card in Center Pod
     UIButton *abPod = (UIButton *)[self.view viewWithTag:895];
     if (!abPod) {
       abPod = [UIButton buttonWithType:UIButtonTypeCustom];
       abPod.tag = 895;
+      abPod.showsTouchWhenHighlighted = YES;
       abPod.layer.cornerRadius = 12;
       abPod.layer.borderWidth = 1.3;
       abPod.layer.borderColor = [UIColor colorWithRed:0.0 green:0.92 blue:0.68 alpha:0.65].CGColor;
@@ -2706,7 +2711,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       for (int i = 0; i < 3; i++) {
         UIButton *tb = [UIButton buttonWithType:UIButtonTypeCustom];
         tb.tag = 840 + i;
-        tb.frame = CGRectMake(10 + i * (tabW + tabGap), 10, tabW, 34);
+        tb.showsTouchWhenHighlighted = YES;
+        tb.frame = CGRectMake(10 + i * (tabW + tabGap), 8, tabW, 38);
         [tb setTitle:tNames[i] forState:UIControlStateNormal];
         tb.titleLabel.font = [UIFont boldSystemFontOfSize:13.0];
         tb.layer.cornerRadius = 8;
@@ -2715,7 +2721,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
         [self.driveTripCard addSubview:tb];
       }
 
-      UILabel *subL = [[UILabel alloc] initWithFrame:CGRectMake(12, 50, tcW - 24, 20)];
+      UILabel *subL = [[UILabel alloc] initWithFrame:CGRectMake(12, 52, tcW - 24, 20)];
       subL.tag = 823;
       subL.font = [UIFont boldSystemFontOfSize:13.0];
       subL.textColor = [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:1];
@@ -2724,13 +2730,13 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       // 4 Metric Rows (Left Label + Right Bold Value)
       NSArray *rTitles = @[@"ระยะทางสะสม", @"อัตราสิ้นเปลือง", @"ค่าน้ำมัน (GSH95)", @"เวลาขับ / เฉลี่ย"];
       for (int r = 0; r < 4; r++) {
-        CGFloat ry = 76 + r * 40;
-        UIView *rBg = [[UIView alloc] initWithFrame:CGRectMake(10, ry, tcW - 20, 34)];
+        CGFloat ry = 76 + r * 39;
+        UIView *rBg = [[UIView alloc] initWithFrame:CGRectMake(10, ry, tcW - 20, 33)];
         rBg.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.04];
         rBg.layer.cornerRadius = 6;
         [self.driveTripCard addSubview:rBg];
 
-        UILabel *rL = [[UILabel alloc] initWithFrame:CGRectMake(16, ry, 98, 34)];
+        UILabel *rL = [[UILabel alloc] initWithFrame:CGRectMake(16, ry, 98, 33)];
         rL.font = [UIFont boldSystemFontOfSize:12.5];
         rL.adjustsFontSizeToFitWidth = YES;
         rL.minimumScaleFactor = 0.85;
@@ -2738,7 +2744,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
         rL.text = rTitles[r];
         [self.driveTripCard addSubview:rL];
 
-        UILabel *rV = [[UILabel alloc] initWithFrame:CGRectMake(114, ry, tcW - 128, 34)];
+        UILabel *rV = [[UILabel alloc] initWithFrame:CGRectMake(114, ry, tcW - 128, 33)];
         rV.tag = 851 + r;
         rV.font = [UIFont boldSystemFontOfSize:15.0];
         rV.adjustsFontSizeToFitWidth = YES;
@@ -2750,7 +2756,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
       UIButton *fullTripBtn = [UIButton buttonWithType:UIButtonTypeCustom];
       fullTripBtn.tag = 860;
-      fullTripBtn.frame = CGRectMake(10, 242, tcW - 20, 38);
+      fullTripBtn.showsTouchWhenHighlighted = YES;
+      fullTripBtn.frame = CGRectMake(10, 238, tcW - 20, 42);
       fullTripBtn.backgroundColor = [UIColor colorWithRed:0.05 green:0.14 blue:0.22 alpha:0.95];
       fullTripBtn.layer.cornerRadius = 8;
       fullTripBtn.layer.borderWidth = 1.0;
@@ -2771,6 +2778,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 
     // Right Card 4: Thai Radio Button (Flush with bottom of Right Pod!)
     self.radioButton.hidden = NO;
+    self.radioButton.showsTouchWhenHighlighted = YES;
     self.radioButton.frame = CGRectMake(rightX + 10, topY + 528, rightW - 20, 50);
     [self.radioButton setTitle:@"📻  วิทยุออนไลน์ (THAI RADIO)" forState:UIControlStateNormal];
     self.radioButton.titleLabel.font = [UIFont boldSystemFontOfSize:14.5];
@@ -2796,7 +2804,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.artPlaceholder.hidden = (self.artwork.image != nil);
 
     CGFloat artRight = 28 + consoleH - 24 + 14;
-    CGFloat textW = 304;
+    CGFloat textW = 248;
     self.song.hidden = NO;
     self.song.frame = CGRectMake(artRight, consoleY + 8, textW, 24);
     self.song.font = [UIFont boldSystemFontOfSize:17.5];
@@ -2823,10 +2831,11 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.trackTime.textAlignment = NSTextAlignmentLeft;
 
     self.controls.hidden = NO;
-    self.controls.frame = CGRectMake(artRight + textW + 14, consoleY + 18, 214, 60);
-    CGFloat dcw = 204 / 3.0;
+    self.controls.frame = CGRectMake(artRight + textW + 12, consoleY + 18, 196, 60);
+    CGFloat dcw = 186.0 / 3.0;
     for (int i = 0; i < 3; i++) {
-      UIView *b = [self.controls viewWithTag:20 + i];
+      UIButton *b = (UIButton *)[self.controls viewWithTag:20 + i];
+      b.showsTouchWhenHighlighted = YES;
       b.frame = CGRectMake(i * (dcw + 5), 0, dcw, 60);
       b.layer.cornerRadius = 10;
       if (i == 1) {
@@ -2839,11 +2848,29 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       [b viewWithTag:105].frame = CGRectMake((dcw - 28)/2, (60 - 28)/2, 28, 28);
     }
 
-    self.driveEqBtn.hidden = NO;
-    self.driveEqBtn.frame = CGRectMake(w - 36 - 305, consoleY + 22, 150, 52);
-
+    CGFloat btnY = consoleY + 20;
+    CGFloat btnH = 56;
     self.driveExitBtn.hidden = NO;
-    self.driveExitBtn.frame = CGRectMake(w - 36 - 145, consoleY + 22, 138, 52);
+    self.driveExitBtn.showsTouchWhenHighlighted = YES;
+    self.driveExitBtn.frame = CGRectMake(w - 28 - 134, btnY, 134, btnH);
+    [self.driveExitBtn setTitle:@"🏠 EXIT HOME" forState:UIControlStateNormal];
+
+    self.driveEqBtn.hidden = NO;
+    self.driveEqBtn.showsTouchWhenHighlighted = YES;
+    self.driveEqBtn.frame = CGRectMake(CGRectGetMinX(self.driveExitBtn.frame) - 8 - 130, btnY, 130, btnH);
+    [self.driveEqBtn setTitle:@"🎚️ EQ SOUND" forState:UIControlStateNormal];
+
+    UIColor *drvAccent = TRDAccent();
+    self.searchMusicBtn.hidden = NO;
+    self.searchMusicBtn.showsTouchWhenHighlighted = YES;
+    self.searchMusicBtn.frame = CGRectMake(CGRectGetMinX(self.driveEqBtn.frame) - 8 - 122, btnY, 122, btnH);
+    self.searchMusicBtn.backgroundColor = [drvAccent colorWithAlphaComponent:0.18];
+    self.searchMusicBtn.layer.cornerRadius = 8;
+    self.searchMusicBtn.layer.borderWidth = 1.2;
+    self.searchMusicBtn.layer.borderColor = [drvAccent colorWithAlphaComponent:0.70].CGColor;
+    [self.searchMusicBtn setTitleColor:drvAccent forState:UIControlStateNormal];
+    self.searchMusicBtn.titleLabel.font = [UIFont boldSystemFontOfSize:13.0];
+
     self.driveEQ.hidden = YES;
     self.miniPlayer.hidden = YES;
     UIView *mH = [self.nowPanel viewWithTag:750]; if(mH) mH.hidden = YES;
@@ -2881,6 +2908,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self.view bringSubviewToFront:self.trackProgress];
     [self.view bringSubviewToFront:self.trackTime];
     [self.view bringSubviewToFront:self.controls];
+    [self.view bringSubviewToFront:self.searchMusicBtn];
     [self.view bringSubviewToFront:self.driveEqBtn];
     [self.view bringSubviewToFront:self.driveExitBtn];
     [self refreshLiveOBDDashboard];
@@ -2939,6 +2967,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     self.thaiVoicePill.hidden = NO;
     self.thaiVoicePill.frame = CGRectMake(curRx, barY + 4, 98, pillH);
     self.thaiVoicePill.layer.cornerRadius = 10;
+    self.thaiVoicePill.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
+    [self.thaiVoicePill setTitleColor:[UIColor colorWithRed:0 green:.85 blue:1 alpha:1] forState:UIControlStateNormal];
     [self.thaiVoicePill setTitle:@"🔊 THAI VOICE" forState:UIControlStateNormal];
 
     curRx -= 70;
@@ -3481,6 +3511,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
       [self.dayNightPill setTitle:self.nightMode?@"🌙 NIGHT":@"☀️ DAY" forState:UIControlStateNormal];
     }
   }
+  [self updateDrive12VPill];
 
  NSDate *now=[NSDate date];
  NSString *newClock=[self.clockFormat stringFromDate:now];
@@ -5465,9 +5496,29 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  AudioServicesPlaySystemSound(1057);
 }
 
+-(void)topAuxPillTapped{
+ if(self.driveMode)[self openHybridDiagnosticsMenu];
+ else [self voiceLanguageSettings];
+}
+
+-(void)updateDrive12VPill{
+ if(!self.driveMode || !self.thaiVoicePill || self.thaiVoicePill.hidden) return;
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ double v12 = obd.auxBatteryVoltage;
+ [self.thaiVoicePill setTitle:[NSString stringWithFormat:@"🔋 12V: %.2fV", v12] forState:UIControlStateNormal];
+ BOOL low = (v12 > 0.5 && v12 < 12.1);
+ BOOL chg = (v12 >= 13.4);
+ UIColor *fg = low ? [UIColor colorWithRed:1.0 green:0.35 blue:0.35 alpha:1.0]
+                   : (chg ? [UIColor colorWithRed:0.30 green:0.98 blue:0.58 alpha:1.0]
+                          : [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:1.0]);
+ [self.thaiVoicePill setTitleColor:fg forState:UIControlStateNormal];
+ self.thaiVoicePill.layer.borderColor = [fg colorWithAlphaComponent:0.55].CGColor;
+}
+
 -(void)refreshLiveOBDDashboard{
  TRDOBDClient *obd=[TRDOBDClient sharedClient];
  [self applyGearToUI:obd.currentGear];
+ [self updateDrive12VPill];
 
  // Top OBD status pill
  if(self.obdStatusPill){
