@@ -2475,7 +2475,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   UISwipeGestureRecognizer *dockSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];dockSwR.direction=UISwipeGestureRecognizerDirectionRight;dockSwR.delegate=self;dockSwR.cancelsTouchesInView=NO;dockSwR.delaysTouchesBegan=NO;[self.carplayDock addGestureRecognizer:dockSwR];
   UISwipeGestureRecognizer *gridSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];gridSwR.direction=UISwipeGestureRecognizerDirectionRight;gridSwR.delegate=self;gridSwR.cancelsTouchesInView=NO;gridSwR.delaysTouchesBegan=NO;[self.carplayAppGrid addGestureRecognizer:gridSwR];
   self.edgeR=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:self action:@selector(handleEdgePan:)];self.edgeR.edges=UIRectEdgeLeft;self.edgeR.delegate=self;self.edgeR.cancelsTouchesInView=NO;self.edgeR.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.edgeR];
- self.returnTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(leaveClock)];self.returnTap.enabled=NO;self.returnTap.delegate=self;[self.view addGestureRecognizer:self.returnTap];[UIDevice currentDevice].batteryMonitoringEnabled=YES;UIDeviceBatteryState initBat=[UIDevice currentDevice].batteryState;self.isCarSessionActive=(initBat==UIDeviceBatteryStateCharging||initBat==UIDeviceBatteryStateFull);[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(batteryStateChanged:) name:UIDeviceBatteryStateDidChangeNotification object:nil];dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);Class manager=NSClassFromString(@"BluetoothManager");if([manager respondsToSelector:@selector(sharedInstance)])self.bluetooth=[manager performSelector:@selector(sharedInstance)];dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",RTLD_LAZY);[self update];NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];BOOL skipWelcome=[ud boolForKey:@"TRDSkipNextLaunchWelcome"];BOOL sessionWelcomeShown=[ud boolForKey:@"TRDWelcomeShownForSession"];NSTimeInterval lastActive=[ud doubleForKey:@"TRDLastActiveTimestamp"];NSTimeInterval nowTs=[[NSDate date] timeIntervalSince1970];BOOL recentSession=(lastActive>0&&(nowTs-lastActive)<1800);if(skipWelcome){[ud setBool:NO forKey:@"TRDSkipNextLaunchWelcome"];[ud synchronize];self.didShowWelcome=YES;}else if((self.isCarSessionActive&&sessionWelcomeShown)||recentSession){self.didShowWelcome=YES;}if(!self.didShowWelcome){self.didShowWelcome=YES;if(self.isCarSessionActive){[ud setBool:YES forKey:@"TRDWelcomeShownForSession"];}[ud setDouble:nowTs forKey:@"TRDLastActiveTimestamp"];[ud synchronize];[self showWelcome];}
+ self.returnTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(leaveClock)];self.returnTap.enabled=NO;self.returnTap.cancelsTouchesInView=NO;self.returnTap.delegate=self;[self.view addGestureRecognizer:self.returnTap];[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(ensureActiveRunLoopHealth) name:UIApplicationDidBecomeActiveNotification object:nil];[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(ensureActiveRunLoopHealth) name:UIApplicationWillEnterForegroundNotification object:nil];[UIDevice currentDevice].batteryMonitoringEnabled=YES;UIDeviceBatteryState initBat=[UIDevice currentDevice].batteryState;self.isCarSessionActive=(initBat==UIDeviceBatteryStateCharging||initBat==UIDeviceBatteryStateFull);[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(batteryStateChanged:) name:UIDeviceBatteryStateDidChangeNotification object:nil];dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);Class manager=NSClassFromString(@"BluetoothManager");if([manager respondsToSelector:@selector(sharedInstance)])self.bluetooth=[manager performSelector:@selector(sharedInstance)];dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",RTLD_LAZY);[self update];NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];BOOL skipWelcome=[ud boolForKey:@"TRDSkipNextLaunchWelcome"];BOOL sessionWelcomeShown=[ud boolForKey:@"TRDWelcomeShownForSession"];NSTimeInterval lastActive=[ud doubleForKey:@"TRDLastActiveTimestamp"];NSTimeInterval nowTs=[[NSDate date] timeIntervalSince1970];BOOL recentSession=(lastActive>0&&(nowTs-lastActive)<1800);if(skipWelcome){[ud setBool:NO forKey:@"TRDSkipNextLaunchWelcome"];[ud synchronize];self.didShowWelcome=YES;}else if((self.isCarSessionActive&&sessionWelcomeShown)||recentSession){self.didShowWelcome=YES;}if(!self.didShowWelcome){self.didShowWelcome=YES;if(self.isCarSessionActive){[ud setBool:YES forKey:@"TRDWelcomeShownForSession"];}[ud setDouble:nowTs forKey:@"TRDLastActiveTimestamp"];[ud synchronize];[self showWelcome];}
   [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
   MPRemoteCommandCenter *rCenter = [MPRemoteCommandCenter sharedCommandCenter];
   [rCenter.nextTrackCommand removeTarget:nil];
@@ -2498,17 +2498,29 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 -(void)rotateTo:(NSNumber *)value{[[UIDevice currentDevice]setValue:value forKey:@"orientation"];[UIViewController attemptRotationToDeviceOrientation];}
 -(BOOL)shouldAutorotate{return YES;}
 -(UIInterfaceOrientationMask)supportedInterfaceOrientations{return UIInterfaceOrientationMaskLandscape;}
+static NSString *gTRDLastTouchInfo=@"none";
+static NSTimeInterval gTRDFeatureBannerShownAt=0;
+static NSUInteger gTRDUpdateTicks=0;
 // The audio source owns Now Playing and Bluetooth remote commands.
 -(void)ensureActiveRunLoopHealth{
- if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive && self.timer)return;
- [UIApplication sharedApplication].idleTimerDisabled=YES;
+ while([UIApplication sharedApplication].isIgnoringInteractionEvents)[[UIApplication sharedApplication] endIgnoringInteractionEvents];
  self.view.userInteractionEnabled=YES;
+ self.view.window.userInteractionEnabled=YES;
  NSTimeInterval now=[NSProcessInfo processInfo].systemUptime;
+ if(self.featureExplanationBanner && (self.featureExplanationBanner.alpha<0.05 || (gTRDFeatureBannerShownAt>0 && (now-gTRDFeatureBannerShownAt)>9.0)))[self hideFeatureExplanation];
+ if(self.welcome && self.welcome.alpha<0.05)[self hideWelcome];
+ if(self.tripSummaryCard && self.tripSummaryCard.alpha<0.05)[self hideTripSummary];
+ if(self.lowFuelBanner && self.lowFuelBanner.alpha<0.05)[self dismissLowFuelBanner];
+ if([UIApplication sharedApplication].applicationState==UIApplicationStateBackground && self.timer && [self.timer isValid])return;
+ [UIApplication sharedApplication].idleTimerDisabled=YES;
  if(self.navGuardUntil > now + 2.0)self.navGuardUntil=now;
  if(!self.timer || ![self.timer isValid]){
-  self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];
+  self.timer=[NSTimer timerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];
   self.timer.tolerance=.1;
+  [[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
  }
+ NSString *nowClock=self.clockFormat?[self.clockFormat stringFromDate:[NSDate date]]:nil;
+ if(nowClock && self.clock.text && ![self.clock.text isEqualToString:nowClock])[self update];
 }
 -(void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];notify_post("com.codex.trd.network.internet");[self applyTheme];[self applyDisplaySchedule];[self becomeFirstResponder];if(self.welcome){[self.view bringSubviewToFront:self.welcome];}else if(!self.didShowWelcome){self.didShowWelcome=YES;[self showWelcome];}[self.audioBars start];[self ensureActiveRunLoopHealth];[self update];}
 -(void)viewWillDisappear:(BOOL)animated{[super viewWillDisappear:animated];[self hideWelcome];[self.audioBars stop];[self.driveCar stop];[self.timer invalidate];self.timer=nil;[self saveTrip];[UIApplication sharedApplication].idleTimerDisabled=NO;}
@@ -4031,6 +4043,12 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 }
 
 -(void)update{
+  gTRDUpdateTicks++;
+  if(self.featureExplanationBanner && gTRDFeatureBannerShownAt>0 && ([NSProcessInfo processInfo].systemUptime-gTRDFeatureBannerShownAt)>9.0)[self hideFeatureExplanation];
+  if([UIApplication sharedApplication].applicationState==UIApplicationStateActive){
+    while([UIApplication sharedApplication].isIgnoringInteractionEvents)[[UIApplication sharedApplication] endIgnoringInteractionEvents];
+    self.view.userInteractionEnabled=YES;
+  }
 
   if(self.topClockLabel && !self.topClockLabel.hidden){
     NSString *tc = [self.clockFormat stringFromDate:[NSDate date]];
@@ -5310,6 +5328,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   if(self.tripSummaryCard){
     UIView *c=self.tripSummaryCard;
     self.tripSummaryCard=nil;
+    c.userInteractionEnabled=NO;
     [UIView animateWithDuration:0.3 animations:^{
       c.alpha=0;
     } completion:^(BOOL finished){
@@ -5656,6 +5675,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
   if(self.lowFuelBanner){
     UIView *b = self.lowFuelBanner;
     self.lowFuelBanner = nil;
+    b.userInteractionEnabled = NO;
     [UIView animateWithDuration:0.2 animations:^{ b.alpha = 0; } completion:^(BOOL fin){ [b removeFromSuperview]; }];
   }
 }
@@ -6193,7 +6213,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
   case 68:[self carSettings];break;
  }
 }
--(void)homePage{[self cancelNavigationTouch:nil forEvent:nil];self.mapConfirmationGeneration++;self.mapURLRequestGeneration++;self.mapNavigationAuthorized=NO;self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.18;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];self.mapContainer.hidden=YES;self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)homePage{[self cancelNavigationTouch:nil forEvent:nil];self.mapConfirmationGeneration++;self.mapURLRequestGeneration++;self.mapNavigationAuthorized=NO;self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.12;[self hideFeatureExplanation];[self dismissLowFuelBanner];if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];[self ensureActiveRunLoopHealth];self.mapContainer.hidden=YES;self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)openMusic{self.offlinePlaybackActive=NO;if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet");[self showMusicSources:nil];}
 -(void)executeOrQueueMapJS:(NSString *)js{
   if(!js.length) return;
@@ -6678,7 +6698,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 -(void)testBrowse{[self.browseMusic sendActionsForControlEvents:UIControlEventTouchUpInside];}
 -(void)dismissSourceMenu{[self.settingsSheet dismiss];[self dismissViewControllerAnimated:NO completion:nil];}
 -(void)testMedia:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<3)[(UIButton *)[self.controls viewWithTag:20+i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
--(void)capture{UIView *surface=self.view;UIGraphicsBeginImageContextWithOptions(surface.bounds.size,YES,1);[surface drawViewHierarchyInRect:surface.bounds afterScreenUpdates:YES];NSData *png=UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext());UIGraphicsEndImageContext();[png writeToFile:@"/var/mobile/h109-build/cardash.png" atomically:YES];NSDictionary *report=@{@"driveTripText":self.driveTripButton.currentTitle?:@"",@"driveTripVisible":@(!self.driveTripButton.hidden),@"driveTripFrame":NSStringFromCGRect(self.driveTripButton.frame),@"driveCameraVisible":@(!self.driveCameraButton.hidden),@"driveCameraFrame":NSStringFromCGRect(self.driveCameraButton.frame),@"driveCameraActions":[self.driveCameraButton actionsForTarget:self forControlEvent:UIControlEventTouchUpInside]?:@[],@"audioOutput":self.audioOutput?:@"UNKNOWN",@"audioDevice":self.audioDevice?:@"",@"outputVolume":@(self.outputVolume),@"songVisible":@(!self.song.hidden),@"mapMode":@(self.mapMode),@"tripMode":@(self.tripMode),@"tripRunning":@(self.trip.running),@"tripSummary":[self.trip summary],@"tripState":self.tripView.state.text?:@"",@"miniVisible":@(!self.miniPlayer.hidden),@"miniTitle":self.miniPlayer.title.text?:@"",@"miniArtist":self.miniPlayer.artist.text?:@"",@"miniIcon":@(self.miniPlayer.icon.kind),@"musicHoldCount":@(((UIView *)self.navButtons[1]).gestureRecognizers.count),@"calmDrive":@(self.calmDrive),@"carLink":self.statusCar?:@"UNKNOWN",@"wifiSSID":self.statusWiFi?:@"NO NETWORK",@"powerState":self.statusPower?:@"UNKNOWN",@"gpsLive":@(self.gpsLive),@"navLabels":[self.navButtons valueForKey:@"accessibilityLabel"],@"youtubeSource":@(self.youtubeSource),@"commandsPending":@(self.commandsPending),@"metadataPending":@(self.metadataPending),@"artworkDecodes":@(self.artworkDecodes),@"artworkPixels":@(self.artwork.image?MAX(CGImageGetWidth(self.artwork.image.CGImage),CGImageGetHeight(self.artwork.image.CGImage)):0),@"memoryWarnings":@(self.memoryWarnings),@"gpsAccuracy":@(self.gps.desiredAccuracy),@"timerActive":@(self.timer!=nil),@"meterActive":@(self.audioBars.refreshTimer!=nil),@"settingsTitle":self.settingsSheet.title?:@"",@"settingsActions":[self.settingsSheet.actions valueForKey:@"title"]?:@[],@"playbackKnown":@(self.hasPlaybackRate),@"transportIcon":@(((DashIcon *)[[self.controls viewWithTag:21]viewWithTag:105]).kind),@"settingsVisible":@(self.settingsSheet!=nil),@"theme":@(TRDTheme),@"displayMode":@(self.displayMode),@"welcomeVisible":@(self.welcome!=nil),@"mediaRate":@(self.mediaRate),@"bounds":NSStringFromCGRect(self.view.bounds),@"navFrame":NSStringFromCGRect(self.navigation.frame),@"musicMode":@(self.musicMode),@"navigationVisible":@(!self.navigation.hidden),@"trackTime":self.trackTime.text?:@"",@"trackProgress":@(self.trackProgress.progress),@"wheelAnimating":@(self.driveCar.wheelTimer!=nil),@"wheelAngle":@(self.driveCar.angle),@"autoDriveSuppressed":@(self.autoDriveSuppressed),@"driveMode":@(self.driveMode),@"audioState":self.audioBars.state?:@"",@"audioRMS":@(self.audioBars.rms),@"carStatus":self.carStatus.text?:@"",@"hasArtwork":@(self.artwork.image!=nil),@"artist":self.artist.text?:@"",@"nightMode":@(self.nightMode),@"brightness":@([UIScreen mainScreen].brightness),@"speed":self.speed.text?:@"",@"gps":self.gpsStatus.text?:@"",@"clock":self.clock.text?:@"",@"date":self.date.text?:@"",@"network":self.network.text?:@"",@"song":self.song.text?:@"",@"focused":@(self.focused),@"clockHudVisible":@(!self.clockHud.hidden),@"clockHudSpeed":((UILabel *)[self.clockHud viewWithTag:402]).text?:@"",@"clockHudGps":((UILabel *)[self.clockHud viewWithTag:405]).text?:@"",@"clockHudTrip":((UILabel *)[self.clockHud viewWithTag:407]).text?:@"",@"sourceBadge":self.sourceBadge.text?:@"",@"driveEQTitle":self.driveEQ.currentTitle?:@"",@"lastAction":self.lastAction?:@""};[report writeToFile:@"/var/mobile/h109-build/cardash-state.plist" atomically:YES];}
+-(void)capture{UIView *surface=self.view;UIGraphicsBeginImageContextWithOptions(surface.bounds.size,YES,1);[surface drawViewHierarchyInRect:surface.bounds afterScreenUpdates:YES];NSData *png=UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext());UIGraphicsEndImageContext();[png writeToFile:@"/var/mobile/h109-build/cardash.png" atomically:YES];UIView *hitCenter=[surface hitTest:CGPointMake(CGRectGetMidX(surface.bounds),CGRectGetMidY(surface.bounds)) withEvent:nil];UIView *dockLast=self.navButtons.lastObject;UIView *hitDock=dockLast?[surface hitTest:[surface convertPoint:CGPointMake(CGRectGetMidX(dockLast.bounds),CGRectGetMidY(dockLast.bounds)) fromView:dockLast] withEvent:nil]:nil;UIView *playBtn=[self.controls viewWithTag:21];UIView *hitPlay=playBtn?[surface hitTest:[surface convertPoint:CGPointMake(CGRectGetMidX(playBtn.bounds),CGRectGetMidY(playBtn.bounds)) fromView:playBtn] withEvent:nil]:nil;NSTimeInterval uptime=[NSProcessInfo processInfo].systemUptime;NSDictionary *report=@{@"appState":@([UIApplication sharedApplication].applicationState),@"viewInteraction":@(surface.userInteractionEnabled),@"windowInteraction":@(surface.window.userInteractionEnabled),@"ignoringEvents":@([UIApplication sharedApplication].isIgnoringInteractionEvents),@"featureBannerVisible":@(self.featureExplanationBanner!=nil),@"tripSummaryVisible":@(self.tripSummaryCard!=nil),@"lowFuelVisible":@(self.lowFuelBanner!=nil),@"navGuardRemaining":@(MAX(0.0,self.navGuardUntil-uptime)),@"ticks":@(gTRDUpdateTicks),@"lastTouchInfo":gTRDLastTouchInfo?:@"none",@"hitCenter":NSStringFromClass([hitCenter class])?:@"nil",@"hitDockSettings":NSStringFromClass([hitDock class])?:@"nil",@"hitPlay":NSStringFromClass([hitPlay class])?:@"nil",@"driveTripText":self.driveTripButton.currentTitle?:@"",@"driveTripVisible":@(!self.driveTripButton.hidden),@"driveTripFrame":NSStringFromCGRect(self.driveTripButton.frame),@"driveCameraVisible":@(!self.driveCameraButton.hidden),@"driveCameraFrame":NSStringFromCGRect(self.driveCameraButton.frame),@"driveCameraActions":[self.driveCameraButton actionsForTarget:self forControlEvent:UIControlEventTouchUpInside]?:@[],@"audioOutput":self.audioOutput?:@"UNKNOWN",@"audioDevice":self.audioDevice?:@"",@"outputVolume":@(self.outputVolume),@"songVisible":@(!self.song.hidden),@"mapMode":@(self.mapMode),@"tripMode":@(self.tripMode),@"tripRunning":@(self.trip.running),@"tripSummary":[self.trip summary],@"tripState":self.tripView.state.text?:@"",@"miniVisible":@(!self.miniPlayer.hidden),@"miniTitle":self.miniPlayer.title.text?:@"",@"miniArtist":self.miniPlayer.artist.text?:@"",@"miniIcon":@(self.miniPlayer.icon.kind),@"musicHoldCount":@(((UIView *)self.navButtons[1]).gestureRecognizers.count),@"calmDrive":@(self.calmDrive),@"carLink":self.statusCar?:@"UNKNOWN",@"wifiSSID":self.statusWiFi?:@"NO NETWORK",@"powerState":self.statusPower?:@"UNKNOWN",@"gpsLive":@(self.gpsLive),@"navLabels":[self.navButtons valueForKey:@"accessibilityLabel"],@"youtubeSource":@(self.youtubeSource),@"commandsPending":@(self.commandsPending),@"metadataPending":@(self.metadataPending),@"artworkDecodes":@(self.artworkDecodes),@"artworkPixels":@(self.artwork.image?MAX(CGImageGetWidth(self.artwork.image.CGImage),CGImageGetHeight(self.artwork.image.CGImage)):0),@"memoryWarnings":@(self.memoryWarnings),@"gpsAccuracy":@(self.gps.desiredAccuracy),@"timerActive":@(self.timer!=nil&&[self.timer isValid]),@"meterActive":@(self.audioBars.refreshTimer!=nil),@"settingsTitle":self.settingsSheet.title?:@"",@"settingsActions":[self.settingsSheet.actions valueForKey:@"title"]?:@[],@"playbackKnown":@(self.hasPlaybackRate),@"transportIcon":@(((DashIcon *)[[self.controls viewWithTag:21]viewWithTag:105]).kind),@"settingsVisible":@(self.settingsSheet!=nil),@"theme":@(TRDTheme),@"displayMode":@(self.displayMode),@"welcomeVisible":@(self.welcome!=nil),@"mediaRate":@(self.mediaRate),@"bounds":NSStringFromCGRect(self.view.bounds),@"navFrame":NSStringFromCGRect(self.navigation.frame),@"musicMode":@(self.musicMode),@"navigationVisible":@(!self.navigation.hidden),@"trackTime":self.trackTime.text?:@"",@"trackProgress":@(self.trackProgress.progress),@"wheelAnimating":@(self.driveCar.wheelTimer!=nil),@"wheelAngle":@(self.driveCar.angle),@"autoDriveSuppressed":@(self.autoDriveSuppressed),@"driveMode":@(self.driveMode),@"audioState":self.audioBars.state?:@"",@"audioRMS":@(self.audioBars.rms),@"carStatus":self.carStatus.text?:@"",@"hasArtwork":@(self.artwork.image!=nil),@"artist":self.artist.text?:@"",@"nightMode":@(self.nightMode),@"brightness":@([UIScreen mainScreen].brightness),@"speed":self.speed.text?:@"",@"gps":self.gpsStatus.text?:@"",@"clock":self.clock.text?:@"",@"date":self.date.text?:@"",@"network":self.network.text?:@"",@"song":self.song.text?:@"",@"focused":@(self.focused),@"clockHudVisible":@(!self.clockHud.hidden),@"clockHudSpeed":((UILabel *)[self.clockHud viewWithTag:402]).text?:@"",@"clockHudGps":((UILabel *)[self.clockHud viewWithTag:405]).text?:@"",@"clockHudTrip":((UILabel *)[self.clockHud viewWithTag:407]).text?:@"",@"sourceBadge":self.sourceBadge.text?:@"",@"driveEQTitle":self.driveEQ.currentTitle?:@"",@"lastAction":self.lastAction?:@""};[report writeToFile:@"/var/mobile/h109-build/cardash-state.plist" atomically:YES];}
 -(BOOL)canBecomeFirstResponder{return YES;}
 -(MPRemoteCommandHandlerStatus)carRemoteNext:(id)event{
  if(self.radioPlayer){if(self.offlinePlaybackActive)[self nextOfflineTrack];return MPRemoteCommandHandlerStatusSuccess;}
@@ -6753,16 +6773,18 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     [self.featureExplanationTimer invalidate];
     self.featureExplanationTimer = nil;
   }
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideFeatureExplanation) object:nil];
   if (self.featureExplanationBanner) {
     [self.featureExplanationBanner removeFromSuperview];
     self.featureExplanationBanner = nil;
   }
 
-  UIView *dim = [[UIView alloc] initWithFrame:self.view.bounds];
+  UIButton *dim = [UIButton buttonWithType:UIButtonTypeCustom];
+  dim.frame = self.view.bounds;
   dim.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.85];
   dim.userInteractionEnabled = YES;
   dim.layer.zPosition = 99999;
-  [dim addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(hideFeatureExplanation)]];
+  [dim addTarget:self action:@selector(hideFeatureExplanation) forControlEvents:UIControlEventTouchUpInside];
 
   CGFloat w = 720;
   CGFloat h = 420;
@@ -6779,7 +6801,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   card.layer.shadowRadius = 24;
   card.layer.shadowOpacity = 0.95;
   card.layer.zPosition = 100000;
-  card.userInteractionEnabled = YES;
+  card.userInteractionEnabled = NO;
 
   UIView *topBar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, 56)];
   topBar.backgroundColor = [UIColor colorWithRed:0.02 green:0.20 blue:0.30 alpha:1.0];
@@ -6868,10 +6890,13 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
   [dim addSubview:card];
   self.featureExplanationBanner = dim;
+  gTRDFeatureBannerShownAt = [NSProcessInfo processInfo].systemUptime;
   [self.view addSubview:self.featureExplanationBanner];
   [self.view bringSubviewToFront:self.featureExplanationBanner];
   
-  self.featureExplanationTimer = [NSTimer scheduledTimerWithTimeInterval:8.0 target:self selector:@selector(hideFeatureExplanation) userInfo:nil repeats:NO];
+  self.featureExplanationTimer = [NSTimer timerWithTimeInterval:8.0 target:self selector:@selector(hideFeatureExplanation) userInfo:nil repeats:NO];
+  [[NSRunLoop mainRunLoop] addTimer:self.featureExplanationTimer forMode:NSRunLoopCommonModes];
+  [self performSelector:@selector(hideFeatureExplanation) withObject:nil afterDelay:8.2 inModes:@[NSRunLoopCommonModes]];
 }
 
 -(void)showFeatureExplanation:(NSString *)title body:(NSString *)body {
@@ -6879,18 +6904,18 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     [self.featureExplanationTimer invalidate];
     self.featureExplanationTimer = nil;
   }
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideFeatureExplanation) object:nil];
   if (self.featureExplanationBanner) {
     [self.featureExplanationBanner removeFromSuperview];
     self.featureExplanationBanner = nil;
   }
 
-  UIView *dim = [[UIView alloc] initWithFrame:self.view.bounds];
+  UIButton *dim = [UIButton buttonWithType:UIButtonTypeCustom];
+  dim.frame = self.view.bounds;
   dim.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.80];
   dim.userInteractionEnabled = YES;
   dim.layer.zPosition = 99999;
-
-  UITapGestureRecognizer *bgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(hideFeatureExplanation)];
-  [dim addGestureRecognizer:bgTap];
+  [dim addTarget:self action:@selector(hideFeatureExplanation) forControlEvents:UIControlEventTouchUpInside];
 
   CGFloat w = 660;
   CGFloat h = 340;
@@ -6907,7 +6932,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   card.layer.shadowRadius = 20;
   card.layer.shadowOpacity = 0.9;
   card.layer.zPosition = 100000;
-  card.userInteractionEnabled = YES;
+  card.userInteractionEnabled = NO;
 
   UIView *topBar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, 52)];
   topBar.backgroundColor = [UIColor colorWithRed:0.02 green:0.24 blue:0.34 alpha:1.0];
@@ -6948,15 +6973,20 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   [self.view addSubview:dim];
   [self.view bringSubviewToFront:dim];
   self.featureExplanationBanner = dim;
+  gTRDFeatureBannerShownAt = [NSProcessInfo processInfo].systemUptime;
 
   [UIView animateWithDuration:0.22 animations:^{
     dim.alpha = 1.0;
   }];
 
-  self.featureExplanationTimer = [NSTimer scheduledTimerWithTimeInterval:8.0 target:self selector:@selector(hideFeatureExplanation) userInfo:nil repeats:NO];
+  self.featureExplanationTimer = [NSTimer timerWithTimeInterval:8.0 target:self selector:@selector(hideFeatureExplanation) userInfo:nil repeats:NO];
+  [[NSRunLoop mainRunLoop] addTimer:self.featureExplanationTimer forMode:NSRunLoopCommonModes];
+  [self performSelector:@selector(hideFeatureExplanation) withObject:nil afterDelay:8.2 inModes:@[NSRunLoopCommonModes]];
 }
 
 -(void)hideFeatureExplanation {
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideFeatureExplanation) object:nil];
+  gTRDFeatureBannerShownAt = 0;
   if (self.featureExplanationTimer) {
     [self.featureExplanationTimer invalidate];
     self.featureExplanationTimer = nil;
@@ -6964,6 +6994,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   if (!self.featureExplanationBanner) return;
   UIView *dim = self.featureExplanationBanner;
   self.featureExplanationBanner = nil;
+  dim.userInteractionEnabled = NO;
   [UIView animateWithDuration:0.18 animations:^{
     dim.alpha = 0.0;
   } completion:^(BOOL finished){
@@ -7548,11 +7579,42 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 }
 
 @end
+@interface TRDWindow : UIWindow
+@end
+@implementation TRDWindow
+-(void)sendEvent:(UIEvent *)event{
+ @try{
+  if(event.type==UIEventTypeTouches){
+   UITouch *t=[[event allTouches] anyObject];
+   if(t){
+    CGPoint pt=[t locationInView:self];
+    UIView *hit=[self hitTest:pt withEvent:event];
+    UIViewController *rc=self.rootViewController;
+    gTRDLastTouchInfo=[NSString stringWithFormat:@"p=%.0f,%.0f ph=%ld hit=%@ tv=%@ rc=%d",pt.x,pt.y,(long)t.phase,NSStringFromClass([hit class])?:@"nil",NSStringFromClass([t.view class])?:@"nil",rc?(int)rc.view.userInteractionEnabled:-1];
+    if([rc isKindOfClass:[Dashboard class]]){
+     Dashboard *d=(Dashboard *)rc;
+     d.view.userInteractionEnabled=YES;
+     self.userInteractionEnabled=YES;
+     while([UIApplication sharedApplication].isIgnoringInteractionEvents)[[UIApplication sharedApplication] endIgnoringInteractionEvents];
+     if(d.welcome&&d.welcome.alpha<0.05)[d hideWelcome];
+     if(d.tripSummaryCard&&d.tripSummaryCard.alpha<0.05)[d hideTripSummary];
+     if(d.lowFuelBanner&&d.lowFuelBanner.alpha<0.05)[d dismissLowFuelBanner];
+     if(d.featureExplanationBanner&&(d.featureExplanationBanner.alpha<0.05||(gTRDFeatureBannerShownAt>0&&([NSProcessInfo processInfo].systemUptime-gTRDFeatureBannerShownAt)>9.0)))[d hideFeatureExplanation];
+     if(d.settingsSheet&&!d.settingsSheet.superview)d.settingsSheet=nil;
+     if(d.settingsSheet&&t.phase==UITouchPhaseEnded&&hit==d.settingsSheet&&!CGRectContainsPoint(d.settingsSheet.panel.frame,[self convertPoint:pt toView:d.settingsSheet]))[d.settingsSheet dismiss];
+     [d ensureActiveRunLoopHealth];
+    }
+   }
+  }
+ }@catch(NSException *e){}
+ [super sendEvent:event];
+}
+@end
 @interface CarApp:UIResponder<UIApplicationDelegate>
 @property(nonatomic,strong) UIWindow *window;
 @end
 @implementation CarApp
--(BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options{self.window=[[UIWindow alloc]initWithFrame:[UIScreen mainScreen].bounds];self.window.rootViewController=[Dashboard new];[self.window makeKeyAndVisible];[self performSelector:@selector(carStartAutoplay) withObject:nil afterDelay:4.0];return YES;}
+-(BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options{self.window=[[TRDWindow alloc]initWithFrame:[UIScreen mainScreen].bounds];self.window.rootViewController=[Dashboard new];[self.window makeKeyAndVisible];[self performSelector:@selector(carStartAutoplay) withObject:nil afterDelay:4.0];return YES;}
 -(void)carStartAutoplay{
  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
  Dashboard *v=(Dashboard *)self.window.rootViewController;
@@ -7568,6 +7630,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 -(BOOL)application:(UIApplication *)app openURL:(NSURL *)url options:(NSDictionary *)options{
  Dashboard *v=(Dashboard *)self.window.rootViewController;
  [v ensureActiveRunLoopHealth];
+ if(![url.host isEqualToString:@"explain"]&&![url.host isEqualToString:@"capture"])[v hideFeatureExplanation];
  if([url.host isEqualToString:@"home"])[v homePage];
  if([url.host isEqualToString:@"carplay"])[v requestMapURL:YES];
  if([url.host isEqualToString:@"grid"])[v toggleCarPlayGrid];
@@ -7609,7 +7672,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if([url.host isEqualToString:@"help"])[v openFeatureHelpMenu];
  if([url.host isEqualToString:@"explain"])[v carStatusTapped];
  if([url.host isEqualToString:@"oil"])[v serviceSettings];
- if([url.host isEqualToString:@"capture"])[v capture];
+ if([url.host isEqualToString:@"capture"]){[v ensureActiveRunLoopHealth];[v update];[v capture];}
  if([url.host isEqualToString:@"testsettings"]&&url.path.length>1)[v testSettingsAction:@([[url.path substringFromIndex:1] integerValue])];
  return YES;
 }
@@ -7645,7 +7708,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [v ensureActiveRunLoopHealth];
  [v restoreDisplayBrightness];
 }
--(void)applicationDidBecomeActive:(UIApplication *)app{notify_post("com.codex.trd.network.internet");[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];Dashboard *v=(Dashboard *)self.window.rootViewController;[v ensureActiveRunLoopHealth];[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.35;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[v ensureActiveRunLoopHealth];[v startGPS];[v update];[v captureLifecycle];}
+-(void)applicationDidBecomeActive:(UIApplication *)app{notify_post("com.codex.trd.network.internet");[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];Dashboard *v=(Dashboard *)self.window.rootViewController;[v ensureActiveRunLoopHealth];[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.10;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[v ensureActiveRunLoopHealth];[v startGPS];[v update];[v captureLifecycle];}
 
 @end
 static void TRDCrashHandler(NSException *exception) {

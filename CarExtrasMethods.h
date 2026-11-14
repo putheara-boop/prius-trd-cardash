@@ -1,6 +1,6 @@
 #import "TRDWelcomeGate.h"
 -(TRDSettingsMenu *)settingsMenu:(NSString *)title message:(NSString *)message{TRDSettingsMenu *m=[TRDSettingsMenu alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleActionSheet];return m;}
--(void)presentSettingsMenu:(TRDSettingsMenu *)m{[self.settingsSheet dismiss];self.settingsSheet=m;m.openedAt=[NSDate timeIntervalSinceReferenceDate];m.frame=self.view.bounds;__weak Dashboard *weak=self;m.miniPlayer=self.miniPlayer;self.miniPlayer.hidden=NO;[m.panel addSubview:self.miniPlayer];m.onDismiss=^{Dashboard *v=weak;v.settingsSheet=nil;v.miniPlayer.hidden=YES;[v.view addSubview:v.miniPlayer];[v.view setNeedsLayout];};[self.view addSubview:m];[self refreshMini];[m setNeedsLayout];}
+-(void)presentSettingsMenu:(TRDSettingsMenu *)m{[self.settingsSheet dismiss];self.settingsSheet=m;m.openedAt=[NSDate timeIntervalSinceReferenceDate];m.frame=self.view.bounds;__weak Dashboard *weak=self;m.miniPlayer=self.miniPlayer;self.miniPlayer.hidden=NO;[m.panel addSubview:self.miniPlayer];m.onDismiss=^{Dashboard *v=weak;v.settingsSheet=nil;v.miniPlayer.hidden=YES;[v.view addSubview:v.miniPlayer];[v.view setNeedsLayout];};[self.view addSubview:m];[self refreshMini];[m setNeedsLayout];[m layoutIfNeeded];}
 -(void)confirmSettingsActionTitle:(NSString *)title message:(NSString *)message confirmTitle:(NSString *)confirmTitle onConfirm:(void(^)(void))onConfirm{
  TRDSettingsMenu *confirm=[self settingsMenu:title?:@"CONFIRM ACTION" message:message?:@"Please confirm to continue."];
  [confirm addAction:[TRDSettingAction actionWithTitle:confirmTitle?:@"Confirm" style:0 handler:^(TRDSettingAction *a){if(onConfirm)onConfirm();}]];
@@ -427,6 +427,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
  if(!self.welcome) return;
  CarWelcome *view=self.welcome;
  self.welcome=nil;
+ view.userInteractionEnabled=NO;
  [UIView animateWithDuration:.25 animations:^{view.alpha=0;} completion:^(BOOL done){
   [view removeFromSuperview];
   [self.view setNeedsLayout];
@@ -442,14 +443,17 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
 -(void)chooseProfile:(NSString *)bundle title:(NSString *)title{TRDSettingsMenu *m=[self settingsMenu:title message:@"Used automatically when this app becomes the audio source."];for(NSString *name in TRDProfileNames())[m addAction:[TRDSettingAction actionWithTitle:name style:0 handler:^(TRDSettingAction *a){NSMutableDictionary *cfg=[[NSDictionary dictionaryWithContentsOfFile:TRDProfilesPath]mutableCopy]?:[NSMutableDictionary dictionary];NSMutableDictionary *profiles=[cfg[@"profiles"]mutableCopy]?:[NSMutableDictionary dictionary];profiles[bundle]=name;cfg[@"profiles"]=profiles;[cfg writeToFile:TRDProfilesPath atomically:YES];TRDProfileChanged();[self soundProfileSettings];}]];[self presentSettingsMenu:m];}
 
 -(void)restoreDisplayBrightness{
- if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
+ if([UIApplication sharedApplication].applicationState==UIApplicationStateBackground)return;
  [UIApplication sharedApplication].idleTimerDisabled=YES;
+ while([UIApplication sharedApplication].isIgnoringInteractionEvents)[[UIApplication sharedApplication] endIgnoringInteractionEvents];
  self.view.userInteractionEnabled=YES;
+ self.view.window.userInteractionEnabled=YES;
  CGFloat target=self.nightMode?.25:.85;
  [UIScreen mainScreen].brightness=target;
  if(!self.timer || ![self.timer isValid]){
-  self.timer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];
+  self.timer=[NSTimer timerWithTimeInterval:1 target:self selector:@selector(update) userInfo:nil repeats:YES];
   self.timer.tolerance=.1;
+  [[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
  }
  [self startGPS];
 }
