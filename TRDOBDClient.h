@@ -67,6 +67,9 @@ extern NSString * const TRDOBDGearChangedNotification;
 @property (nonatomic, assign, readonly) BOOL doorRearRightOpen;      // Rear Right Door
 @property (nonatomic, assign, readonly) BOOL trunkOpen;              // Hatch / Trunk
 @property (nonatomic, assign, readonly) BOOL doorSensorsLive;        // YES when CAN 0x620 body frame received
+@property (nonatomic, assign, readonly) BOOL autoDoorLockEnabled;    // Auto-lock at >= 20 km/h via Body ECU 750
+@property (nonatomic, assign, readonly) BOOL autoDoorUnlockOnParkEnabled; // Auto-unlock when shifting to P
+@property (nonatomic, assign, readonly) BOOL autoDoorLockedForDrive; // YES once locked for current drive
 @property (nonatomic, assign, readonly) CGFloat cabinTempC;          // A/C Inside Temp °C
 @property (nonatomic, assign, readonly) CGFloat exteriorTempC;       // Outside Ambient Temp °C
 
@@ -89,6 +92,9 @@ extern NSString * const TRDOBDGearChangedNotification;
 - (void)simulateHybridBatterySOC:(CGFloat)soc;
 - (void)toggleTestReverseGear;
 - (void)simulateGear:(NSString *)gear;
+- (void)setAutoDoorLockEnabled:(BOOL)enabled;
+- (void)setAutoDoorUnlockOnParkEnabled:(BOOL)enabled;
+- (void)requestDoorLock:(BOOL)lock;
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt;
 
 @end

@@ -136,6 +136,10 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 @property (nonatomic, assign) CGFloat lastLoggedFuelLiters;
 @property (nonatomic, assign) CGFloat lastLoggedCabinTempC;
 @property (nonatomic, assign) CGFloat lastLoggedExteriorTempC;
+@property (nonatomic, strong) NSMutableArray<NSString *> *pendingBodyCommands;
+@property (nonatomic, assign, readwrite) BOOL autoDoorLockEnabled;
+@property (nonatomic, assign, readwrite) BOOL autoDoorUnlockOnParkEnabled;
+@property (nonatomic, assign, readwrite) BOOL autoDoorLockedForDrive;
 @end
 
 @implementation TRDOBDClient
@@ -180,11 +184,14 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         _regenBrakingPowerKW = 0.0;
         _rxBuffer = [NSMutableString new];
         _commandQueue = [NSMutableArray new];
+        _pendingBodyCommands = [NSMutableArray new];
         _seenPeripheralIDs = [NSMutableSet new];
         _seenDeviceSummaries = [NSMutableArray new];
         
         // Fuel type and pump price setup
         NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
+        _autoDoorLockEnabled = [prefs objectForKey:@"TRDAutoDoorLockEnabled"] ? [prefs boolForKey:@"TRDAutoDoorLockEnabled"] : NO;
+        _autoDoorUnlockOnParkEnabled = [prefs objectForKey:@"TRDAutoDoorUnlockOnParkEnabled"] ? [prefs boolForKey:@"TRDAutoDoorUnlockOnParkEnabled"] : NO;
         _selectedFuelTypeIndex = [prefs integerForKey:@"TRDSelectedFuelTypeIndex"];
         if (_selectedFuelTypeIndex < 0 || _selectedFuelTypeIndex > 3) _selectedFuelTypeIndex = 0;
         
@@ -309,6 +316,8 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     self.doorFrontRightOpen = NO;
     self.doorRearLeftOpen = NO;
     self.doorRearRightOpen = NO;
+    self.autoDoorLockedForDrive = NO;
+    [self.pendingBodyCommands removeAllObjects];
     self.trunkOpen = NO;
     self.lastLoggedFuelLiters = -1.0;
     self.lastLoggedCabinTempC = -999.0;
@@ -961,6 +970,8 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     self.doorFrontRightOpen = NO;
     self.doorRearLeftOpen = NO;
     self.doorRearRightOpen = NO;
+    self.autoDoorLockedForDrive = NO;
+    [self.pendingBodyCommands removeAllObjects];
     self.trunkOpen = NO;
     self.lastLoggedFuelLiters = -1.0;
     self.lastLoggedCabinTempC = -999.0;
@@ -1094,6 +1105,17 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         }
     }
 
+    // Priority one-shot Body ECU commands (e.g. Prius 0x750 door lock/unlock)
+    if (self.canMonitorPhase == 0 && self.pendingBodyCommands.count > 0) {
+        NSString *bodyCmd = self.pendingBodyCommands.firstObject;
+        [self.pendingBodyCommands removeObjectAtIndex:0];
+        if ([bodyCmd hasPrefix:@"ATSH "]) {
+            self.activeCANHeader = [bodyCmd substringFromIndex:5];
+        }
+        [self sendCommand:bodyCmd];
+        return;
+    }
+
     // CAN 0x127 (GEAR_PACKET) / 0x620 (SEATS_DOORS) passive snapshot sequence at end of cycle
     if (self.canMonitorPhase > 0) {
         switch (self.canMonitorPhase) {
@@ -1222,7 +1244,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 
     if (gear.length) {
         self.parkSwitchEngaged = [gear isEqualToString:@"P"];
-        [self updateLiveGear:gear];
+        [self updateLiveGear:gear fromCAN127:YES];
         [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
     }
     return YES;
@@ -1378,6 +1400,10 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)updateLiveGear:(NSString *)gear {
+    [self updateLiveGear:gear fromCAN127:NO];
+}
+
+- (void)updateLiveGear:(NSString *)gear fromCAN127:(BOOL)fromCAN127 {
     if (!gear.length) return;
     static NSString *pendingGear = nil;
     static NSInteger pendingHits = 0;
@@ -1387,7 +1413,8 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         pendingHits = 0;
         return;
     }
-    if (!_currentGear.length || [_currentGear isEqualToString:@"--"]) {
+    // Checksum-verified CAN 0x127 frames are authoritative; apply immediately without 2-cycle lag.
+    if (fromCAN127 || !_currentGear.length || [_currentGear isEqualToString:@"--"]) {
         pendingGear = nil;
         pendingHits = 0;
     } else {
@@ -1408,6 +1435,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     _currentGear = [gear copy];
     _isReverseGear = [_currentGear isEqualToString:@"R"];
     [self obdLog:@"LIVE GEAR -> %@", _currentGear];
+    [self evaluateAutoDoorLockForSpeed:self.currentSpeedKmh];
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDGearChangedNotification object:self userInfo:@{@"gear": _currentGear}];
 }
 
@@ -1425,6 +1453,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     // 010D: Vehicle Speed km/h -> A
     if ((b = [self bytesFromHex:hex afterPrefix:@"410D" minBytes:1])) {
         self.currentSpeedKmh = (CGFloat)[b[0] unsignedIntValue];
+        [self evaluateAutoDoorLockForSpeed:self.currentSpeedKmh];
         [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
         return;
     }
@@ -1527,16 +1556,14 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             self.lastShiftHex6141 = hex;
             [self obdLog:@"7E2_6141 -> %@", hex];
         }
-        BOOL can127Fresh = (self.lastCAN127At && [[NSDate date] timeIntervalSinceDate:self.lastCAN127At] < 6.0);
+        BOOL can127Fresh = (self.lastCAN127At && [[NSDate date] timeIntervalSinceDate:self.lastCAN127At] < 15.0);
         if (!can127Fresh) {
             BOOL inPark = ([b[7] unsignedIntValue] >= 0x20);
             self.parkSwitchEngaged = inPark;
             if (inPark) {
-                [self updateLiveGear:@"P"];
-            } else if (self.mg2RPM < -30) {
-                [self updateLiveGear:@"R"];
+                [self updateLiveGear:@"P" fromCAN127:NO];
             } else if ([self.currentGear isEqualToString:@"P"]) {
-                [self updateLiveGear:@"D"];
+                [self updateLiveGear:@"D" fromCAN127:NO];
             }
         }
         [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
@@ -1555,10 +1582,6 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     if ((b = [self bytesFromHex:hex afterPrefix:@"6162" minBytes:5])) {
         self.mg2TempC = (CGFloat)((int)[b[0] unsignedIntValue] - 40);
         self.mg2RPM = (NSInteger)([b[3] unsignedIntValue] * 256 + [b[4] unsignedIntValue]) - 32768;
-        BOOL can127Fresh = (self.lastCAN127At && [[NSDate date] timeIntervalSinceDate:self.lastCAN127At] < 6.0);
-        if (!can127Fresh && !self.parkSwitchEngaged && self.mg2RPM < -30) {
-            [self updateLiveGear:@"R"];
-        }
         [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
         return;
     }
@@ -1619,6 +1642,62 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         self.hvDeltaSOC = (CGFloat)([b[4] unsignedIntValue] / 2.0);
         [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
         return;
+    }
+}
+
+#pragma mark - Body ECU Auto Door Lock (Prius 0x750)
+
+- (void)setAutoDoorLockEnabled:(BOOL)enabled {
+    self.autoDoorLockEnabled = enabled;
+    NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
+    [prefs setBool:enabled forKey:@"TRDAutoDoorLockEnabled"];
+    [prefs synchronize];
+    [self obdLog:@"AutoDoorLockEnabled -> %d", enabled];
+}
+
+- (void)setAutoDoorUnlockOnParkEnabled:(BOOL)enabled {
+    self.autoDoorUnlockOnParkEnabled = enabled;
+    NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
+    [prefs setBool:enabled forKey:@"TRDAutoDoorUnlockOnParkEnabled"];
+    [prefs synchronize];
+    [self obdLog:@"AutoDoorUnlockOnParkEnabled -> %d", enabled];
+}
+
+- (void)requestDoorLock:(BOOL)lock {
+    if (!self.isConnected || !self.obdInitialized) {
+        [self obdLog:@"BODY_ECU door %@ skipped (OBD not connected)", lock ? @"LOCK" : @"UNLOCK"];
+        return;
+    }
+    if (self.pendingBodyCommands.count > 0) {
+        [self obdLog:@"BODY_ECU door %@ skipped (command already queued)", lock ? @"LOCK" : @"UNLOCK"];
+        return;
+    }
+    NSString *payload = lock ? @"30 11 00 80 00" : @"30 11 00 40 00";
+    [self.pendingBodyCommands addObjectsFromArray:@[
+        @"ATSH 750",
+        @"ATCEA 40",
+        payload,
+        @"ATCEA",
+        @"ATSH 7DF"
+    ]];
+    [self obdLog:@"BODY_ECU enqueue door %@ (speed=%.0f gear=%@)", lock ? @"LOCK" : @"UNLOCK", self.currentSpeedKmh, self.currentGear ?: @"?"];
+}
+
+- (void)evaluateAutoDoorLockForSpeed:(CGFloat)kmh {
+    if (!self.autoDoorLockEnabled || !self.isConnected || !self.obdInitialized) return;
+    BOOL anyDoorOpen = self.doorSensorsLive && (self.doorFrontLeftOpen || self.doorFrontRightOpen || self.doorRearLeftOpen || self.doorRearRightOpen);
+    if (!self.autoDoorLockedForDrive) {
+        if (!anyDoorOpen && kmh >= 20.0 && ![self.currentGear isEqualToString:@"P"]) {
+            self.autoDoorLockedForDrive = YES;
+            [self obdLog:@"Auto-Lock triggered at %.0f km/h (gear=%@)", kmh, self.currentGear ?: @"?"];
+            [self requestDoorLock:YES];
+        }
+    } else if ([self.currentGear isEqualToString:@"P"] && kmh < 1.0) {
+        self.autoDoorLockedForDrive = NO;
+        [self obdLog:@"Auto-Lock disarmed in Park (autoUnlock=%d)", self.autoDoorUnlockOnParkEnabled];
+        if (self.autoDoorUnlockOnParkEnabled) {
+            [self requestDoorLock:NO];
+        }
     }
 }
 
