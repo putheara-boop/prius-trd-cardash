@@ -1177,6 +1177,8 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)screenOff;
 -(void)confirmSettingsActionTitle:(NSString *)title message:(NSString *)message confirmTitle:(NSString *)confirmTitle onConfirm:(void(^)(void))onConfirm;
 -(void)restoreDisplayBrightness;
+@property (nonatomic, strong) UILabel *obdAlertBanner;
+@property (nonatomic, strong) NSDate *lastOBDWarnDate;
 
 @property UIView *navigation;
 @property NSArray *navButtons;
@@ -3374,6 +3376,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self.view bringSubviewToFront:self.tripSummaryCard];
   }
 
+  if (self.obdAlertBanner) {
+    CGFloat bw = MIN(380, self.view.bounds.size.width - 40);
+    self.obdAlertBanner.frame = CGRectMake((self.view.bounds.size.width - bw) * 0.5, 14, bw, 34);
+    [self.view bringSubviewToFront:self.obdAlertBanner];
+  }
+
   if (self.welcome) {
     self.welcome.frame = self.view.bounds;
     [self.view bringSubviewToFront:self.welcome];
@@ -3808,10 +3816,10 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  NSString *newSpeed=[NSString stringWithFormat:@"%.0f",kmh];
  if(![self.speed.text isEqualToString:newSpeed]){
   self.speed.text=newSpeed;
-  [CATransaction begin];[CATransaction setDisableActions:YES];self.progress.strokeEnd=valid?MIN(1,kmh/180.0):0;[CATransaction commit];
+  [CATransaction begin];[CATransaction setDisableActions:YES];self.progress.strokeEnd=(valid||obdLive)?MIN(1,kmh/180.0):0;[CATransaction commit];
  }
  
- BOOL overSpeed=(self.speedLimit>0&&valid&&kmh>(self.speedLimit+0.5));
+ BOOL overSpeed=(self.speedLimit>0&&(valid||obdLive)&&kmh>(self.speedLimit+0.5));
  if(overSpeed){
   self.speed.textColor=[UIColor colorWithRed:1.0 green:0.18 blue:0.18 alpha:1.0];
   self.speedLimitBtn.backgroundColor=[UIColor colorWithRed:1.0 green:0.18 blue:0.18 alpha:0.95];
@@ -3822,6 +3830,38 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }else{
   self.speed.textColor=self.clock.textColor?:[UIColor whiteColor];
   self.speedLimitBtn.backgroundColor=(self.speedLimit>0)?[UIColor colorWithRed:.85 green:.05 blue:.10 alpha:.18]:[UIColor colorWithWhite:.2 alpha:.2];
+ }
+
+ // Real-time OBD2 safety alert banner (Coolant >= 102C, Inverter >= 85C, HV Batt >= 48C, 12V < 11.8V)
+ NSString *obdWarn = nil;
+ if(obdLive){
+  if(obdSpd.coolantTempC >= 102.0) obdWarn = [NSString stringWithFormat:@"⚠️ COOLANT HIGH: %.0f°C", obdSpd.coolantTempC];
+  else if(obdSpd.inverterTempC >= 85.0) obdWarn = [NSString stringWithFormat:@"⚠️ INVERTER HIGH: %.0f°C", obdSpd.inverterTempC];
+  else if(obdSpd.hvBatteryTempC >= 48.0) obdWarn = [NSString stringWithFormat:@"⚠️ HV BATT HOT: %.0f°C", obdSpd.hvBatteryTempC];
+  else if(obdSpd.auxBatteryVoltage > 1.0 && obdSpd.auxBatteryVoltage < 11.8) obdWarn = [NSString stringWithFormat:@"🔋 12V LOW: %.1fV", obdSpd.auxBatteryVoltage];
+ }
+ if(obdWarn){
+  if(!self.obdAlertBanner){
+   self.obdAlertBanner = [[UILabel alloc] init];
+   self.obdAlertBanner.backgroundColor = [UIColor colorWithRed:0.85 green:0.10 blue:0.12 alpha:0.94];
+   self.obdAlertBanner.textColor = [UIColor whiteColor];
+   self.obdAlertBanner.font = [UIFont boldSystemFontOfSize:13.5];
+   self.obdAlertBanner.textAlignment = NSTextAlignmentCenter;
+   self.obdAlertBanner.layer.cornerRadius = 17;
+   self.obdAlertBanner.layer.masksToBounds = YES;
+   self.obdAlertBanner.layer.borderWidth = 1.5;
+   self.obdAlertBanner.layer.borderColor = [UIColor colorWithRed:1.0 green:0.55 blue:0.20 alpha:0.95].CGColor;
+   [self.view addSubview:self.obdAlertBanner];
+  }
+  self.obdAlertBanner.text = obdWarn;
+  self.obdAlertBanner.hidden = NO;
+  [self.view setNeedsLayout];
+  if(!self.lastOBDWarnDate || -[self.lastOBDWarnDate timeIntervalSinceNow] >= 30.0){
+   self.lastOBDWarnDate = [NSDate date];
+   AudioServicesPlaySystemSound(1052);
+  }
+ }else if(self.obdAlertBanner && !self.obdAlertBanner.hidden){
+  self.obdAlertBanner.hidden = YES;
  }
  NSString *newStatus=gps[@"label"];
  if(![self.gpsStatus.text isEqualToString:newStatus]){
