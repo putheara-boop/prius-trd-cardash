@@ -1458,6 +1458,7 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 @property NSDate *lastSpeedWarnDate;
 @property UIView *tripSummaryCard;
 @property AVPlayer *radioPlayer;
+@property NSUInteger radioGeneration;
 @property NSString *currentRadioStation;
 -(void)showTripSummary;
 -(void)batteryStateChanged:(NSNotification *)note;
@@ -4253,8 +4254,10 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
  [self refreshClockHud];
 }
 -(void)playRadio:(NSString *)url name:(NSString *)name{
+ NSUInteger gen=++self.radioGeneration;
  if(self.radioPlayer){
   [self.radioPlayer pause];
+  [self.radioPlayer replaceCurrentItemWithPlayerItem:nil];
   self.radioPlayer=nil;
  }
  if(!url.length){
@@ -4262,43 +4265,89 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   self.song.text=@"Radio stopped";
   self.artist.text=@"Tap RADIO to select station";
   [self refreshNowPlaying];
+  [self refreshTransportState];
+  [self refreshMini];
   return;
  }
- 
- // 1. Explicitly pause any background music / YouTube players so audio never overlaps
- notify_post("com.codex.trd.youtube.pause");
- Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
- if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
- 
- // 2. Configure exclusive AVAudioSession (NO MixWithOthers!)
- AVAudioSession *session=[AVAudioSession sharedInstance];
- NSError *sErr=nil;
- [session setCategory:AVAudioSessionCategoryPlayback error:&sErr];
- [session setActive:YES error:&sErr];
- 
+
  self.currentRadioStation=name;
  self.song.text=[NSString stringWithFormat:@"[CONNECTING...] %@", name];
  self.artist.text=@"Buffering live stream...";
  self.sourceBadge.text=@"RADIO";
- 
- NSURL *streamURL=[NSURL URLWithString:url];
- AVPlayerItem *item=[AVPlayerItem playerItemWithURL:streamURL];
- self.radioPlayer=[AVPlayer playerWithPlayerItem:item];
- [self.radioPlayer play];
+ [self refreshTransportState];
+ [self refreshMini];
+
+ static dispatch_queue_t radioQueue;
+ static dispatch_once_t radioOnce;
+ dispatch_once(&radioOnce,^{
+  radioQueue=dispatch_queue_create("com.codex.trd.radio",DISPATCH_QUEUE_SERIAL);
+ });
+ NSString *urlCopy=[url copy];
+ __weak Dashboard *weak=self;
+ dispatch_async(radioQueue,^{
+  Dashboard *v=weak;
+  if(!v||gen!=v.radioGeneration)return;
+
+  // 1. Explicitly pause any background music / YouTube players so audio never overlaps
+  notify_post("com.codex.trd.youtube.pause");
+  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+  if(!pauseCmd||!pauseCmd(1,nil))dispatch_async(dispatch_get_main_queue(),^{[weak send:@"libactivator.ipod.pause-playback"];});
+
+  // 2. Configure exclusive AVAudioSession (NO MixWithOthers!) off the main thread
+  AVAudioSession *session=[AVAudioSession sharedInstance];
+  NSError *sErr=nil;
+  [session setCategory:AVAudioSessionCategoryPlayback error:&sErr];
+  [session setActive:YES error:&sErr];
+
+  v=weak;
+  if(!v||gen!=v.radioGeneration)return;
+
+  NSURL *streamURL=[NSURL URLWithString:urlCopy];
+  if(!streamURL)return;
+  AVPlayerItem *item=[AVPlayerItem playerItemWithURL:streamURL];
+  item.canUseNetworkResourcesForLiveStreamingWhilePaused=NO;
+  if(@available(iOS 10.0, *))item.preferredForwardBufferDuration=2.0;
+
+  dispatch_async(dispatch_get_main_queue(),^{
+   Dashboard *d=weak;
+   if(!d||gen!=d.radioGeneration)return;
+   AVPlayer *player=[AVPlayer playerWithPlayerItem:item];
+   if(@available(iOS 10.0, *))player.automaticallyWaitsToMinimizeStalling=YES;
+   d.radioPlayer=player;
+   [d.radioPlayer play];
+   [d refreshTransportState];
+   [d refreshMini];
+  });
+ });
 }
 -(void)openRadioStationsMenu{
- TRDSettingsMenu *m=[self settingsMenu:@"RADIO & MUSIC BROADCAST" message:@"Direct online English & Thai music broadcasts"];
- [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Met 107 (Bangkok English Hits)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"http://rstream.mcot.net:8000/fm107" name:@"Met 107 (English Hits)"];
- }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Capital UK (Top 40 Pop & Dance)" style:0 handler:^(TRDSettingAction *a){
+ TRDSettingsMenu *m=[self settingsMenu:@"RADIO & MUSIC BROADCAST" message:@"UK & Thai music radio streams (Non-stop music)"];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Capital UK (Top 40 Pop & Hits)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:@"https://media-ssl.musicradio.com/CapitalUK" name:@"Capital UK (Top 40 Hits)"];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Heart UK (90s, 00s & Pop Variety)" style:0 handler:^(TRDSettingAction *a){
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Capital XTRA UK (Hip-Hop, R&B & Urban)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/CapitalXTRANational" name:@"Capital XTRA UK (Hip-Hop & R&B)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Capital Dance UK (Electronic & Club)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/CapitalDance" name:@"Capital Dance UK (Electronic & Club)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Heart UK (Pop & Feel-Good Variety)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:@"https://media-ssl.musicradio.com/HeartLondon" name:@"Heart UK (Pop & Variety)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Heart 80s UK (Classic 80s Hits)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/Heart80s" name:@"Heart 80s UK (Classic 80s)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Heart Dance UK (Dance Classics & Party)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/HeartDance" name:@"Heart Dance UK (Dance Classics)"];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Smooth Radio UK (Relaxing Pop & Soul)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:@"https://media-ssl.musicradio.com/SmoothUK" name:@"Smooth Radio UK (Relaxing Pop)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Smooth Chill UK (Ambient & Night Drive)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/SmoothChill" name:@"Smooth Chill UK (Ambient Chill)"];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Gold UK (60s, 70s & 80s Greatest Hits)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"https://media-ssl.musicradio.com/Gold" name:@"Gold UK (Greatest Hits)"];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Radio X UK (British Indie & Rock)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:@"https://media-ssl.musicradio.com/RadioXLondon" name:@"Radio X UK (British Indie & Rock)"];
@@ -4306,8 +4355,8 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
  [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Classic FM UK (Soundtracks & Classics)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:@"https://media-ssl.musicradio.com/ClassicFM" name:@"Classic FM UK (Soundtracks & Classics)"];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 BBC World Service (Global English News)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"http://stream.live.vc.bbcmedia.co.uk/bbc_world_service" name:@"BBC World Service (Global News)"];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇬🇧 Met 107 (Bangkok English Hits)" style:0 handler:^(TRDSettingAction *a){
+  [self playRadio:@"http://rstream.mcot.net:8000/fm107" name:@"Met 107 (English Hits)"];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🎷 Jazz Radio Paris (Smooth Jazz & Lounge)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:@"http://jazz-wr01.ice.infomaniak.ch/jazz-wr01-128.mp3" name:@"Jazz Radio Paris (Smooth Jazz)"];
@@ -4316,28 +4365,19 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   [self playRadio:@"https://coolism-web.cdn.byteark.com/;stream/1" name:@"COOL Fahrenheit 93 (Thai Pop)"];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🇹🇭 Green Wave 106.5 (Thai Easy Listening)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"https://atimehd.smartclick.co.th/greenwave/hls/greenwave.m3u8" name:@"Green Wave 106.5 (Easy Listening)"];
+  [self playRadio:@"https://atimevideo.smartclick.co.th/live/greenlive.sdp/chunklist.m3u8" name:@"Green Wave 106.5 (Easy Listening)"];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🇹🇭 Flex 104.5 (Bangkok Modern Hits)" style:0 handler:^(TRDSettingAction *a){
+ [m addAction:[TRDSettingAction actionWithTitle:@"🇹🇭 Flex 104.5 (Modern Thai & Inter Hits)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:@"https://streaming.flexconnect.net/voiceflex/voiceflex/playlist.m3u8" name:@"Flex 104.5 (Modern Hits)"];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🇹🇭 ลูกทุ่งเน็ตเวิร์ก 90 (Lukthung Country)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:@"http://radio11.plathong.net:8896/;stream.mp3" name:@"ลูกทุ่งเน็ตเวิร์ก 90"];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🚗 จส.100 (JS100 Traffic Report)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"http://sv4.hostpleng.com:8184/;stream.mp3" name:@"จส.100 (JS100 Traffic Report)"];
- }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🚗 สวพ. FM 91 (Traffic Pro Alerts)" style:0 handler:^(TRDSettingAction *a){
-  [self playRadio:@"https://www.fm91bkk.com:8900/;stream.mp3" name:@"สวพ. FM 91 (Traffic Pro Alerts)"];
- }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"⏹️ Stop Radio (หยุดวิทยุ)" style:0 handler:^(TRDSettingAction *a){
   [self playRadio:nil name:nil];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🎵 Open audioNINJA / YouTube" style:0 handler:^(TRDSettingAction *a){
-  if(self.radioPlayer){
-   [self.radioPlayer pause];
-   self.radioPlayer=nil;
-  }
+  [self playRadio:nil name:nil];
   [self openMusic];
  }]];
  [self presentSettingsMenu:m];
@@ -5073,7 +5113,8 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 }
 -(void)openYouTubeSource{
  [self prepareForExternalAppLaunch];
- if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
+ self.radioGeneration++;
+ if(self.radioPlayer){[self.radioPlayer pause];[self.radioPlayer replaceCurrentItemWithPlayerItem:nil];self.radioPlayer=nil;}
  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
  notify_post("com.codex.trd.network.internet");
  [self send:@"com.himais0giiiin.ytnine"];
@@ -6173,7 +6214,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   else if([p isEqualToString:@"/3"])[v playRadio:@"https://media-ssl.musicradio.com/SmoothUK" name:@"Smooth Radio UK (Relaxing Pop)"];
   else if([p isEqualToString:@"/4"])[v playRadio:@"http://jazz-wr01.ice.infomaniak.ch/jazz-wr01-128.mp3" name:@"Jazz Radio Paris (Smooth Jazz)"];
   else if([p isEqualToString:@"/5"])[v playRadio:@"https://coolism-web.cdn.byteark.com/;stream/1" name:@"COOL Fahrenheit 93 (Thai Pop)"];
-  else if([p isEqualToString:@"/6"])[v playRadio:@"http://sv4.hostpleng.com:8184/;stream.mp3" name:@"จส.100 (JS100 Traffic Report)"];
+  else if([p isEqualToString:@"/6"])[v playRadio:@"https://atimevideo.smartclick.co.th/live/greenlive.sdp/chunklist.m3u8" name:@"Green Wave 106.5 (Easy Listening)"];
   else if([p isEqualToString:@"/stop"])[v playRadio:nil name:nil];
   else [v openRadioStationsMenu];
  }
