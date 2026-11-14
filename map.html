@@ -12,7 +12,12 @@
     overflow: hidden; font-family: -apple-system, "Helvetica Neue", "Sukhumvit Set", Arial, sans-serif;
     -webkit-user-select: none; user-select: none;
   }
-  .leaflet-container { background: #121318; }
+  .leaflet-container {
+    background-color: #11131a;
+    background-image: linear-gradient(rgba(0, 240, 255, 0.045) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(0, 240, 255, 0.045) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
   
   /* Top Right TRD Layer Bar */
   .trd-bar {
@@ -26,7 +31,7 @@
     color: #e2e4ec;
     height: 38px; padding: 0 10px; border-radius: 8px;
     font-weight: bold; font-size: 12px; margin-left: 6px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.65); cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5); cursor: pointer;
     display: -webkit-flex; display: flex; align-items: center;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
@@ -53,16 +58,17 @@
   @media (max-width: 680px) {
     #search-container {
       top: 10px; left: 8px;
-      max-width: calc(100% - 310px);
+      width: auto;
+      right: 288px; max-width: none;
     }
     #search-input {
-      font-size: 12px; padding: 4px 6px;
+      font-size: 12px; padding: 4px 6px; min-width: 0; width: 0;
     }
     .btn-search-action {
-      padding: 0 10px; font-size: 12px;
+      padding: 0 9px; font-size: 12px;
     }
     .quick-chips-wrapper {
-      width: calc(100vw - 20px); max-width: 500px;
+      width: calc(100vw - 16px); max-width: 520px;
     }
     .chip-btn {
       height: 32px; padding: 0 10px; font-size: 11px;
@@ -71,10 +77,10 @@
       top: 10px; right: 6px;
     }
     .trd-btn {
-      height: 36px; padding: 0 8px; font-size: 11px; margin-left: 4px;
+      height: 36px; padding: 0 7px; font-size: 11px; margin-left: 4px;
     }
     .trd-btn svg {
-      width: 13px; height: 13px; margin-right: 4px;
+      width: 12px; height: 12px; margin-right: 3px;
     }
     #btn-sat span { display: none; }
     #btn-sat:after { content: 'SAT'; }
@@ -84,10 +90,10 @@
     background: rgba(14, 15, 22, 0.96);
     border: 1px solid rgba(255, 255, 255, 0.25);
     border-radius: 9px; padding: 5px 7px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.75);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.55);
   }
   #search-input {
-    -webkit-flex: 1; flex: 1; background: transparent; border: none; outline: none;
+    -webkit-flex: 1; flex: 1; min-width: 0; background: transparent; border: none; outline: none;
     color: #fff; font-size: 15px; font-weight: 500; padding: 6px 10px;
     font-family: inherit;
   }
@@ -134,7 +140,7 @@
     margin-top: 8px; background: rgba(14, 15, 22, 0.98);
     border: 1px solid rgba(230, 25, 45, 0.6);
     border-radius: 9px; max-height: 240px; overflow-y: auto;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.85);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.65);
     -webkit-overflow-scrolling: touch;
   }
   .result-item {
@@ -154,7 +160,7 @@
     border: 1px solid rgba(255, 255, 255, 0.25);
     border-left: 5px solid #e6192d;
     border-radius: 12px; padding: 14px 20px;
-    box-shadow: 0 10px 36px rgba(0,0,0,0.85);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.65);
     display: -webkit-flex; display: flex; align-items: center; justify-content: space-between;
   }
   .dest-info { -webkit-flex: 1; flex: 1; padding-right: 20px; }
@@ -196,7 +202,7 @@
     border: 1px solid rgba(0, 240, 255, 0.45);
     border-left: 6px solid #00f0ff;
     border-radius: 12px; padding: 12px 18px;
-    box-shadow: 0 10px 36px rgba(0,0,0,0.9);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.7);
     display: -webkit-flex; display: flex; align-items: center;
   }
   .nav-maneuver-box {
@@ -233,7 +239,7 @@
     background: rgba(14, 15, 20, 0.94); border: 1px solid rgba(255,255,255,0.22);
     border-left: 4px solid #e6192d; border-radius: 8px; padding: 6px 16px;
     display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; align-items: center;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.7);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
   }
   .speed-number-row { display: -webkit-flex; display: flex; align-items: baseline; }
   #speed-val { font-size: 32px; color: #00f0ff; font-weight: 900; line-height: 1; margin-right: 4px; }
@@ -259,7 +265,7 @@
   .modal-box {
     background: #14151c; border: 1px solid rgba(255,255,255,0.25);
     border-radius: 12px; padding: 22px; width: 380px; max-width: 90%;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.9); text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.7); text-align: center;
   }
   .modal-title { font-size: 18px; font-weight: 900; color: #fff; }
   .modal-desc { font-size: 13px; color: #a4a8b8; margin-top: 8px; line-height: 1.4; }
@@ -436,13 +442,17 @@ var map = L.map('map', {
   zoom: 16,
   layers: [trafficLayer],
   zoomControl: false,
-  attributionControl: false
+  attributionControl: false,
+  fadeAnimation: false,
+  zoomAnimation: false,
+  markerZoomAnimation: false,
+  preferCanvas: true
 });
 
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
 // TRD Arrow Marker SVG
-var arrowSvg = '<svg class="car-marker-icon" id="car-svg" viewBox="0 0 44 44" width="44" height="44" style="transition:transform 0.25s ease-out;">' +
+var arrowSvg = '<svg class="car-marker-icon" id="car-svg" viewBox="0 0 44 44" width="44" height="44" style="-webkit-transform:translateZ(0);">' +
   '<circle cx="22" cy="22" r="20" fill="rgba(230,25,45,0.25)" stroke="#e6192d" stroke-width="2.5"/>' +
   '<polygon points="22,6 34,34 22,27 10,34" fill="#ff2035" stroke="#ffffff" stroke-width="2.5"/>' +
   '</svg>';
@@ -569,7 +579,7 @@ function updateCar(lat, lng, heading, speed) {
     }
   }
   if (tracking) {
-    map.panTo(pos, { animate: true, duration: 0.5 });
+    map.panTo(pos, { animate: false });
   }
   
   // Speed HUD updates with cockpit dynamic color
@@ -891,7 +901,7 @@ document.getElementById('search-input').addEventListener('keydown', function(e) 
   if (e.keyCode === 13) doSearch();
 });
 
-// Fast tap touch event bindings for iOS 9 UIWebView responsiveness
+// Fast tap touch event bindings for iOS UIWebView responsiveness (eliminates 300ms delay)
 function bindFastTap(btnId, fn) {
   var el = document.getElementById(btnId);
   if (!el) return;
@@ -913,6 +923,38 @@ bindFastTap('btn-traffic', function() { setMode('traffic'); });
 bindFastTap('btn-sat', function() { setMode('sat'); });
 bindFastTap('btn-night', function() { setMode('night'); });
 bindFastTap('btn-recenter', function() { recenter(); });
+
+(function() {
+  var startX = 0, startY = 0, fastTarget = null;
+  document.addEventListener('touchstart', function(e) {
+    if (!e.touches || e.touches.length !== 1) { fastTarget = null; return; }
+    var t = e.target;
+    while (t && t !== document.body) {
+      if (t.classList && (t.classList.contains('chip-btn') || t.classList.contains('btn-search-action') ||
+          t.classList.contains('btn-navigate') || t.classList.contains('btn-close-card') ||
+          t.classList.contains('btn-cancel-nav') || t.classList.contains('btn-sound-toggle') ||
+          t.classList.contains('result-item'))) {
+        fastTarget = t;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        return;
+      }
+      t = t.parentNode;
+    }
+    fastTarget = null;
+  }, false);
+  document.addEventListener('touchend', function(e) {
+    if (!fastTarget || !e.changedTouches || !e.changedTouches.length) return;
+    var dx = e.changedTouches[0].clientX - startX;
+    var dy = e.changedTouches[0].clientY - startY;
+    var el = fastTarget;
+    fastTarget = null;
+    if (dx * dx + dy * dy <= 100) {
+      e.preventDefault();
+      el.click();
+    }
+  }, false);
+})();
 </script>
 </body>
 </html>
