@@ -193,7 +193,7 @@ static void AutoSeek(id obj,SEL sel,double seconds){if(!TRDAutoStarting)TRDManua
 static void(*oldToggle)(id,SEL);
 static void NinjaToggle(id obj,SEL sel){oldToggle(obj,sel);}
 static void(*oldYT)(id,SEL,id,double);
-static void YouTube(id obj,SEL sel,id watch,double at){oldYT(obj,sel,watch,at);[TRDRoadAudio install];[@{@"bundle":@"com.himais0giiiin.ytnine",@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];}
+static void YouTube(id obj,SEL sel,id watch,double at){gYTPlaybackInstance=obj;oldYT(obj,sel,watch,at);[TRDRoadAudio install];[@{@"bundle":@"com.himais0giiiin.ytnine",@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];}
 static void(*oldPod)(id,SEL,NSInteger);
 static void Podcast(id obj,SEL sel,NSInteger index){oldPod(obj,sel,index);[TRDBrowseReturn selected:obj];}
 static BOOL TypeIs(const char *allowed,char value){for(const char *p=allowed;*p;p++)if(*p==value)return YES;return NO;}
@@ -374,7 +374,16 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
    }
   });
  }
- else if([bundle isEqual:@"com.himais0giiiin.ytnine"]){name=@"YTPlayback";selector=@"loadWatch:startAt:";replacement=(IMP)YouTube;original=(IMP *)&oldYT;a="@";b="d";}
+ else if([bundle isEqual:@"com.himais0giiiin.ytnine"]){
+  static int ytToggleTok=0,ytPauseTok=0,ytPlayTok=0,ytNextTok=0,ytPrevTok=0;
+  notify_register_dispatch("com.codex.trd.youtube.toggle",&ytToggleTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(2,@"darwin-toggle");});
+  notify_register_dispatch("com.codex.trd.youtube.pause",&ytPauseTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(1,@"darwin-pause");});
+  notify_register_dispatch("com.codex.trd.youtube.play",&ytPlayTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(0,@"darwin-play");});
+  notify_register_dispatch("com.codex.trd.youtube.next",&ytNextTok,dispatch_get_main_queue(),^(int t){[roadAudio next:nil];});
+  notify_register_dispatch("com.codex.trd.youtube.previous",&ytPrevTok,dispatch_get_main_queue(),^(int t){[roadAudio previous:nil];});
+  dispatch_async(dispatch_get_main_queue(),^{[TRDRoadAudio install];});
+  name=@"YTPlayback";selector=@"loadWatch:startAt:";replacement=(IMP)YouTube;original=(IMP *)&oldYT;a="@";b="d";
+ }
  else if([bundle isEqual:@"com.codex.poddash"]){name=@"Podcasts";selector=@"playIndex:";replacement=(IMP)Podcast;original=(IMP *)&oldPod;a="i";}
  else if([bundle isEqual:@"com.google.ios.youtube"]){return;}
  else return;

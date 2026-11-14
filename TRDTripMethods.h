@@ -94,6 +94,7 @@
 -(void)browseSource:(NSString *)bundle target:(NSString *)target{
  if(![@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash"]containsObject:bundle])return;
  if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
+ if(![bundle isEqualToString:@"com.himais0giiiin.ytnine"])notify_post("com.codex.trd.youtube.pause");
  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
  if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
  [self prepareForExternalAppLaunch];

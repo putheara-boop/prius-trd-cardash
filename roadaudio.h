@@ -61,6 +61,15 @@
 
 -(id)nextVideo;
 
+-(void)play;
+-(void)pause;
+-(void)toggle;
+-(void)stop;
+-(BOOL)playing;
+-(BOOL)shouldPlay;
+-(void)updateNowPlaying;
+-(id)player;
+
 @end
 
 static UIViewController *TRDFindController(NSString *name){
@@ -343,5 +352,19 @@ id vc=TRDFindController(@"YTPlayerViewController");if(vc&&[vc respondsToSelector
 
 static void(*oldRemote)(id,SEL,UIEvent *);
 
-static void RoadRemote(id obj,SEL sel,UIEvent *event){if([NSBundle.mainBundle.bundleIdentifier isEqual:@"com.legacymusic.app"]){if(event.subtype==UIEventSubtypeRemoteControlPlay){[roadAudio carPlay:nil];return;}if(event.subtype==UIEventSubtypeRemoteControlPause||event.subtype==UIEventSubtypeRemoteControlStop){[roadAudio carPause:nil];return;}if(event.subtype==UIEventSubtypeRemoteControlTogglePlayPause){[roadAudio carToggle:nil];return;}}if(event.subtype==UIEventSubtypeRemoteControlNextTrack){[roadAudio next:event];return;}if(event.subtype==UIEventSubtypeRemoteControlPreviousTrack){[roadAudio previous:event];return;}oldRemote(obj,sel,event);}
+static void RoadRemote(id obj,SEL sel,UIEvent *event){
+ NSString *bundle=NSBundle.mainBundle.bundleIdentifier;
+ if([bundle isEqual:@"com.legacymusic.app"]){
+  if(event.subtype==UIEventSubtypeRemoteControlPlay){[roadAudio carPlay:nil];return;}
+  if(event.subtype==UIEventSubtypeRemoteControlPause||event.subtype==UIEventSubtypeRemoteControlStop){[roadAudio carPause:nil];return;}
+  if(event.subtype==UIEventSubtypeRemoteControlTogglePlayPause){[roadAudio carToggle:nil];return;}
+ }else if([bundle isEqual:@"com.himais0giiiin.ytnine"]){
+  if(event.subtype==UIEventSubtypeRemoteControlPlay){[roadAudio ytPlay:nil];return;}
+  if(event.subtype==UIEventSubtypeRemoteControlPause||event.subtype==UIEventSubtypeRemoteControlStop){[roadAudio ytPause:nil];return;}
+  if(event.subtype==UIEventSubtypeRemoteControlTogglePlayPause){[roadAudio ytToggle:nil];return;}
+ }
+ if(event.subtype==UIEventSubtypeRemoteControlNextTrack){[roadAudio next:event];return;}
+ if(event.subtype==UIEventSubtypeRemoteControlPreviousTrack){[roadAudio previous:event];return;}
+ oldRemote(obj,sel,event);
+}
 

@@ -45,8 +45,77 @@ static void TRDCarRefreshMetadata(NSString *reason){
 -(MPRemoteCommandHandlerStatus)carPlay:(id)event;
 -(MPRemoteCommandHandlerStatus)carPause:(id)event;
 -(MPRemoteCommandHandlerStatus)carToggle:(id)event;
+-(MPRemoteCommandHandlerStatus)ytPlay:(id)event;
+-(MPRemoteCommandHandlerStatus)ytPause:(id)event;
+-(MPRemoteCommandHandlerStatus)ytToggle:(id)event;
 +(void)refreshCarMetadata;
 @end
+
+@protocol TRDYTPlaybackProto <NSObject>
+@optional
+-(void)play;
+-(void)pause;
+-(void)toggle;
+-(void)stop;
+-(BOOL)playing;
+-(BOOL)shouldPlay;
+-(void)updateNowPlaying;
+-(id)player;
+@end
+
+static __weak id gYTPlaybackInstance=nil;
+static CFAbsoluteTime TRDLastYTTransportAt=0;
+static NSInteger TRDLastYTTransportKind=-1;
+
+static id TRDYouTubePlayback(void){
+ if(gYTPlaybackInstance)return gYTPlaybackInstance;
+ Class cls=NSClassFromString(@"YTPlayback");
+ if([cls respondsToSelector:@selector(shared)]){
+  id inst=[cls shared];
+  if(inst){gYTPlaybackInstance=inst;return inst;}
+ }
+ return nil;
+}
+
+static BOOL TRDYouTubeIsCurrentlyPlaying(id yt){
+ id<TRDYTPlaybackProto> pb=(id<TRDYTPlaybackProto>)yt;
+ id avp=[pb respondsToSelector:@selector(player)]?[pb player]:nil;
+ BOOL avPlaying=[avp isKindOfClass:[AVPlayer class]]&&((AVPlayer *)avp).rate>0.0f;
+ return ([pb respondsToSelector:@selector(playing)]&&[pb playing])||
+        ([pb respondsToSelector:@selector(shouldPlay)]&&[pb shouldPlay])||
+        avPlaying;
+}
+
+static MPRemoteCommandHandlerStatus TRDYouTubeTransport(NSInteger kind,NSString *reason){
+ __block BOOL delivered=NO;
+ void (^action)(void)=^{
+  id yt=TRDYouTubePlayback();
+  if(!yt){
+   [@{@"command":reason?:@"yt",@"delivered":@NO,@"hadPlayback":@NO,@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/ytnine-remote.plist" atomically:YES];
+   return;
+  }
+  CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();
+  if(kind==TRDLastYTTransportKind&&now-TRDLastYTTransportAt<0.25){delivered=YES;return;}
+  TRDLastYTTransportAt=now;TRDLastYTTransportKind=kind;
+  BOOL wasPlaying=TRDYouTubeIsCurrentlyPlaying(yt);
+  id<TRDYTPlaybackProto> pb=(id<TRDYTPlaybackProto>)yt;
+  id avp=[pb respondsToSelector:@selector(player)]?[pb player]:nil;
+  NSInteger effectiveKind=(kind==2)?(wasPlaying?1:0):kind;
+  if(effectiveKind==1){
+   if([pb respondsToSelector:@selector(pause)]){[pb pause];delivered=YES;}
+   if([avp isKindOfClass:[AVPlayer class]]&&((AVPlayer *)avp).rate>0.0f){[(AVPlayer *)avp pause];delivered=YES;}
+  }else if(effectiveKind==0){
+   if([pb respondsToSelector:@selector(play)]){[pb play];delivered=YES;}
+   else if([avp isKindOfClass:[AVPlayer class]]){[(AVPlayer *)avp play];delivered=YES;}
+  }
+  if([pb respondsToSelector:@selector(updateNowPlaying)])[pb updateNowPlaying];
+  BOOL nowPlaying=TRDYouTubeIsCurrentlyPlaying(yt);
+  float rateAfter=[avp isKindOfClass:[AVPlayer class]]?((AVPlayer *)avp).rate:(nowPlaying?1.0f:0.0f);
+  [@{@"command":reason?:@"yt",@"effective":effectiveKind==1?@"pause":@"play",@"delivered":@(delivered),@"hadPlayback":@YES,@"wasPlaying":@(wasPlaying),@"nowPlaying":@(nowPlaying),@"rate":@(rateAfter),@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/ytnine-remote.plist" atomically:YES];
+ };
+ if([NSThread isMainThread])action();else dispatch_sync(dispatch_get_main_queue(),action);
+ return delivered?MPRemoteCommandHandlerStatusSuccess:MPRemoteCommandHandlerStatusNoActionableNowPlayingItem;
+}
 
 static CFAbsoluteTime TRDLastTransportAt=0;
 static NSInteger TRDLastTransportKind=-1;
@@ -78,18 +147,27 @@ static NSInteger TRDLastTransportKind=-1;
 -(MPRemoteCommandHandlerStatus)carPlay:(id)event{return [self carTransport:0];}
 -(MPRemoteCommandHandlerStatus)carPause:(id)event{return [self carTransport:1];}
 -(MPRemoteCommandHandlerStatus)carToggle:(id)event{return [self carTransport:2];}
+-(MPRemoteCommandHandlerStatus)ytPlay:(id)event{return TRDYouTubeTransport(0,@"mr-play");}
+-(MPRemoteCommandHandlerStatus)ytPause:(id)event{return TRDYouTubeTransport(1,@"mr-pause");}
+-(MPRemoteCommandHandlerStatus)ytToggle:(id)event{return TRDYouTubeTransport(2,@"mr-toggle");}
 +(void)refreshCarMetadata{dispatch_async(dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"metadata-refresh");});}
 @end
 
 static void TRDInstallCarControls(void){
- if(![NSBundle.mainBundle.bundleIdentifier isEqual:@"com.legacymusic.app"])return;
+ NSString *bundle=NSBundle.mainBundle.bundleIdentifier;
+ BOOL isNinja=[bundle isEqual:@"com.legacymusic.app"];
+ BOOL isYouTube=[bundle isEqual:@"com.himais0giiiin.ytnine"];
+ if(!isNinja&&!isYouTube)return;
  MPRemoteCommandCenter *center=[MPRemoteCommandCenter sharedCommandCenter];
  NSArray *commands=@[center.playCommand,center.pauseCommand,center.stopCommand,center.togglePlayPauseCommand];
- SEL selectors[]={@selector(carPlay:),@selector(carPause:),@selector(carPause:),@selector(carToggle:)};
+ SEL ytSelectors[]={@selector(ytPlay:),@selector(ytPause:),@selector(ytPause:),@selector(ytToggle:)};
+ SEL ninjaSelectors[]={@selector(carPlay:),@selector(carPause:),@selector(carPause:),@selector(carToggle:)};
+ SEL *selectors=isYouTube?ytSelectors:ninjaSelectors;
  for(NSUInteger i=0;i<commands.count;i++){
   MPRemoteCommand *command=commands[i];[command removeTarget:nil];
   [command addTarget:roadAudio action:selectors[i]];command.enabled=YES;
  }
+ if(!isNinja)return;
  static BOOL observing=NO;
  if(!observing){observing=YES;
   [[NSNotificationCenter defaultCenter]addObserverForName:AVAudioSessionRouteChangeNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note){
