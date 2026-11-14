@@ -1179,6 +1179,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 -(void)restoreDisplayBrightness;
 @property (nonatomic, strong) UILabel *obdAlertBanner;
 @property (nonatomic, strong) NSDate *lastOBDWarnDate;
+@property (nonatomic, assign) BOOL pausedMusicForReverse;
 
 @property UIView *navigation;
 @property NSArray *navButtons;
@@ -4190,13 +4191,14 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     @"GASOHOL RATE"
   ];
   double kmPerL = (fuelL > 0) ? (km / fuelL) : 21.5;
+  double tripFuelCost = (obd.tripFuelCostTHB > 0) ? obd.tripFuelCostTHB : (fuelL * (obd.fuelPricePerLiter > 0 ? obd.fuelPricePerLiter : 38.50));
   NSArray *gridValues=@[
     [NSString stringWithFormat:@"%.2f L", fuelL],
     [NSString stringWithFormat:@"%.0f km/h", avg],
     [NSString stringWithFormat:@"%.0f km/h", top],
     [NSString stringWithFormat:@"%ld / 100", (long)ecoVal],
     batStr,
-    [NSString stringWithFormat:@"฿ %.2f / L", (obd.fuelPricePerLiter > 0 ? obd.fuelPricePerLiter : 38.50)]
+    [NSString stringWithFormat:@"฿ %.1f", tripFuelCost]
   ];
   NSArray *gridSubs=@[
     [NSString stringWithFormat:@"อัตราสิ้นเปลือง %.1f km/L", kmPerL],
@@ -4204,7 +4206,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     @"ความเร็วสูงสุดที่ทำได้",
     @"คะแนนการขับขี่ประหยัด",
     @"สถานะแบตเตอรี่ไฮบริด",
-    @"ราคาน้ำมันหน้าปั๊มล่าสุด"
+    [NSString stringWithFormat:@"ค่าน้ำมันทริปนี้ (฿%.2f/L)", (obd.fuelPricePerLiter > 0 ? obd.fuelPricePerLiter : 38.50)]
   ];
 
   CGFloat tileGap=12;
@@ -5365,7 +5367,17 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   [self launchBundleApp:@"com.apple.camera"];
  }
  if(self.radioPlayer){
-  self.radioPlayer.volume=0.5f;
+  self.radioPlayer.volume=0.0f;
+ }
+ self.pausedMusicForReverse=NO;
+ if(self.mediaRate>0){
+  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+  if(pauseCmd && pauseCmd(1,nil)){
+   self.pausedMusicForReverse=YES;
+  }else{
+   [self send:@"libactivator.ipod.pause-playback"];
+   self.pausedMusicForReverse=YES;
+  }
  }
  [self.reverseBeepTimer invalidate];
  self.reverseBeepTimer=[NSTimer scheduledTimerWithTimeInterval:0.85 target:self selector:@selector(playReverseBeep) userInfo:nil repeats:YES];
@@ -5379,6 +5391,11 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  self.reverseBeepTimer=nil;
  if(self.radioPlayer){
   self.radioPlayer.volume=1.0f;
+ }
+ if(self.pausedMusicForReverse){
+  self.pausedMusicForReverse=NO;
+  Boolean (*playCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+  if(!playCmd || !playCmd(0,nil))[self send:@"libactivator.ipod.toggle-playback"];
  }
  notify_post("com.codex.trd.network.internet");
  [self homePage];
@@ -5421,13 +5438,16 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
 
  // Center Card: EV Flow, Motors, HV Pack, kW
  double hvKW = (obd.hvPackVoltage * obd.hvPackCurrent) / 1000.0;
+ double tripKm = self.trip ? (self.trip.meters / 1000.0) : 0.0;
+ double liveAvgKmL = (obd.tripFuelUsedLiters > 0.05 && tripKm > 0.5) ? MAX(8.0, MIN(40.0, tripKm / obd.tripFuelUsedLiters)) : ((obd.tripAverageKmPerL > 1.0) ? obd.tripAverageKmPerL : 21.5);
+ double estRangeKm = MAX(0.0, obd.fuelRemainingLiters * liveAvgKmL);
  if(self.energyFlowLabel){
   if(!obd.isConnected){
    self.energyFlowLabel.text = [NSString stringWithFormat:@"🔍 %@  •  RPM %ld", obd.connectionStatus ?: @"Scanning", (long)obd.engineRPM];
   } else if(obd.engineRPM > 100){
-   self.energyFlowLabel.text = [NSString stringWithFormat:@"🔥 ICE ENGINE %ld RPM  •  ⛽ FUEL %.1f L (%.0f%%)", (long)obd.engineRPM, obd.fuelRemainingLiters, obd.fuelLevelPercent];
+   self.energyFlowLabel.text = [NSString stringWithFormat:@"🔥 ICE %ld RPM • ⛽ %.1f L (วิ่งได้ ~%.0f กม.)", (long)obd.engineRPM, obd.fuelRemainingLiters, estRangeKm];
   } else {
-   self.energyFlowLabel.text = [NSString stringWithFormat:@"🍃 EV READY (RPM 0)  •  ⛽ FUEL %.1f L (%.0f%%)", obd.fuelRemainingLiters, obd.fuelLevelPercent];
+   self.energyFlowLabel.text = [NSString stringWithFormat:@"🍃 EV READY • ⛽ %.1f L (วิ่งได้ ~%.0f กม.)", obd.fuelRemainingLiters, estRangeKm];
   }
  }
  if(self.frontMotorBox){
@@ -5448,7 +5468,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
   if(self.driveMode){
    self.carStatus.text = [NSString stringWithFormat:@"🔌 OBD2 %@ • 🌡️ ECT %.0f°C • ⚙️ INV %.0f°C • 🔋 %.2fV", obd.isConnected ? @"LIVE" : @"SCAN", obd.coolantTempC, obd.inverterTempC, obd.auxBatteryVoltage];
   } else {
-   self.carStatus.text = [NSString stringWithFormat:@"🔌 vLinker MC+ : %@  •  ⚙️ เกียร์ %@  •  ⛽ น้ำมัน %.1f ลิตร", obd.isConnected ? @"เชื่อมต่อสด (LIVE)" : (obd.connectionStatus ?: @"รอเชื่อมต่อ"), obd.currentGear ?: @"P", obd.fuelRemainingLiters];
+   self.carStatus.text = [NSString stringWithFormat:@"🔌 vLinker MC+ : %@  •  ⚙️ เกียร์ %@  •  ⛽ %.1f ลิตร (~%.0f กม.)", obd.isConnected ? @"เชื่อมต่อสด (LIVE)" : (obd.connectionStatus ?: @"รอเชื่อมต่อ"), obd.currentGear ?: @"P", obd.fuelRemainingLiters, estRangeKm];
   }
  }
 
