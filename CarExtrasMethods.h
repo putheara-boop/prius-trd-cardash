@@ -236,10 +236,6 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
    }
    TRDEnqueueCalmSpeech(gTRDWelcomeSynth, sentences, langCode, rate);
   } @catch(NSException *e){}
-  if(self.welcome){
-   [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideWelcome) object:nil];
-   [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:9.5];
-  }
  });
 }
 
@@ -382,7 +378,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
    }
   }
   [self performSelector:@selector(speakWelcomeMessage) withObject:nil afterDelay:0.4];
-  [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:5.5];
+  [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:4.5];
  }else{
   if(voiceLang==1){
    welcome.tagline.text=@"กำลังเชื่อมต่อ PRIUS AUDIO...";
@@ -391,12 +387,13 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
    welcome.tagline.attributedText=[[NSAttributedString alloc]initWithString:@"CONNECTING TO PRIUS AUDIO..." attributes:@{NSKernAttributeName:@2.0}];
    welcome.tagline.font=[UIFont systemFontOfSize:13];
   }
-  [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:8.0];
+  [self performSelector:@selector(hideWelcome) withObject:nil afterDelay:4.5];
   gTRDWelcomeBTTimer=[NSTimer scheduledTimerWithTimeInterval:0.2 target:self selector:@selector(checkWelcomeBluetoothReady) userInfo:nil repeats:YES];
  }
 }
 
 -(void)showWelcome{
+ if(self.welcome) return;
  static NSTimeInterval lastWelcomeTime = 0;
  NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
  if(lastWelcomeTime > 0 && (now - lastWelcomeTime < 15.0)) return;

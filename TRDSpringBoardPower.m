@@ -290,7 +290,6 @@ static void TRDPerformWake(void) {
             if (lockMgr && [lockMgr respondsToSelector:@selector(unlockUIFromSource:withOptions:)]) {
                 [lockMgr unlockUIFromSource:1 withOptions:nil];
             }
-            [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://welcome"]];
             TRDWriteStatus(@"wake-verified");
         });
     });
@@ -302,6 +301,8 @@ static void TRDPerformWake(void) {
 @end
 
 @implementation TRDSBBatteryObserver
+static BOOL gWasCharging = NO;
+static NSTimeInterval gLastWakeAt = 0;
 + (instancetype)shared {
     static TRDSBBatteryObserver *inst = nil;
     static dispatch_once_t onceToken;
@@ -313,6 +314,7 @@ static void TRDPerformWake(void) {
 - (void)batteryChanged:(NSNotification *)note {
     UIDeviceBatteryState state = [UIDevice currentDevice].batteryState;
     if (state == UIDeviceBatteryStateUnplugged) {
+        gWasCharging = NO;
         if (!gSleepScheduled) {
             gSleepScheduled = YES;
             int gen = ++gSleepGeneration;
@@ -322,7 +324,9 @@ static void TRDPerformWake(void) {
                 gSleepScheduled = NO;
                 if ([UIDevice currentDevice].batteryState == UIDeviceBatteryStateUnplugged) {
                     TRDPerformSleep();
-                } else {
+                } else if (!gWasCharging) {
+                    gWasCharging = YES;
+                    gLastWakeAt = [NSDate timeIntervalSinceReferenceDate];
                     TRDPerformWake();
                 }
             });
@@ -330,7 +334,14 @@ static void TRDPerformWake(void) {
     } else if (state == UIDeviceBatteryStateCharging || state == UIDeviceBatteryStateFull) {
         gSleepScheduled = NO;
         gSleepGeneration++;
-        TRDPerformWake();
+        NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+        if (!gWasCharging && (now - gLastWakeAt) > 8.0) {
+            gWasCharging = YES;
+            gLastWakeAt = now;
+            TRDPerformWake();
+        } else {
+            gWasCharging = YES;
+        }
     }
 }
 @end
