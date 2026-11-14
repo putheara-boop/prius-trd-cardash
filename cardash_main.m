@@ -10,6 +10,7 @@
 #import <MapKit/MapKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <SystemConfiguration/CaptiveNetwork.h>
+#import <CommonCrypto/CommonDigest.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <dlfcn.h>
@@ -6399,6 +6400,100 @@ static NSData *TRDBuildLoudBeepWAVData(void){
   }
  }
 }
+static NSString *TRDArtworkCachePathForURL(NSString *urlString){
+ if(!urlString.length)return nil;
+ const char *cStr=[urlString UTF8String];
+ if(!cStr)return nil;
+ unsigned char digest[CC_MD5_DIGEST_LENGTH];
+ CC_MD5(cStr,(CC_LONG)strlen(cStr),digest);
+ NSMutableString *hex=[NSMutableString stringWithCapacity:CC_MD5_DIGEST_LENGTH*2];
+ for(int i=0;i<CC_MD5_DIGEST_LENGTH;i++)[hex appendFormat:@"%02x",digest[i]];
+ return [NSString stringWithFormat:@"/var/mobile/Documents/LegacyMusic/art/%@.jpg",hex];
+}
+static UIImage *TRDDecodeArtworkData(NSData *data){
+ if(!data.length)return nil;
+ UIImage *image=nil;
+ CGImageSourceRef source=CGImageSourceCreateWithData((__bridge CFDataRef)data,(__bridge CFDictionaryRef)@{(__bridge NSString *)kCGImageSourceShouldCache:@NO});
+ if(source){
+  NSDictionary *options=@{(__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways:@YES,(__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize:@256,(__bridge NSString *)kCGImageSourceCreateThumbnailWithTransform:@YES};
+  CGImageRef thumb=CGImageSourceCreateThumbnailAtIndex(source,0,(__bridge CFDictionaryRef)options);
+  if(thumb){image=[UIImage imageWithCGImage:thumb];CGImageRelease(thumb);}
+  CFRelease(source);
+ }
+ return image ?: [UIImage imageWithData:data];
+}
+-(void)applyOfflineArtworkData:(NSData *)data title:(NSString *)title artist:(NSString *)artist{
+ UIImage *img=TRDDecodeArtworkData(data);
+ if(!img)return;
+ self.artworkData=data;
+ self.artwork.image=img;
+ self.artworkDecodes++;
+ self.artPlaceholder.hidden=YES;
+ if(self.carplayMediaWidget){
+  self.carplayMediaWidget.artworkView.image=img;
+  self.carplayMediaWidget.artPlaceholder.hidden=YES;
+ }
+ NSMutableDictionary *np=[NSMutableDictionary dictionaryWithDictionary:[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo?:@{}];
+ np[MPMediaItemPropertyTitle]=title?:(self.currentRadioStation?:@"Offline Music");
+ np[MPMediaItemPropertyArtist]=artist?:(self.currentOfflineArtist?:@"Offline Music");
+ np[MPNowPlayingInfoPropertyPlaybackRate]=@(1.0);
+ MPMediaItemArtwork *mpArt=[[MPMediaItemArtwork alloc]initWithImage:img];
+ if(mpArt)np[MPMediaItemPropertyArtwork]=mpArt;
+ [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo=np;
+}
+-(void)loadOfflineArtworkForTrack:(NSDictionary *)track audioPath:(NSString *)audioPath expectedIndex:(NSInteger)expectedIdx generation:(NSUInteger)expectedGen{
+ self.artwork.image=nil;
+ self.artworkData=nil;
+ self.artPlaceholder.hidden=self.focused;
+ if(self.carplayMediaWidget){
+  self.carplayMediaWidget.artworkView.image=nil;
+  self.carplayMediaWidget.artPlaceholder.hidden=NO;
+ }
+ NSString *title=track[@"title"]?:@"Untitled";
+ NSString *artist=track[@"artist"]?:@"Offline Music";
+ NSString *thumbURL=[track[@"thumbnail"]isKindOfClass:[NSString class]]?track[@"thumbnail"]:nil;
+ NSString *cachePath=TRDArtworkCachePathForURL(thumbURL);
+ if(cachePath.length && [[NSFileManager defaultManager]fileExistsAtPath:cachePath]){
+  NSData *data=[NSData dataWithContentsOfFile:cachePath];
+  if(data.length){
+   [self applyOfflineArtworkData:data title:title artist:artist];
+   return;
+  }
+ }
+ // Fallback 1: check embedded MP4/M4A metadata artwork
+ if(audioPath.length){
+  AVURLAsset *asset=[AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:audioPath] options:nil];
+  for(AVMetadataItem *meta in [asset commonMetadata]){
+   if([meta.commonKey isEqualToString:AVMetadataCommonKeyArtwork] && [meta.value isKindOfClass:[NSData class]]){
+    NSData *emb=(NSData *)meta.value;
+    if(emb.length){
+     [self applyOfflineArtworkData:emb title:title artist:artist];
+     return;
+    }
+   }
+  }
+ }
+ // Fallback 2: fetch thumbnail once if online and cache to LegacyMusic art dir for offline reuse
+ if(thumbURL.length){
+  NSURL *u=[NSURL URLWithString:thumbURL];
+  if(u){
+   __weak Dashboard *weak=self;
+   [[[NSURLSession sharedSession]dataTaskWithURL:u completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){
+    if(data.length && !err){
+     if(cachePath.length){
+      [[NSFileManager defaultManager]createDirectoryAtPath:[cachePath stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:nil];
+      [data writeToFile:cachePath atomically:YES];
+     }
+     dispatch_async(dispatch_get_main_queue(),^{
+      Dashboard *v=weak;
+      if(!v||!v.offlinePlaybackActive||v.radioGeneration!=expectedGen||v.offlineTrackIndex!=expectedIdx)return;
+      [v applyOfflineArtworkData:data title:title artist:artist];
+     });
+    }
+   }]resume];
+  }
+ }
+}
 -(void)playOfflineTrackAtIndex:(NSInteger)index{
  if(!self.offlineTracks.count||index<0||index>=(NSInteger)self.offlineTracks.count)return;
  NSDictionary *track=self.offlineTracks[index];
@@ -6412,7 +6507,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
   return;
  }
 
- ++self.radioGeneration;
+ NSUInteger gen=++self.radioGeneration;
  [[NSNotificationCenter defaultCenter]removeObserver:self name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
  if(self.radioPlayer){
   [self.radioPlayer pause];
@@ -6448,6 +6543,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
   MPMediaItemPropertyArtist:self.currentOfflineArtist,
   MPNowPlayingInfoPropertyPlaybackRate:@(1.0)
  };
+ [self loadOfflineArtworkForTrack:track audioPath:audioPath expectedIndex:index generation:gen];
  [self refreshTransportState];
  [self refreshTrackProgress];
  [self refreshMini];
