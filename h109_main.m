@@ -240,7 +240,7 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
  }
  NSDictionary *config=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-config.plist"];self.cameraSSID=[config[@"cameraSSID"]isKindOfClass:[NSString class]]?config[@"cameraSSID"]:@"H109Y-37802895";self.networkDeadline=[NSDate dateWithTimeIntervalSinceNow:90];
  self.stateLabel.text=@"JOINING CAMERA WI-FI";self.status.text=[NSString stringWithFormat:@"Connecting to %@...",self.cameraSSID];self.emptyLabel.hidden=NO;self.emptyLabel.text=@"CONNECTING TO CAMERA WI-FI";[UIApplication sharedApplication].idleTimerDisabled=YES;
- self.networkRequestedAt=[NSDate date];notify_post("com.codex.trd.network.camera");self.networkWait=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(checkCameraNetwork) userInfo:nil repeats:YES];self.networkWait.tolerance=.1;[self checkCameraNetwork];
+ self.networkRequestedAt=[NSDate date];notify_post("com.codex.trd.network.camera");self.networkWait=[NSTimer scheduledTimerWithTimeInterval:0.25 target:self selector:@selector(checkCameraNetwork) userInfo:nil repeats:YES];self.networkWait.tolerance=.05;[self checkCameraNetwork];
 }
 -(void)checkCameraNetwork{
  [self refreshTelemetry];

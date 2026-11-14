@@ -1174,13 +1174,13 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             self.pollIndex = 0;
             self.fastCycleCount++;
             self.activePollSchedule = nil;
-            self.canMonitorTargetID = (self.fastCycleCount % 3 == 0 && self.can620Misses < 4) ? @"620" : @"127";
+            self.canMonitorTargetID = (self.fastCycleCount % 5 == 0 && self.can620Misses < 4) ? @"620" : @"127";
             self.canMonitorPhase = 1;
             [self sendCommand:@"AT CAF0"];
             return;
         }
         self.pollIndex = 0;
-        self.activePollSchedule = (self.fastCycleCount % 3 == 0) ? fullSchedule : fastSchedule;
+        self.activePollSchedule = (self.fastCycleCount % 5 == 0) ? fullSchedule : fastSchedule;
     }
 
     NSDictionary *step = self.activePollSchedule[self.pollIndex];
