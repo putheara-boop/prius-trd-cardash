@@ -204,6 +204,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @property UIView *fillBar;
 @property double throttleRatio;
 -(void)updateWithSpeed:(double)speed isBraking:(BOOL)isBraking isAccelerating:(BOOL)isAccel;
+-(void)updateWithOBDPowerKW:(double)kw hasOBD:(BOOL)hasOBD engineRPM:(NSInteger)rpm speed:(double)speed isBraking:(BOOL)isBraking isAccelerating:(BOOL)isAccel;
 @end
 
 @implementation TRDHybridEcoBar
@@ -250,7 +251,33 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.fillBar.frame=CGRectMake(0,0,MIN(w,fillW),6);
 }
 -(void)updateWithSpeed:(double)speed isBraking:(BOOL)isBraking isAccelerating:(BOOL)isAccel{
-  if(isBraking){
+  [self updateWithOBDPowerKW:0.0 hasOBD:NO engineRPM:0 speed:speed isBraking:isBraking isAccelerating:isAccel];
+}
+-(void)updateWithOBDPowerKW:(double)kw hasOBD:(BOOL)hasOBD engineRPM:(NSInteger)rpm speed:(double)speed isBraking:(BOOL)isBraking isAccelerating:(BOOL)isAccel{
+  if(hasOBD){
+    if(kw < -0.5){
+      self.throttleRatio=MAX(-0.45, MIN(-0.10, kw / 30.0));
+      self.evPowerLabel.text=[NSString stringWithFormat:@"⚡ CHG REGEN: %.1f kW", kw];
+      self.evPowerLabel.textColor=[UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:1];
+      self.fillBar.backgroundColor=[UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:1];
+    }else if(rpm > 1800 || kw > 14.0 || isAccel || speed > 85){
+      double pwrKW = MAX(kw, 12.0 + (rpm > 0 ? (rpm / 220.0) : speed * 0.2));
+      self.throttleRatio=MIN(0.95, MAX(0.45, pwrKW / 35.0));
+      self.evPowerLabel.text=[NSString stringWithFormat:@"🔥 PWR: +%.1f kW%@", pwrKW, rpm>0?[NSString stringWithFormat:@" (%ld RPM)",(long)rpm]:@""];
+      self.evPowerLabel.textColor=[UIColor colorWithRed:1.0 green:0.3 blue:0.3 alpha:1];
+      self.fillBar.backgroundColor=[UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:1];
+    }else if(speed <= 0.5 && fabs(kw) < 0.8 && rpm == 0){
+      self.throttleRatio=0.0;
+      self.evPowerLabel.text=@"⚡ EV READY: +0.0 kW";
+      self.evPowerLabel.textColor=[UIColor colorWithRed:0.0 green:0.88 blue:0.45 alpha:1];
+      self.fillBar.backgroundColor=[UIColor colorWithRed:0.0 green:0.88 blue:0.45 alpha:1];
+    }else{
+      self.throttleRatio=MAX(0.10, MIN(0.45, 0.15 + fabs(kw) / 25.0));
+      self.evPowerLabel.text=[NSString stringWithFormat:@"🍃 ECO %@: +%.1f kW", (rpm==0?@"EV":@"HV"), MAX(0.0, kw)];
+      self.evPowerLabel.textColor=[UIColor colorWithRed:0.0 green:0.88 blue:0.45 alpha:1];
+      self.fillBar.backgroundColor=[UIColor colorWithRed:0.0 green:0.88 blue:0.45 alpha:1];
+    }
+  }else if(isBraking){
     self.throttleRatio=-0.25;
     self.evPowerLabel.text=@"⚡ EV REGEN: -14.2 kW";
     self.evPowerLabel.textColor=[UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:1];
@@ -3589,22 +3616,12 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  }
  double remaining=(self.mediaDuration>0)?MAX(0,self.mediaDuration-elapsed):0;
  NSString *newTime=nil;
- if(self.driveMode){
-  if(self.hasElapsed&&self.mediaDuration>0){
-   newTime=[NSString stringWithFormat:@"เล่นไป %@ / %@ (เหลือ -%@)",[self trackTimeString:elapsed],[self trackTimeString:self.mediaDuration],[self trackTimeString:remaining]];
-  }else if(self.hasElapsed){
-   newTime=[NSString stringWithFormat:@"เล่นไป %@ / --:--",[self trackTimeString:elapsed]];
-  }else{
-   newTime=@"เวลาเพลง: 0:00 / --:-- (เหลือ -0:00)";
-  }
+ if(self.hasElapsed&&self.mediaDuration>0){
+  newTime=[NSString stringWithFormat:@"เล่นไป %@ / %@ (เหลือ -%@)",[self trackTimeString:elapsed],[self trackTimeString:self.mediaDuration],[self trackTimeString:remaining]];
+ }else if(self.hasElapsed){
+  newTime=[NSString stringWithFormat:@"เล่นไป %@ / --:--",[self trackTimeString:elapsed]];
  }else{
-  if(self.hasElapsed&&self.mediaDuration>0){
-   newTime=[NSString stringWithFormat:@"ELAPSED %@ / %@ (-%@ LEFT)",[self trackTimeString:elapsed],[self trackTimeString:self.mediaDuration],[self trackTimeString:remaining]];
-  }else if(self.hasElapsed){
-   newTime=[NSString stringWithFormat:@"ELAPSED %@ / --:--",[self trackTimeString:elapsed]];
-  }else{
-   newTime=@"TRACK TIME: 0:00 / --:-- (-0:00 LEFT)";
-  }
+  newTime=@"เวลาเพลง: 0:00 / --:-- (เหลือ -0:00)";
  }
  if(![self.trackTime.text isEqualToString:newTime]){
   self.trackTime.text=newTime;
@@ -3666,7 +3683,7 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  [self refreshSpeed];
 }
 -(void)cycleDriveMode{NSInteger next=(TRDTheme+1)%3;[self setThemeNumber:@(next)];}
--(void)toggleDrive{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];[self teardownMapWebView];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;self.manualDriveActive=NO;[self.driveCar stop];}else{double curSpd=(self.fix&&self.fix.speed>=0)?(self.fix.speed*3.6):0;self.manualDriveActive=(curSpd<15.0);}self.driveMode=!self.driveMode;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:self.driveMode?@"‹ DASHBOARD":@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
+-(void)toggleDrive{if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self.settingsSheet dismiss];[self teardownMapWebView];self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;self.manualDriveActive=NO;[self.driveCar stop];}else{TRDOBDClient *obdCur=[TRDOBDClient sharedClient];BOOL obdOk=(obdCur.isConnected&&obdCur.obdInitialized);double curSpd=obdOk?MAX(0.0,obdCur.currentSpeedKmh):((self.fix&&self.fix.speed>=0)?(self.fix.speed*3.6):0);self.manualDriveActive=(curSpd<15.0);}self.driveMode=!self.driveMode;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveButton setTitle:self.driveMode?@"‹ DASHBOARD":@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
 -(void)toggleNight{
  NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];
  if(!self.nightMode){CGFloat observed=[UIScreen mainScreen].brightness;if(observed>=.15)self.dayBrightness=observed;if(self.dayBrightness<.15)self.dayBrightness=.6;[prefs setDouble:self.dayBrightness forKey:@"dayBrightness"];[UIScreen mainScreen].brightness=MIN(self.dayBrightness,.12);self.nightMode=YES;}
@@ -3703,16 +3720,20 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
  // Clear manual suppression quickly once vehicle drops below 5 km/h
  if(kmh <= 5.0){
   if(!self.stationarySince) self.stationarySince = [NSDate date];
-  if(-[self.stationarySince timeIntervalSinceNow] >= 2.0) self.autoDriveSuppressed = NO;
+  if(-[self.stationarySince timeIntervalSinceNow] >= 1.0) self.autoDriveSuppressed = NO;
  }else{
   self.stationarySince = nil;
  }
 
- // 1. AUTO-ENTER DRIVE MODE from HOME when speed >= 20 km/h (within 1.0 second)
+ BOOL obdInPark = (obdLive && [obdSpd.currentGear isEqualToString:@"P"]);
+ BOOL obdInReverse = (obdLive && obdSpd.isReverseGear);
+
+ // 1. AUTO-ENTER DRIVE MODE from HOME when speed >= 20 km/h (snappy: 0.2s on OBD2, 0.5s on GPS)
  if(kmh >= 15.0) self.manualDriveActive = NO;
- if([UIApplication sharedApplication].applicationState==UIApplicationStateActive && !self.driveMode && !self.musicMode && !self.tripMode && !self.mapMode && !self.carplayMode && !self.focused && !self.autoDriveSuppressed && reliable && kmh >= 20.0){
+ if([UIApplication sharedApplication].applicationState==UIApplicationStateActive && !self.driveMode && !self.musicMode && !self.tripMode && !self.mapMode && !self.carplayMode && !self.focused && !self.autoDriveSuppressed && reliable && !obdInPark && !obdInReverse && kmh >= 20.0){
   if(!self.movingSince) self.movingSince = [NSDate date];
-  if(-[self.movingSince timeIntervalSinceNow] >= 1.0){
+  NSTimeInterval enterHold = obdLive ? 0.2 : 0.5;
+  if(-[self.movingSince timeIntervalSinceNow] >= enterHold){
    self.movingSince = nil;
    self.parkedSince = nil;
    self.manualDriveActive = NO;
@@ -3723,14 +3744,15 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
   self.movingSince = nil;
  }
 
- // 2. AUTO-RETURN TO HOME from auto-entered DRIVE MODE when stopped (<= 4.5 km/h) or GPS lost for 3.0 seconds
+ // 2. AUTO-RETURN TO DASHBOARD when stopped (0 km/h) or shifted to P (instant on P, 0.6s on OBD2 0 km/h, 1.5s on GPS)
  if(self.driveMode && !self.manualDriveActive && !self.musicMode && !self.tripMode && !self.mapMode && !self.carplayMode){
-  BOOL isStopped = (!valid) || (kmh <= 4.5) || (fixAge > 4.0);
-  BOOL clearlyMoving = (valid && fixAge <= 4.0 && kmh > 6.0);
+  BOOL isStopped = obdLive ? (obdInPark || kmh <= 0.5) : ((!valid) || (kmh <= 2.5) || (fixAge > 4.0));
+  BOOL clearlyMoving = obdLive ? (!obdInPark && kmh > 3.0) : (valid && fixAge <= 4.0 && kmh > 5.0);
   if(isStopped){
    if(!self.parkedSince) self.parkedSince = [NSDate date];
    NSTimeInterval parkedDuration = -[self.parkedSince timeIntervalSinceNow];
-   if(parkedDuration >= 3.0){
+   NSTimeInterval returnHold = obdInPark ? 0.0 : (obdLive ? 0.6 : 1.5);
+   if(parkedDuration >= returnHold){
     self.parkedSince = nil;
     self.movingSince = nil;
     self.driveMode = NO;
@@ -3747,23 +3769,39 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
     [self.view setNeedsLayout];
    }
   }else if(clearlyMoving){
-   // Only cancel stop timer once clearly rolling again; ignore 4.6-6.0 km/h GPS stop jitter
+   // Only cancel stop timer once clearly rolling again; ignore 0.6-3.0 km/h crawl jitter
    self.parkedSince = nil;
   }
  }else{
   self.parkedSince = nil;
  }
  self.gpsLive=valid;[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&(valid||obdLive)?kmh:0];
+ static double prevEcoKmh = -1.0;
+ static NSTimeInterval prevEcoTime = 0.0;
+ NSTimeInterval nowEcoTime = [NSDate timeIntervalSinceReferenceDate];
+ double dvDt = 0.0;
+ if(prevEcoTime > 0 && (nowEcoTime - prevEcoTime) > 0.1 && (nowEcoTime - prevEcoTime) < 3.0 && prevEcoKmh >= 0){
+  dvDt = (kmh - prevEcoKmh) / (nowEcoTime - prevEcoTime);
+ }
+ prevEcoKmh = kmh;
+ prevEcoTime = nowEcoTime;
+ BOOL instantBraking = obdLive ? (obdSpd.hvPackCurrent < -1.0 || obdSpd.regenBrakingPowerKW > 0.5 || dvDt < -1.8) : (dvDt < -1.8);
+ BOOL instantAccel = obdLive ? (obdSpd.engineRPM > 1800 || (obdSpd.hvPackVoltage * obdSpd.hvPackCurrent / 1000.0) > 14.0 || dvDt > 2.2) : (dvDt > 2.2);
+ double liveHVkw = obdLive ? ((obdSpd.hvPackVoltage > 50.0 ? obdSpd.hvPackVoltage : 201.6) * obdSpd.hvPackCurrent / 1000.0) : 0.0;
  if(self.hybridEcoBar&&!self.hybridEcoBar.hidden){
-  double curSpeed=valid?kmh:0;
-  BOOL braking=(self.harshBrakeCount>0);
-  BOOL accel=(self.harshAccelCount>0);
-  [self.hybridEcoBar updateWithSpeed:curSpeed isBraking:braking isAccelerating:accel];
+  double curSpeed=(valid||obdLive)?kmh:0;
+  [self.hybridEcoBar updateWithOBDPowerKW:liveHVkw hasOBD:obdLive engineRPM:obdSpd.engineRPM speed:curSpeed isBraking:instantBraking isAccelerating:instantAccel];
  }
  if(self.drivePowerMeter&&!self.drivePowerMeter.hidden){
-  CGFloat pRatio = (kmh <= 1.0) ? 0.0 : MIN(0.95, (kmh / 110.0) - 0.15);
-  if(self.harshBrakeCount > 0) pRatio = -0.55;
-  else if(self.harshAccelCount > 0) pRatio = 0.85;
+  CGFloat pRatio = (kmh <= 1.0 && fabs(liveHVkw) < 0.5) ? 0.0 : MIN(0.95, (kmh / 110.0) - 0.10);
+  if(obdLive){
+   if(liveHVkw < -0.5) pRatio = MAX(-0.85, liveHVkw / 25.0);
+   else if(obdSpd.engineRPM > 1800 || liveHVkw > 14.0) pRatio = MIN(0.95, MAX(0.55, (liveHVkw + obdSpd.engineRPM / 200.0) / 35.0));
+   else pRatio = MAX(0.08, MIN(0.50, 0.15 + fabs(liveHVkw) / 25.0));
+  }else{
+   if(instantBraking) pRatio = -0.55;
+   else if(instantAccel) pRatio = 0.85;
+  }
   self.drivePowerMeter.powerRatio = pRatio;
   [self.drivePowerMeter setNeedsDisplay];
  }
