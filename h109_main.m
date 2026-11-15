@@ -210,10 +210,12 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
  NSDictionary *tele=[self.telemetry summary];
  NSNumber *spd=tele[@"speedKmh"];
  NSString *spdStr=spd?[NSString stringWithFormat:@"%.0f km/h",spd.doubleValue]:@"-- km/h";
- NSString *camStr=(self.channels.selectedSegmentIndex==1)?@"REAR CAM":@"FRONT CAM";
+ BOOL isRear=(self.channels.selectedSegmentIndex==1);
+ NSString *camStr=isRear?(self.mirrored?@"REAR • กล้องหลัง • MIRROR":@"REAR • กล้องหลัง"):@"FRONT • กล้องหน้า";
  NSString *recStr=[tele[@"recording"] isEqual:@"OFF"]?@"⚪ IDLE":@"🔴 REC";
  self.fullHudLabel.text=[NSString stringWithFormat:@"%@   •   %@   •   %@",recStr,spdStr,camStr];
- NSString *nextBtn=(self.channels.selectedSegmentIndex==1)?@"⇄ FRONT":@"⇄ REAR";
+ if(self.fullHudBar)self.fullHudBar.layer.borderColor=(isRear?[UIColor colorWithRed:1.0 green:0.15 blue:0.2 alpha:0.9]:[UIColor colorWithRed:0.15 green:0.75 blue:1.0 alpha:0.9]).CGColor;
+ NSString *nextBtn=isRear?@"⇄ FRONT":@"⇄ REAR";
  [self.fullSwitchBtn setTitle:nextBtn forState:0];
  NSDictionary *dash=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/h109-build/cardash-state.plist"];
  NSString *songTitle=dash[@"song"]?:@"";
@@ -231,23 +233,28 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
 }
 -(void)beginAutomaticCamera{
  [self stop];
- if([self wantsReverseRearCamera]){
-  self.channels.selectedSegmentIndex=1;
-  self.showGuide=YES;
-  if(self.parkingGuideView)self.parkingGuideView.hidden=NO;
-  [self applyChannelMirror];
-  [self updateFullHUD];
- }
+ BOOL reverseMode=[self wantsReverseRearCamera];
+ NSInteger initialChan=reverseMode?1:(([[NSUserDefaults standardUserDefaults]integerForKey:@"defaultChannel"]==1)?1:0);
+ self.channels.selectedSegmentIndex=initialChan;
+ if(reverseMode)self.showGuide=YES;
+ if(self.parkingGuideView)self.parkingGuideView.hidden=!(self.showGuide&&initialChan==1);
+ [self applyChannelMirror];
+ [self updateFullHUD];
  NSDictionary *config=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-config.plist"];self.cameraSSID=[config[@"cameraSSID"]isKindOfClass:[NSString class]]?config[@"cameraSSID"]:@"H109Y-37802895";self.networkDeadline=[NSDate dateWithTimeIntervalSinceNow:90];
  self.stateLabel.text=@"JOINING CAMERA WI-FI";self.status.text=[NSString stringWithFormat:@"Connecting to %@...",self.cameraSSID];self.emptyLabel.hidden=NO;self.emptyLabel.text=@"CONNECTING TO CAMERA WI-FI";[UIApplication sharedApplication].idleTimerDisabled=YES;
- self.networkRequestedAt=[NSDate date];notify_post("com.codex.trd.network.camera");self.networkWait=[NSTimer scheduledTimerWithTimeInterval:0.25 target:self selector:@selector(checkCameraNetwork) userInfo:nil repeats:YES];self.networkWait.tolerance=.05;[self checkCameraNetwork];
+ self.networkRequestedAt=[NSDate date];notify_post("com.codex.trd.network.camera");self.networkWait=[NSTimer scheduledTimerWithTimeInterval:0.10 target:self selector:@selector(checkCameraNetwork) userInfo:nil repeats:YES];self.networkWait.tolerance=.03;[self checkCameraNetwork];
 }
 -(void)checkCameraNetwork{
  [self refreshTelemetry];
- if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive){[self stop];return;}
- NSDictionary *network=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));NSDictionary *state=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-state.plist"];
- BOOL ready=[network[@"SSID"]isEqual:self.cameraSSID]&&[state[@"mode"]isEqual:@"camera"]&&[state[@"phase"]isEqual:@"ready"]&&[state[@"actualSSID"]isEqual:self.cameraSSID];
+ if([UIApplication sharedApplication].applicationState==UIApplicationStateBackground){[self stop];return;}
+ NSString *gw=H109CameraGatewayHost();
+ NSString *ssid=H109ResolvedCameraSSID();
+ NSDictionary *state=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-state.plist"];
+ BOOL ready=(gw.length>0)||([ssid isEqual:self.cameraSSID]&&[state[@"mode"]isEqual:@"camera"]&&[state[@"phase"]isEqual:@"ready"]);
  if(ready){[self.networkWait invalidate];self.networkWait=nil;
+  NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];
+  NSString *host=gw.length?gw:@"192.168.169.1";
+  [prefs setObject:host forKey:@"reportedCameraHost"];
   if([self wantsReverseRearCamera]){
    [[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/reverse-camera.plist" error:nil];
    self.channels.selectedSegmentIndex=1;
@@ -255,11 +262,29 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
    if(self.parkingGuideView)self.parkingGuideView.hidden=NO;
    [self applyChannelMirror];
    [self updateFullHUD];
-   self.status.text=@"Reverse gear: switching to REAR camera...";
-   [self selectChannel];
+   NSString *rear=[prefs stringForKey:@"rearStream"];
+   NSString *cached=[prefs stringForKey:@"lastWorkingStream"];
+   NSString *targetURL=(rear.length&&[rear hasPrefix:@"rtsp://"])?rear:((cached.length&&[cached hasPrefix:@"rtsp://"])?cached:[NSString stringWithFormat:@"rtsp://%@/",host]);
+   self.address.text=targetURL;
+   self.status.text=@"Reverse gear: starting REAR camera...";
+   self.retryCount=0;
+   [self connect];
    return;
   }
-  NSString *cached=[[NSUserDefaults standardUserDefaults]stringForKey:@"lastWorkingStream"];if(cached.length&&[cached hasPrefix:@"rtsp://"]){self.status.text=@"Fast-connecting to camera stream...";self.address.text=cached;[self connect];return;}[self discover];return;}
+  NSInteger targetChan=([prefs integerForKey:@"defaultChannel"]==1)?1:0;
+  self.channels.selectedSegmentIndex=targetChan;
+  if(self.parkingGuideView)self.parkingGuideView.hidden=!(self.showGuide&&targetChan==1);
+  [self applyChannelMirror];
+  [self updateFullHUD];
+  NSString *profile=[prefs stringForKey:targetChan?@"rearStream":@"frontStream"];
+  NSString *cached=[prefs stringForKey:@"lastWorkingStream"];
+  NSString *targetURL=(profile.length&&[profile hasPrefix:@"rtsp://"])?profile:((cached.length&&[cached hasPrefix:@"rtsp://"])?cached:[NSString stringWithFormat:@"rtsp://%@/",host]);
+  self.address.text=targetURL;
+  self.status.text=(targetChan==1)?@"Starting REAR camera stream...":@"Starting FRONT camera stream...";
+  self.retryCount=0;
+  [self connect];
+  return;
+ }
  NSDate *stateDate=[state[@"at"]isKindOfClass:[NSDate class]]?state[@"at"]:nil;BOOL fresh=stateDate&&[stateDate compare:self.networkRequestedAt]!=NSOrderedAscending;
  if(fresh&&[state[@"cameraUnavailable"]boolValue]&&![@[@"restored",@"error"]containsObject:state[@"phase"]]){self.stateLabel.text=@"RESTORING PREVIOUS WI-FI";self.emptyLabel.text=@"CAMERA UNAVAILABLE\nRestoring previous Wi-Fi...";}
  if((fresh&&(([state[@"cameraUnavailable"]boolValue]&&[@[@"restored",@"error"]containsObject:state[@"phase"]])||([state[@"mode"]isEqual:@"camera"]&&[state[@"phase"]isEqual:@"error"])))||[self.networkDeadline timeIntervalSinceNow]<=0){[self.networkWait invalidate];self.networkWait=nil;self.stateLabel.text=@"WI-FI NOT CONNECTED";self.emptyLabel.text=@"CHECK CAMERA WI-FI\nTap FIND to retry";self.status.text=[state[@"cameraUnavailable"]boolValue]?([state[@"phase"]isEqual:@"restored"]?@"Camera unavailable. Previous Wi-Fi restored. Tap FIND to retry.":@"Camera unavailable. Restoring previous Wi-Fi; tap FIND later."):state[@"error"]?:@"Could not join the camera Wi-Fi. Check that the camera is on, then tap FIND.";[UIApplication sharedApplication].idleTimerDisabled=NO;}
@@ -280,8 +305,12 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
 -(void)captureDiagnostics{
  UIView *surface=self.view;UIGraphicsBeginImageContextWithOptions(surface.bounds.size,YES,1);[surface drawViewHierarchyInRect:surface.bounds afterScreenUpdates:YES];NSData *png=UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext());UIGraphicsEndImageContext();[png writeToFile:@"/var/mobile/h109-build/capture.png" atomically:YES];
  NSString *state=[NSString stringWithFormat:@"status=%@\nframes=%lu\nrenderer=%ld\nerror=%@\nurl=%@",self.status.text,(unsigned long)self.frames,(long)self.liveLayer.status,self.liveLayer.error,self.address.text];[state writeToFile:@"/var/mobile/h109-build/capture-state.txt" atomically:YES encoding:4 error:NULL];[self captureState];
+ if(self.rtsp)[self.rtsp captureFrame:^(CGImageRef image,NSString *error){if(image){NSData *jpg=UIImageJPEGRepresentation([UIImage imageWithCGImage:image],0.85);[jpg writeToFile:@"/var/mobile/h109-build/capture-frame.jpg" atomically:YES];}}];
 }
--(void)captureState{[@{@"telemetry":[self.telemetry summary]?:@{},@"telemetryText":self.telemetryLabel.text?:@"",@"renderer":@(self.liveLayer.status),@"placeholder":self.emptyLabel.text?:@"",@"fixture":@(self.fixtureMode),@"state":self.stateLabel.text?:@"",@"status":self.status.text?:@"",@"frames":@(self.frames),@"fullscreen":@(self.fullscreen),@"mirror":@(self.mirrored),@"channel":@(self.channels.selectedSegmentIndex),@"mainCameraChannel":@(self.mainCameraChannel),@"mainCameraChannelFresh":@(self.mainCameraReadAt&&-[self.mainCameraReadAt timeIntervalSinceNow]<3),@"channelFollowActive":@(self.channelFollowTimer!=nil),@"retryCount":@(self.retryCount),@"retryScheduled":@(self.retryScheduled),@"wantsLive":@(self.wantsLive),@"applicationState":@([UIApplication sharedApplication].applicationState),@"healthActive":@(self.health!=nil),@"freshFrame":@(self.lastFrame&&-[self.lastFrame timeIntervalSinceNow]<=2),@"url":self.address.text?:@""}writeToFile:@"/var/mobile/h109-build/viewer-state.plist" atomically:YES];}
+-(void)captureState{
+ NSDictionary *snap=@{@"telemetry":[self.telemetry summary]?:@{},@"telemetryText":self.telemetryLabel.text?:@"",@"renderer":@(self.liveLayer.status),@"placeholder":self.emptyLabel.text?:@"",@"fixture":@(self.fixtureMode),@"state":self.stateLabel.text?:@"",@"status":self.status.text?:@"",@"frames":@(self.frames),@"fullscreen":@(self.fullscreen),@"mirror":@(self.mirrored),@"channel":@(self.channels.selectedSegmentIndex),@"mainCameraChannel":@(self.mainCameraChannel),@"mainCameraChannelFresh":@(self.mainCameraReadAt&&-[self.mainCameraReadAt timeIntervalSinceNow]<3),@"channelFollowActive":@(self.channelFollowTimer!=nil),@"retryCount":@(self.retryCount),@"retryScheduled":@(self.retryScheduled),@"wantsLive":@(self.wantsLive),@"applicationState":@([UIApplication sharedApplication].applicationState),@"healthActive":@(self.health!=nil),@"freshFrame":@(self.lastFrame&&-[self.lastFrame timeIntervalSinceNow]<=2),@"url":self.address.text?:@""};
+ dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW,0),^{@synchronized([H109RTSP class]){[snap writeToFile:@"/var/mobile/h109-build/viewer-state.plist" atomically:YES];}});
+}
 -(void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];
 #ifdef H109_TESTING
  NSString *test=[NSString stringWithContentsOfFile:@"/var/mobile/h109-build/test-url.txt" encoding:4 error:NULL];if(test.length){self.address.text=test;[self connect];}
@@ -289,7 +318,7 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
 #endif
 }
 -(void)viewDidLayoutSubviews{[super viewDidLayoutSubviews];[self layoutHUD];}
--(void)wifi{NSDictionary *info=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));self.lastSSID=info[@"SSID"];self.networkLabel.text=[NSString stringWithFormat:@"%@  •  PREVIEW MUTED",self.lastSSID?:@"NO WI-FI"];self.status.text=@"Connect to H109Y Wi-Fi, then tap FIND. Tap FIND to discover the camera stream.";}
+-(void)wifi{NSString *ssid=H109ResolvedCameraSSID();self.lastSSID=ssid;NSString *label=ssid?:([H109CameraGatewayHost() length]?@"CAMERA WI-FI":@"NO WI-FI");self.networkLabel.text=[NSString stringWithFormat:@"%@  •  PREVIEW MUTED",label];self.status.text=@"Connect to H109Y Wi-Fi, then tap FIND. Tap FIND to discover the camera stream.";}
 -(void)tap:(UIButton *)b{if(b.tag==1){self.retryCount=0;[self connect];}else if(b.tag==2)[self stop];else if(b.tag==3)[self beginAutomaticCamera];else if(b.tag==4){self.captureReason=@"manual_snapshot";self.eventDate=nil;[self snapshot];}else if(b.tag==6)[self openLibrary];else{UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:[H109Events new]];[self presentViewController:nav animated:YES completion:nil];}}
 -(void)saveSnapshot:(UIImage *)image date:(NSDate *)date{
  [H109Events save:image requestedAt:date reason:(self.fixtureMode?[@"test_fixture_"stringByAppendingString:self.captureReason?:@"manual_snapshot"]:self.captureReason) completion:^(NSString *path,NSString *error){self.snapshotBusy=NO;[self.view viewWithTag:4].userInteractionEnabled=YES;self.statusUntil=[NSDate dateWithTimeIntervalSinceNow:4];self.status.text=path?@"Snapshot saved. Open SAVED to view or share.":error;}];
@@ -311,8 +340,8 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
  [self.alerts startHost:url.host port:port];
 }
 -(void)discover{
- if(self.searching)return;NSMutableArray *trace=[NSMutableArray array];[self stop];NSDictionary *info=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));NSString *ssid=info[@"SSID"];H109Record(trace,@"network",ssid?:@"No Wi-Fi");
- if(![ssid hasPrefix:@"H109Y-"]&&![ssid hasPrefix:@"H108Y-"]){self.status.text=[NSString stringWithFormat:@"Wi-Fi: %@. Join the H109Y camera network, then tap FIND.",ssid?:@"none"];return;}
+ if(self.searching)return;NSMutableArray *trace=[NSMutableArray array];[self stop];NSString *ssid=H109ResolvedCameraSSID();NSString *gw=H109CameraGatewayHost();H109Record(trace,@"network",ssid?:(gw?:@"No Wi-Fi"));
+ if(!gw.length&&![ssid hasPrefix:@"H109Y-"]&&![ssid hasPrefix:@"H108Y-"]){self.status.text=[NSString stringWithFormat:@"Wi-Fi: %@. Join the H109Y camera network, then tap FIND.",ssid?:@"none"];return;}
  NSMutableArray *hosts=[NSMutableArray array];struct ifaddrs *all=NULL;if(getifaddrs(&all)==0){for(struct ifaddrs *a=all;a;a=a->ifa_next){if(a->ifa_addr&&a->ifa_addr->sa_family==AF_INET&&[[NSString stringWithUTF8String:a->ifa_name]isEqual:@"en0"]){char ip[INET_ADDRSTRLEN];inet_ntop(AF_INET,&((struct sockaddr_in *)a->ifa_addr)->sin_addr,ip,sizeof(ip));NSString *text=[NSString stringWithUTF8String:ip];NSArray *parts=[text componentsSeparatedByString:@"."];if(parts.count==4){NSString *prefix=[[parts subarrayWithRange:NSMakeRange(0,3)]componentsJoinedByString:@"."];for(NSString *last in @[@"1",@"254"]){NSString *host=[prefix stringByAppendingFormat:@".%@",last];if(![host isEqual:text])[hosts addObject:host];}}}}freeifaddrs(all);}
  if(!hosts.count){self.status.text=@"Camera Wi-Fi has no IPv4 address yet. Wait and try FIND again.";return;}
  self.searching=YES;NSUInteger generation=self.discoveryGeneration;self.status.text=@"Checking known read-only stream descriptions...";self.stateLabel.text=@"DISCOVERING";__weak Viewer *weak=self;
@@ -327,18 +356,59 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
    NSString *channel=[H109RTSP readMetadata:host path:@"/cgi-bin/hisnet/getcamchnl.cgi?&-camid=0"];
    NSRegularExpression *cam=[NSRegularExpression regularExpressionWithPattern:@"camchnl[^a-zA-Z0-9]+([a-zA-Z0-9._-]{1,32})" options:NSRegularExpressionCaseInsensitive error:NULL];NSTextCheckingResult *match=[cam firstMatchInString:channel?:@"" options:0 range:NSMakeRange(0,channel.length)];if(match)[candidates insertObject:[@"/livestream/" stringByAppendingString:[channel substringWithRange:[match rangeAtIndex:1]]] atIndex:0];
    for(NSString *path in candidates){if(-[started timeIntervalSinceNow]>30)break;Viewer *v=weak;if(!v||v.discoveryGeneration!=generation)return;NSURL *url=[NSURL URLWithString:[NSString stringWithFormat:@"rtsp://%@%@",host,path]];NSDictionary *r=[H109RTSP describe:url];NSString *preview=r[@"body"];if(preview.length>512)preview=[preview substringToIndex:512];H109Record(trace,@"RTSP probe",[NSString stringWithFormat:@"%@ -> %@ / %@",url.absoluteString,r[@"code"]?:@"No response",preview?:@""]);if(!r)continue;if([r[@"code"]intValue]==200&&[r[@"body"]rangeOfString:@"H264/" options:NSCaseInsensitiveSearch].location!=NSNotFound){[found addObject:url.absoluteString];break;}}if(found.count)break;}
-  dispatch_async(dispatch_get_main_queue(),^{Viewer *v=weak;if(!v||v.discoveryGeneration!=generation)return;v.searching=NO;H109Record(trace,@"result",found.count?found.description:@"No supported H.264 stream found. Share diagnostics for analysis.");if(found.count){v.address.text=found[0];NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];if(reportedProfile){[prefs setObject:[NSURL URLWithString:found[0]].host forKey:@"reportedCameraHost"];v.channels.selectedSegmentIndex=reportedChannel==1?1:0;}else [prefs removeObjectForKey:@"reportedCameraHost"];[v connect];}else{v.stateLabel.text=@"OFFLINE";v.status.text=@"No supported stream found. CONNECTION > SHARE DIAGNOSTICS saves the probe results.";}});
+  dispatch_async(dispatch_get_main_queue(),^{Viewer *v=weak;if(!v||v.discoveryGeneration!=generation)return;v.searching=NO;H109Record(trace,@"result",found.count?found.description:@"No supported H.264 stream found. Share diagnostics for analysis.");if(found.count){v.address.text=found[0];NSUserDefaults *prefs=[NSUserDefaults standardUserDefaults];if(reportedProfile)[prefs setObject:[NSURL URLWithString:found[0]].host forKey:@"reportedCameraHost"];else [prefs removeObjectForKey:@"reportedCameraHost"];[v connect];}else{v.stateLabel.text=@"OFFLINE";v.status.text=@"No supported stream found. CONNECTION > SHARE DIAGNOSTICS saves the probe results.";}});
  });
 }
 -(BOOL)textFieldShouldReturn:(UITextField *)field{[self connect];return YES;}
 -(void)stop{self.wantsLive=NO;self.retryCount=0;self.retryScheduled=NO;[self stopTransport];self.stateLabel.text=@"OFFLINE";self.emptyLabel.text=@"PREVIEW STOPPED\nTap CONNECT or FIND";self.emptyLabel.hidden=self.picture.image!=nil;}
 -(void)stopTransport{[self.telemetry stop];[self refreshTelemetry];[self.channelFollowTimer invalidate];self.channelFollowTimer=nil;self.channelProbeBusy=NO;self.mainCameraChannel=-1;self.mainCameraReadAt=nil;[self.networkWait invalidate];self.networkWait=nil;[self.health invalidate];self.health=nil;self.lastFrame=nil;[self.alerts stop];self.alerts=nil;self.autoLabel.text=self.autoSwitch.on?@"EVENTS: waiting for camera validation":@"EVENTS: OFF";self.discoveryGeneration++;self.searching=NO;[self.rtsp stop];self.rtsp=nil;[self.liveLayer flushAndRemoveImage];[self.liveLayer removeFromSuperlayer];self.liveLayer=nil;self.framePending=NO;[self.session invalidateAndCancel];self.session=nil;[self.player pause];self.player=nil;self.videoOutput=nil;[self.video removeFromSuperlayer];self.video=nil;self.buffer=nil;self.status.text=@"Live preview stopped.";[UIApplication sharedApplication].idleTimerDisabled=NO;}
--(void)connect{[self stopTransport];[self updateWiFi];self.wantsLive=YES;self.retryScheduled=NO;self.lastVideoTime=-1;self.connectionBegan=[NSDate date];self.lastFrame=nil;self.healthySince=nil;self.healthFrames=0;self.picture.image=nil;self.emptyLabel.hidden=NO;self.emptyLabel.text=@"CONNECTING TO CAMERA";self.stateLabel.text=@"CONNECTING";self.health=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(healthTick) userInfo:nil repeats:YES];self.health.tolerance=.15;[self.address resignFirstResponder];NSURL *u=[NSURL URLWithString:self.address.text];
+-(void)connect{[self stopTransport];[self updateWiFi];[self applyChannelMirror];self.wantsLive=YES;self.retryScheduled=NO;self.lastVideoTime=-1;self.connectionBegan=[NSDate date];self.lastFrame=nil;self.healthySince=nil;self.healthFrames=0;self.picture.image=nil;self.emptyLabel.hidden=NO;self.emptyLabel.text=@"CONNECTING TO CAMERA";self.stateLabel.text=@"CONNECTING";self.health=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(healthTick) userInfo:nil repeats:YES];self.health.tolerance=.15;[self.address resignFirstResponder];NSURL *u=[NSURL URLWithString:self.address.text];
 if([u.scheme.lowercaseString isEqual:@"rtsp"]&&u.host.length&&!u.user.length&&!u.password.length){
- [[NSUserDefaults standardUserDefaults]setObject:u.absoluteString forKey:@"url"];self.liveLayer=[AVSampleBufferDisplayLayer layer];self.liveLayer.videoGravity=AVLayerVideoGravityResizeAspect;self.liveLayer.frame=self.picture.bounds;[self.picture.layer addSublayer:self.liveLayer];[self.picture bringSubviewToFront:self.emptyLabel];if(self.parkingGuideView)[self.picture bringSubviewToFront:self.parkingGuideView];self.rtsp=[H109RTSP new];__weak Viewer *weak=self;__weak H109RTSP *engine=self.rtsp;
+ [[NSUserDefaults standardUserDefaults]setObject:u.absoluteString forKey:@"url"];self.liveLayer=[AVSampleBufferDisplayLayer layer];self.liveLayer.videoGravity=AVLayerVideoGravityResizeAspect;self.liveLayer.frame=self.picture.bounds;[self.picture.layer addSublayer:self.liveLayer];[self.picture bringSubviewToFront:self.emptyLabel];if(self.parkingGuideView)[self.picture bringSubviewToFront:self.parkingGuideView];self.rtsp=[H109RTSP new];
+ NSString *camGW=H109CameraGatewayHost();
+ NSString *repHost=[[NSUserDefaults standardUserDefaults]stringForKey:@"reportedCameraHost"];
+ if([u.host isEqual:@"192.168.169.1"]||(camGW.length&&[u.host isEqual:camGW])||(repHost.length&&[u.host isEqual:repHost])){
+  self.rtsp.targetChannel=self.channels.selectedSegmentIndex;
+ }
+ __weak Viewer *weak=self;__weak H109RTSP *engine=self.rtsp;
  self.rtsp.finished=^{Viewer *v=weak;if(v.rtsp==engine){[UIApplication sharedApplication].idleTimerDisabled=NO;[v scheduleReconnect];}};
  self.rtsp.status=^(NSString *message){Viewer *v=weak;if(v.rtsp==engine)if(!v.statusUntil||[v.statusUntil timeIntervalSinceNow]<=0)v.status.text=message;};
- self.rtsp.sample=^(CMSampleBufferRef sample){Viewer *v=weak;H109RTSP *client=engine;if(!v||!client)return;@synchronized(v){if(v.framePending)return;v.framePending=YES;}CFRetain(sample);dispatch_async(dispatch_get_main_queue(),^{if(v.rtsp==client){if(v.liveLayer.status==AVQueuedSampleBufferRenderingStatusFailed)[v.liveLayer flush];if(v.liveLayer.readyForMoreMediaData){[v.liveLayer enqueueSampleBuffer:sample];if(!v.frames){[[NSUserDefaults standardUserDefaults]setObject:v.address.text forKey:@"lastWorkingStream"];[[NSUserDefaults standardUserDefaults]synchronize];}v.frames++;v.lastFrame=[NSDate date];v.emptyLabel.hidden=YES;if(!v.statusUntil||[v.statusUntil timeIntervalSinceNow]<=0)v.status.text=[NSString stringWithFormat:@"RTSP H.264 • %lu frames received",(unsigned long)v.frames];}if(v.liveLayer.status==AVQueuedSampleBufferRenderingStatusFailed)v.status.text=[NSString stringWithFormat:@"ตัวถอดภาพไม่รองรับสตรีมนี้: %@",v.liveLayer.error.localizedDescription];}@synchronized(v){v.framePending=NO;}CFRelease(sample);});};
+ self.rtsp.channelUpdated=^(NSInteger channel,BOOL switched){Viewer *v=weak;if(!v||v.rtsp!=engine)return;v.mainCameraChannel=channel;v.mainCameraReadAt=[NSDate date];if(!switched&&(channel==0||channel==1)&&v.channels.selectedSegmentIndex!=channel){v.channels.selectedSegmentIndex=channel;if(v.parkingGuideView)v.parkingGuideView.hidden=!(v.showGuide&&channel==1);[v applyChannelMirror];[v updateFullHUD];v.statusUntil=[NSDate dateWithTimeIntervalSinceNow:3];v.status.text=@"Camera channel not switched; showing active sensor.";}};
+ static NSInteger sPendingEnqueues=0;
+ self.rtsp.sample=^(CMSampleBufferRef sample){
+  Viewer *v=weak;H109RTSP *client=engine;if(!v||!client)return;
+  @synchronized([Viewer class]){
+   if(sPendingEnqueues>=8){[client requestKeyframeWait];return;}
+   sPendingEnqueues++;
+  }
+  CFRetain(sample);
+  dispatch_async(dispatch_get_main_queue(),^{
+   if(v.rtsp==client&&v.liveLayer){
+    if(v.liveLayer.status==AVQueuedSampleBufferRenderingStatusFailed){
+     [v.liveLayer flush];
+     [client requestKeyframeWait];
+    }else if(v.liveLayer.readyForMoreMediaData){
+     [v.liveLayer enqueueSampleBuffer:sample];
+     if(!v.frames){[[NSUserDefaults standardUserDefaults]setObject:v.address.text forKey:@"lastWorkingStream"];[[NSUserDefaults standardUserDefaults]synchronize];}
+     v.frames++;v.lastFrame=[NSDate date];v.emptyLabel.hidden=YES;
+     if(v.frames==15)[v captureState];
+     if(!v.statusUntil||[v.statusUntil timeIntervalSinceNow]<=0){
+      NSString *side=(v.channels.selectedSegmentIndex==1)?@"REAR":@"FRONT";
+      v.status.text=[NSString stringWithFormat:@"%@ • RTSP H.264 • %lu frames received",side,(unsigned long)v.frames];
+     }
+    }else{
+     [client requestKeyframeWait];
+    }
+    if(v.liveLayer.status==AVQueuedSampleBufferRenderingStatusFailed){
+     v.status.text=[NSString stringWithFormat:@"ตัวถอดภาพไม่รองรับสตรีมนี้: %@",v.liveLayer.error.localizedDescription];
+     [v.liveLayer flush];
+     [client requestKeyframeWait];
+    }
+   }
+   @synchronized([Viewer class]){if(sPendingEnqueues>0)sPendingEnqueues--;}
+   CFRelease(sample);
+  });
+ };
  self.frames=0;[UIApplication sharedApplication].idleTimerDisabled=YES;[self.rtsp start:u];[self startAlerts:u port:3333];if([[[NSUserDefaults standardUserDefaults]stringForKey:@"reportedCameraHost"]isEqual:u.host]){self.telemetry=[H109Telemetry new];[self.telemetry start:u.host];self.channelFollowTimer=[NSTimer scheduledTimerWithTimeInterval:12.0 target:self selector:@selector(checkMainCameraChannel) userInfo:nil repeats:YES];self.channelFollowTimer.tolerance=.2;}return;}
 if(!u.host.length||u.user.length||u.password.length||![@[@"http",@"https"] containsObject:u.scheme.lowercaseString]){[self stop];self.status.text=@"ใส่ URL ภาพสดแบบ rtsp:// หรือ http:// ของกล้อง\nหรือเชื่อม Wi-Fi H109Y แล้วแตะค้นหากล้อง";return;}[[NSUserDefaults standardUserDefaults]setObject:u.absoluteString forKey:@"url"];self.frames=0;self.buffer=[NSMutableData data];self.status.text=@"Connecting...";[UIApplication sharedApplication].idleTimerDisabled=YES;NSURLSessionConfiguration *cfg=[NSURLSessionConfiguration ephemeralSessionConfiguration];cfg.timeoutIntervalForRequest=12;cfg.timeoutIntervalForResource=86400;self.session=[NSURLSession sessionWithConfiguration:cfg delegate:self delegateQueue:[NSOperationQueue mainQueue]];[[self.session dataTaskWithURL:u]resume];}
 -(void)URLSession:(NSURLSession *)s dataTask:(NSURLSessionDataTask *)t didReceiveResponse:(NSURLResponse *)r completionHandler:(void (^)(NSURLSessionResponseDisposition))done{if(s!=self.session){done(NSURLSessionResponseCancel);return;}NSInteger code=[(NSHTTPURLResponse *)r statusCode];if(code!=200){self.status.text=[NSString stringWithFormat:@"กล้องตอบ HTTP %ld — ตรวจ URL อีกครั้ง",(long)code];[self scheduleReconnect];done(NSURLSessionResponseCancel);return;}NSString *mime=r.MIMEType.lowercaseString;if([mime containsString:@"mpegurl"]||[r.URL.pathExtension.lowercaseString isEqual:@"m3u8"]||[mime hasPrefix:@"video/"]){self.player=[AVPlayer playerWithURL:r.URL];self.player.muted=YES;[[AVAudioSession sharedInstance]setCategory:AVAudioSessionCategoryAmbient error:nil];self.videoOutput=[[AVPlayerItemVideoOutput alloc]initWithPixelBufferAttributes:@{(NSString *)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA)}];[self.player.currentItem addOutput:self.videoOutput];self.video=[AVPlayerLayer playerLayerWithPlayer:self.player];self.video.frame=self.picture.bounds;[self.picture.layer addSublayer:self.video];[self.picture bringSubviewToFront:self.emptyLabel];if(self.parkingGuideView)[self.picture bringSubviewToFront:self.parkingGuideView];[self.player play];self.status.text=@"System video stream opened. Waiting for playable frames.";done(NSURLSessionResponseCancel);return;}if(![mime containsString:@"multipart"]&&![mime isEqual:@"image/jpeg"]){self.status.text=[NSString stringWithFormat:@"รูปแบบข้อมูลยังไม่รองรับ: %@",mime?:@"ไม่ทราบชนิด"];done(NSURLSessionResponseCancel);return;}self.status.text=@"Connected. Waiting for JPEG frames.";done(NSURLSessionResponseAllow);}
@@ -350,7 +420,22 @@ if(!u.host.length||u.user.length||u.password.length||![@[@"http",@"https"] conta
 @end
 @implementation App
 -(BOOL)application:(UIApplication *)a didFinishLaunchingWithOptions:(NSDictionary *)o{self.window=[[UIWindow alloc]initWithFrame:[UIScreen mainScreen].bounds];self.window.rootViewController=[Viewer new];[self.window makeKeyAndVisible];return YES;}
--(void)applicationDidEnterBackground:(UIApplication *)a{[(Viewer *)self.window.rootViewController stop];}
+-(void)applicationDidEnterBackground:(UIApplication *)a{
+ Viewer *v=(Viewer *)self.window.rootViewController;
+ H109RTSP *prev=v.rtsp;
+ __block UIBackgroundTaskIdentifier bg=[a beginBackgroundTaskWithExpirationHandler:^{
+  if(bg!=UIBackgroundTaskInvalid){[a endBackgroundTask:bg];bg=UIBackgroundTaskInvalid;}
+ }];
+ prev.finished=nil;
+ [v stop];
+ if(prev){
+  [prev stopWithCompletion:^{
+   if(bg!=UIBackgroundTaskInvalid){[a endBackgroundTask:bg];bg=UIBackgroundTaskInvalid;}
+  }];
+ }else if(bg!=UIBackgroundTaskInvalid){
+  [a endBackgroundTask:bg];bg=UIBackgroundTaskInvalid;
+ }
+}
 -(void)applicationDidBecomeActive:(UIApplication *)a{[(Viewer *)self.window.rootViewController beginAutomaticCamera];}
 @end
 int main(int argc,char **argv){@autoreleasepool{return UIApplicationMain(argc,argv,nil,NSStringFromClass([App class]));}}
