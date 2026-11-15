@@ -45,6 +45,7 @@ extern NSString * const TRDOBDGearChangedNotification;
 
 // Fuel & Trip Cost Metrics
 @property (nonatomic, assign, readonly) BOOL hasLiveFuelLevel;        // YES after real 7C0 2129 fuel tank frame
+@property (nonatomic, assign, readonly) BOOL hasLiveMAFFuel;          // YES after real 0110 MAF flow frame
 @property (nonatomic, assign, readonly) CGFloat fuelLevelPercent;     // 0% - 100%
 @property (nonatomic, assign, readonly) CGFloat fuelRemainingLiters;  // Liters left in 45L tank
 @property (nonatomic, assign, readonly) CGFloat fuelPricePerLiter;    // Baht / Liter (e.g. 39.84)
@@ -68,6 +69,11 @@ extern NSString * const TRDOBDGearChangedNotification;
 @property (nonatomic, assign, readonly) BOOL doorRearRightOpen;      // Rear Right Door
 @property (nonatomic, assign, readonly) BOOL trunkOpen;              // Hatch / Trunk
 @property (nonatomic, assign, readonly) BOOL doorSensorsLive;        // YES when CAN 0x620 body frame received
+@property (nonatomic, assign, readonly) BOOL headlightSensorsLive;    // YES when CAN 0x57F / 0x622 lighting frame received
+@property (nonatomic, assign, readonly) BOOL tailLightsOn;            // Parking / Tail lights active
+@property (nonatomic, assign, readonly) BOOL headlightsOn;            // Low-beam or High-beam headlights active
+@property (nonatomic, assign, readonly) BOOL highBeamOn;              // High-beam active
+@property (nonatomic, copy, readonly) NSString *lightStateLabel;      // Short lighting state label
 @property (nonatomic, assign, readonly) BOOL autoDoorLockEnabled;    // Auto-lock at >= 20 km/h via Body ECU 750
 @property (nonatomic, assign, readonly) BOOL autoDoorUnlockOnParkEnabled; // Auto-unlock when shifting to P
 @property (nonatomic, assign, readonly) BOOL autoDoorLockedForDrive; // YES once locked for current drive
@@ -97,5 +103,6 @@ extern NSString * const TRDOBDGearChangedNotification;
 - (void)setAutoDoorUnlockOnParkEnabled:(BOOL)enabled;
 - (void)requestDoorLock:(BOOL)lock;
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt;
+- (void)updateRealConsumptionWithDistanceKm:(double)distanceKm;
 
 @end

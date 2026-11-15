@@ -1323,6 +1323,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 -(void)syncTripSlotsDelta:(BOOL)forceDiskFlush;
 -(NSDictionary *)loadTripSlot:(NSInteger)slot;
 -(void)resetTripSlot:(NSInteger)slot;
+-(double)effectiveFuelKmPerL;
+-(double)estimatedRangeKmForFuelLiters:(double)fuelL;
+-(void)updateHeadlightBeamsUI:(TRDOBDClient *)obd;
 
 
 @property (nonatomic, strong) UILabel *topClockLabel;
@@ -1733,6 +1736,72 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   if((changed || forceDiskFlush) && dueForDisk){
     [self flushDailyHistoryToPlist];
     [ud synchronize];
+  }
+}
+
+-(double)effectiveFuelKmPerL{
+  TRDOBDClient *obd = [TRDOBDClient sharedClient];
+  double tripKm = self.trip ? (self.trip.meters / 1000.0) : 0.0;
+  [obd updateRealConsumptionWithDistanceKm:tripKm];
+
+  double sessionKmL = 0.0;
+  if(tripKm >= 1.5 && obd.tripFuelUsedLiters >= 0.08){
+    sessionKmL = MAX(6.0, MIN(38.0, tripKm / obd.tripFuelUsedLiters));
+  }
+
+  NSDictionary *slotB = [self loadTripSlot:1];
+  double bKm = [slotB[@"km"] doubleValue];
+  double bFuel = [slotB[@"fuel"] doubleValue];
+  double slotBKmL = 0.0;
+  if(bKm >= 2.0 && bFuel >= 0.12){
+    slotBKmL = MAX(6.0, MIN(38.0, bKm / bFuel));
+  }
+
+  double dailyKmL = 0.0;
+  NSMutableDictionary *days = [self ensureDailyHistoryLoaded];
+  NSString *todayKey = TRDDateKeyForDate([NSDate date]);
+  NSDictionary *todayRec = days[todayKey];
+  if([todayRec isKindOfClass:[NSDictionary class]]){
+    double dKm = [todayRec[@"km"] doubleValue];
+    double dFuel = [todayRec[@"fuelL"] doubleValue];
+    if(dKm >= 2.0 && dFuel >= 0.12){
+      dailyKmL = MAX(6.0, MIN(38.0, dKm / dFuel));
+    }
+  }
+
+  if(sessionKmL > 0.0 && slotBKmL > 0.0){
+    double w = MIN(0.65, tripKm / 25.0);
+    return w * sessionKmL + (1.0 - w) * slotBKmL;
+  }
+  if(slotBKmL > 0.0) return slotBKmL;
+  if(dailyKmL > 0.0) return dailyKmL;
+  if(sessionKmL > 0.0) return sessionKmL;
+  if(obd.hasLiveMAFFuel && obd.tripAverageKmPerL > 1.0){
+    return MAX(6.0, MIN(35.0, obd.tripAverageKmPerL));
+  }
+  if(!obd.isConnected && obd.tripAverageKmPerL > 1.0){
+    return MAX(6.0, MIN(35.0, obd.tripAverageKmPerL));
+  }
+  return 17.5;
+}
+
+-(double)estimatedRangeKmForFuelLiters:(double)fuelL{
+  // Full accuracy vs Prius MFD above 9L; smoothly reserve up to 1.5L sump below 9L so near-empty warnings stay safe.
+  double deadSump = (fuelL >= 9.0) ? 0.0 : ((fuelL <= 5.0) ? 1.5 : ((9.0 - fuelL) * (1.5 / 4.0)));
+  double usableL = MAX(0.0, fuelL - deadSump);
+  return MAX(0.0, usableL * [self effectiveFuelKmPerL]);
+}
+
+-(void)updateHeadlightBeamsUI:(TRDOBDClient *)obd{
+  BOOL lightsActive = (obd.headlightSensorsLive && (obd.tailLightsOn || obd.headlightsOn || obd.highBeamOn));
+  CGFloat beamAlpha = obd.highBeamOn ? 1.0 : (obd.headlightsOn ? 0.85 : 0.35);
+  if(self.driveCar.lightBeams){
+    self.driveCar.lightBeams.hidden = !lightsActive;
+    self.driveCar.lightBeams.alpha = beamAlpha;
+  }
+  if(self.homeCarLightBeams){
+    self.homeCarLightBeams.hidden = !lightsActive;
+    self.homeCarLightBeams.alpha = beamAlpha;
   }
 }
 
@@ -3130,7 +3199,7 @@ static NSUInteger gTRDUpdateTicks=0;
     CGFloat driveCarW = MAX(256.0, centerW - 156.0);
     self.driveCar.frame = CGRectMake(centerX + 10, topY + 236, driveCarW, 178);
     // Do not turn on lightBeams simply for nightMode; only show when physical headlights are active.
-    self.driveCar.lightBeams.hidden = YES;
+    [self updateHeadlightBeamsUI:[TRDOBDClient sharedClient]];
     [self.driveCar.lightBeams setNeedsDisplay];
 
     self.doorDiagramView.hidden = NO;
@@ -3661,7 +3730,7 @@ static NSUInteger gTRDUpdateTicks=0;
     self.carImage.hidden = NO;
     self.carImage.frame = CGRectMake(centerX + 14, topY + 82, 320, 160);
     self.homeCarLightBeams.frame = self.carImage.frame;
-    self.homeCarLightBeams.hidden = YES;
+    [self updateHeadlightBeamsUI:[TRDOBDClient sharedClient]];
 
     self.doorDiagramView.hidden = NO;
     CGRect doorTarget = CGRectMake(centerX + centerW - 124, topY + 94, 112, 144);
@@ -4546,9 +4615,7 @@ static NSUInteger gTRDUpdateTicks=0;
   else if(obdSpd.hvBatteryTempC >= 48.0) obdWarn = [NSString stringWithFormat:@"⚠️ HV BATT HOT: %.0f°C", obdSpd.hvBatteryTempC];
   else if(obdSpd.auxBatteryVoltage > 1.0 && obdSpd.auxBatteryVoltage < 11.8) obdWarn = [NSString stringWithFormat:@"🔋 12V LOW: %.1fV", obdSpd.auxBatteryVoltage];
   else if(obdSpd.fuelRemainingLiters > 0.2 && obdSpd.fuelRemainingLiters <= 7.0){
-   double tripKm = self.trip ? (self.trip.meters / 1000.0) : 0.0;
-   double avgKmL = (obdSpd.tripFuelUsedLiters > 0.05 && tripKm > 0.5) ? MAX(8.0, MIN(40.0, tripKm / obdSpd.tripFuelUsedLiters)) : 21.5;
-   double estKm = obdSpd.fuelRemainingLiters * avgKmL;
+   double estKm = [self estimatedRangeKmForFuelLiters:obdSpd.fuelRemainingLiters];
    obdWarn = [NSString stringWithFormat:@"⛽ น้ำมันใกล้หมด: %.1f L (~%.0f กม.) ควรเติมน้ำมัน", obdSpd.fuelRemainingLiters, estKm];
   }
  }
@@ -5713,11 +5780,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
     self.lowFuelConfirmTicks = 0;
     return;
   }
-  NSDictionary *slotA = [self loadTripSlot:0];
-  double aKm = [slotA[@"km"] doubleValue];
-  double aFuel = [slotA[@"fuel"] doubleValue];
-  double avgKmL = (aKm > 0.2 && aFuel > 0.02) ? MAX(8.0, MIN(35.0, aKm / aFuel)) : 20.0;
-  double rangeKm = MAX(0.0, fuelL * avgKmL);
+  double rangeKm = [self estimatedRangeKmForFuelLiters:fuelL];
 
   if(fuelL > 9.5 && pct > 21.0){
     self.lowFuelConfirmTicks = 0;
@@ -6934,10 +6997,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   bLbl.adjustsFontSizeToFitWidth = YES;
   bLbl.minimumScaleFactor = 0.8;
   bLbl.textColor = doorsLive ? [UIColor colorWithRed:0.35 green:0.98 blue:0.55 alpha:1] : [UIColor colorWithWhite:0.78 alpha:1];
-  NSString *autoLockTag = obd.autoDoorLockEnabled ? @"Auto-Lock ≥20km/h: ON" : @"Auto-Lock: OFF (ตั้งค่าได้ใน Settings)";
+  NSString *autoLockTag = obd.autoDoorLockEnabled ? @"Auto-Lock ≥20km/h: ON" : @"Auto-Lock: OFF (Settings)";
+  NSString *lightTag = obd.headlightSensorsLive ? (obd.lightStateLabel ?: @"OFF") : @"รอ 0x622/0x57F";
   bLbl.text = doorsLive
-    ? [NSString stringWithFormat:@"🔒 CAN 0x620 LIVE • %@", autoLockTag]
-    : [NSString stringWithFormat:@"ℹ️ รอเฟรม CAN 0x620 • %@", autoLockTag];
+    ? [NSString stringWithFormat:@"🔒 0x620 LIVE • 💡 ไฟ: %@ • %@", lightTag, autoLockTag]
+    : [NSString stringWithFormat:@"ℹ️ รอ 0x620 • 💡 ไฟ: %@ • %@", lightTag, autoLockTag];
   [beltRow addSubview:bLbl];
   [card addSubview:beltRow];
 
@@ -7391,17 +7455,18 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
  // Center Card: EV Flow, Motors, HV Pack, kW
  double hvKW = (obd.hvPackVoltage * obd.hvPackCurrent) / 1000.0;
- double tripKm = self.trip ? (self.trip.meters / 1000.0) : 0.0;
- double liveAvgKmL = (obd.tripFuelUsedLiters > 0.05 && tripKm > 0.5) ? MAX(8.0, MIN(40.0, tripKm / obd.tripFuelUsedLiters)) : ((obd.tripAverageKmPerL > 1.0) ? obd.tripAverageKmPerL : 21.5);
- double estRangeKm = MAX(0.0, obd.fuelRemainingLiters * liveAvgKmL);
+ double liveAvgKmL = [self effectiveFuelKmPerL];
+ double estRangeKm = [self estimatedRangeKmForFuelLiters:obd.fuelRemainingLiters];
+ [self updateHeadlightBeamsUI:obd];
  if(self.energyFlowLabel){
   NSString *ef = nil;
+  NSString *lightSuffix = (obd.headlightSensorsLive && (obd.tailLightsOn || obd.headlightsOn || obd.highBeamOn)) ? [NSString stringWithFormat:@" • 💡 %@", obd.lightStateLabel] : @"";
   if(!obd.isConnected){
    ef = [NSString stringWithFormat:@"🔍 %@  •  RPM %ld", obd.connectionStatus ?: @"Scanning", (long)obd.engineRPM];
   } else if(obd.engineRPM > 100){
-   ef = [NSString stringWithFormat:@"🔥 ICE %ld RPM • ⛽ %.1f L (วิ่งได้ ~%.0f กม.)", (long)obd.engineRPM, obd.fuelRemainingLiters, estRangeKm];
+   ef = [NSString stringWithFormat:@"🔥 ICE %ld RPM • ⛽ %.1f L (~%.0f กม.)%@", (long)obd.engineRPM, obd.fuelRemainingLiters, estRangeKm, lightSuffix];
   } else {
-   ef = [NSString stringWithFormat:@"🍃 EV READY • ⛽ %.1f L (วิ่งได้ ~%.0f กม.)", obd.fuelRemainingLiters, estRangeKm];
+   ef = [NSString stringWithFormat:@"🍃 EV READY • ⛽ %.1f L (~%.0f กม.)%@", obd.fuelRemainingLiters, estRangeKm, lightSuffix];
   }
   if(![self.energyFlowLabel.text isEqualToString:ef]) self.energyFlowLabel.text = ef;
  }
@@ -7441,16 +7506,18 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(self.carStatus){
   NSString *openDoors = TRDOpenDoorsSummary(obd.doorSensorsLive, obd.doorFrontLeftOpen, obd.doorFrontRightOpen, obd.doorRearLeftOpen, obd.doorRearRightOpen, obd.trunkOpen);
   BOOL doorAlert = (openDoors.length > 0);
+  BOOL lightsActive = (obd.headlightSensorsLive && (obd.tailLightsOn || obd.headlightsOn || obd.highBeamOn));
+  NSString *lightTag = lightsActive ? [NSString stringWithFormat:@" • 💡 %@", obd.lightStateLabel ?: @"เปิดไฟ"] : @"";
   NSString *csText = nil;
   NSInteger styleTag = 0;
   if(doorAlert){
-   csText = [NSString stringWithFormat:@"🚨 ประตูเปิด: %@ • เกียร์ %@ • 🔋 %.2fV", openDoors, obd.currentGear ?: @"P", obd.auxBatteryVoltage];
+   csText = [NSString stringWithFormat:@"🚨 ประตูเปิด: %@ • เกียร์ %@ • 🔋 %.2fV%@", openDoors, obd.currentGear ?: @"P", obd.auxBatteryVoltage, lightTag];
    styleTag = 1;
   } else if(self.driveMode){
-   csText = [NSString stringWithFormat:@"🔌 OBD2 %@ • 🚪 ปิดครบ • 🌡️ %.0f°C • 🔋 %.2fV", obd.isConnected ? @"LIVE" : @"SCAN", obd.coolantTempC, obd.auxBatteryVoltage];
+   csText = [NSString stringWithFormat:@"🔌 OBD2 %@ • 🚪 ปิดครบ • ⛽ %.1fL (~%.0f กม.) • 🌡️ %.0f°C%@", obd.isConnected ? @"LIVE" : @"SCAN", obd.fuelRemainingLiters, estRangeKm, obd.coolantTempC, lightTag];
    styleTag = 2;
   } else {
-   csText = [NSString stringWithFormat:@"🔌 vLinker MC+ : %@  •  ⚙️ เกียร์ %@  •  ⛽ %.1f ลิตร (~%.0f กม.)", obd.isConnected ? @"เชื่อมต่อสด (LIVE)" : (obd.connectionStatus ?: @"รอเชื่อมต่อ"), obd.currentGear ?: @"P", obd.fuelRemainingLiters, estRangeKm];
+   csText = [NSString stringWithFormat:@"🔌 %@  •  ⚙️ เกียร์ %@  •  ⛽ %.1f ลิตร (~%.0f กม. • %.1f km/L)%@", obd.isConnected ? @"LIVE" : (obd.connectionStatus ?: @"รอเชื่อมต่อ"), obd.currentGear ?: @"P", obd.fuelRemainingLiters, estRangeKm, liveAvgKmL, lightTag];
    styleTag = self.nightMode ? 3 : 4;
   }
   if(![self.carStatus.text isEqualToString:csText]) self.carStatus.text = csText;
@@ -7747,12 +7814,19 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [v.timer invalidate];
  v.timer=nil;
  [v saveTrip];
+ [v syncTripSlotsDelta:YES];
  NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];
  [ud setBool:YES forKey:@"TRDSkipNextLaunchWelcome"];
  [ud setDouble:[[NSDate date] timeIntervalSince1970] forKey:@"TRDLastActiveTimestamp"];
  [ud synchronize];
  [UIApplication sharedApplication].idleTimerDisabled=NO;
  [v captureLifecycle];
+}
+-(void)applicationWillTerminate:(UIApplication *)app{
+ Dashboard *v=(Dashboard *)self.window.rootViewController;
+ [v saveTrip];
+ [v syncTripSlotsDelta:YES];
+ [[NSUserDefaults standardUserDefaults] synchronize];
 }
 -(void)applicationWillEnterForeground:(UIApplication *)app{
  Dashboard *v=(Dashboard *)self.window.rootViewController;

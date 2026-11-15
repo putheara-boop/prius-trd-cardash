@@ -1,6 +1,6 @@
 -(void)openTrip{[self.settingsSheet dismiss];[self teardownMapWebView];self.carplayMode=NO;self.carplayGridMode=NO;self.tripMode=YES;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.returnTap.enabled=NO;[self.driveCar stop];[self.driveButton setTitle:@"DRIVE MODE" forState:0];[self refreshTrip];[self.view setNeedsLayout];}
 -(void)toggleTrip{[self refreshTrip];}
--(void)saveTrip{if(self.trip){NSUserDefaults *p=[NSUserDefaults standardUserDefaults];[p setObject:[self.trip summary] forKey:@"TRDTripSummary"];self.lastTripSavedAt=[NSDate date];}}
+-(void)saveTrip{if(self.trip){NSUserDefaults *p=[NSUserDefaults standardUserDefaults];[p setObject:[self.trip summary] forKey:@"TRDTripSummary"];self.lastTripSavedAt=[NSDate date];[self syncTripSlotsDelta:NO];}}
 -(void)resetTripMenu{
   NSArray *slotNames = @[@"TRIP A (ทริปปัจจุบัน)", @"TRIP B (ทริปถังน้ำมันนี้)", @"TRIP C (ทริประยะยาว)"];
   NSInteger curSlot = self.activeTripSlot;

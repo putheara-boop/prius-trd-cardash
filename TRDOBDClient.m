@@ -141,6 +141,19 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 @property (nonatomic, assign, readwrite) BOOL autoDoorUnlockOnParkEnabled;
 @property (nonatomic, assign, readwrite) BOOL autoDoorLockedForDrive;
 @property (nonatomic, assign, readwrite) BOOL hasLiveFuelLevel;
+@property (nonatomic, assign, readwrite) BOOL hasLiveMAFFuel;
+@property (nonatomic, assign) double obdEstimatedMeters;
+@property (nonatomic, assign, readwrite) BOOL headlightSensorsLive;
+@property (nonatomic, assign, readwrite) BOOL tailLightsOn;
+@property (nonatomic, assign, readwrite) BOOL headlightsOn;
+@property (nonatomic, assign, readwrite) BOOL highBeamOn;
+@property (nonatomic, copy, readwrite) NSString *lightStateLabel;
+@property (nonatomic, copy) NSString *lastLoggedCAN622Hex;
+@property (nonatomic, assign) NSUInteger can622Misses;
+@property (nonatomic, strong) NSDate *lastCAN622At;
+@property (nonatomic, copy) NSString *lastLoggedCAN57FHex;
+@property (nonatomic, assign) NSUInteger can57FMisses;
+@property (nonatomic, strong) NSDate *lastCAN57FAt;
 @end
 
 @implementation TRDOBDClient
@@ -307,12 +320,20 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     self.consecutiveTimeouts = 0;
     self.hasLive7C4CabinTemp = NO;
     self.hasLiveFuelLevel = NO;
+    self.hasLiveMAFFuel = NO;
+    self.obdEstimatedMeters = 0.0;
     self.activePollSchedule = nil;
     self.lastCAN127At = nil;
     self.lastLoggedCAN127Gear = nil;
     self.canMonitorTargetID = @"127";
     self.lastLoggedCAN620Hex = nil;
     self.can620Misses = 0;
+    self.lastCAN622At = nil;
+    self.lastLoggedCAN622Hex = nil;
+    self.can622Misses = 0;
+    self.lastCAN57FAt = nil;
+    self.lastLoggedCAN57FHex = nil;
+    self.can57FMisses = 0;
     self.doorSensorsLive = NO;
     self.doorFrontLeftOpen = NO;
     self.doorFrontRightOpen = NO;
@@ -321,6 +342,11 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     self.autoDoorLockedForDrive = NO;
     [self.pendingBodyCommands removeAllObjects];
     self.trunkOpen = NO;
+    self.headlightSensorsLive = NO;
+    self.tailLightsOn = NO;
+    self.headlightsOn = NO;
+    self.highBeamOn = NO;
+    self.lightStateLabel = nil;
     self.lastLoggedFuelLiters = -1.0;
     self.lastLoggedCabinTempC = -999.0;
     self.lastLoggedExteriorTempC = -999.0;
@@ -608,8 +634,20 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     _tripEVDistancePercent = 0.0;
     _totalTripMeters = 0.0;
     _evTripMeters = 0.0;
+    _obdEstimatedMeters = 0.0;
+    _hasLiveMAFFuel = NO;
     _lastFuelCalcTime = [NSDate date];
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+}
+
+- (void)updateRealConsumptionWithDistanceKm:(double)distanceKm {
+    if (distanceKm > 0.0) {
+        _totalTripMeters = distanceKm * 1000.0;
+    }
+    double distKm = MAX(_totalTripMeters, _obdEstimatedMeters) / 1000.0;
+    if (distKm >= 0.5 && _tripFuelUsedLiters >= 0.05) {
+        _tripAverageKmPerL = (CGFloat)MAX(5.0, MIN(45.0, distKm / _tripFuelUsedLiters));
+    }
 }
 
 - (void)toggleTestBrakeWarning {
@@ -654,18 +692,32 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     if (deltaKm < 0.0) {
         // Trip was reset cleanly; restart accumulation from new baseline.
         deltaKm = distanceKm;
-        _tripFuelUsedLiters = 0.0;
+        if (!self.hasLiveMAFFuel) {
+            _tripFuelUsedLiters = 0.0;
+        }
         _evTripMeters = 0.0;
     }
     _totalTripMeters = distanceKm * 1000.0;
 
-    // Prius real-world segmented estimator: slow EV-assisted city vs cruise vs highway
-    double segKmL = 21.5;
+    // When live OBD2 MAF (0110) is streaming, NEVER overwrite real MAF consumption with constant fallback estimates.
+    if (self.isConnected && self.obdInitialized && (self.hasLiveMAFFuel || self.lastFuelCalcTime != nil)) {
+        if (self.engineRPM < 100 && kmh > 0.5) {
+            _evTripMeters += (kmh * (1000.0 / 3600.0)) * dt;
+        }
+        if (_totalTripMeters > 0) {
+            _tripEVDistancePercent = (CGFloat)MIN(100.0, (_evTripMeters / _totalTripMeters) * 100.0);
+        }
+        [self updateRealConsumptionWithDistanceKm:distanceKm];
+        return;
+    }
+
+    // Offline / Pre-OBD fallback estimator for Prius ZVW30 mixed driving
+    double segKmL = 18.0;
     if (kmh > 0 && kmh <= 45.0) {
-        segKmL = 23.5;
+        segKmL = 18.5;
         _evTripMeters += (kmh * (1000.0 / 3600.0)) * dt;
     } else if (kmh > 90.0) {
-        segKmL = 19.0;
+        segKmL = 17.0;
     }
 
     if (deltaKm > 0.0001) {
@@ -974,12 +1026,20 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     self.consecutiveTimeouts = 0;
     self.hasLive7C4CabinTemp = NO;
     self.hasLiveFuelLevel = NO;
+    self.hasLiveMAFFuel = NO;
+    self.obdEstimatedMeters = 0.0;
     self.activePollSchedule = nil;
     self.lastCAN127At = nil;
     self.lastLoggedCAN127Gear = nil;
     self.canMonitorTargetID = @"127";
     self.lastLoggedCAN620Hex = nil;
     self.can620Misses = 0;
+    self.lastCAN622At = nil;
+    self.lastLoggedCAN622Hex = nil;
+    self.can622Misses = 0;
+    self.lastCAN57FAt = nil;
+    self.lastLoggedCAN57FHex = nil;
+    self.can57FMisses = 0;
     self.doorSensorsLive = NO;
     self.doorFrontLeftOpen = NO;
     self.doorFrontRightOpen = NO;
@@ -988,6 +1048,11 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     self.autoDoorLockedForDrive = NO;
     [self.pendingBodyCommands removeAllObjects];
     self.trunkOpen = NO;
+    self.headlightSensorsLive = NO;
+    self.tailLightsOn = NO;
+    self.headlightsOn = NO;
+    self.highBeamOn = NO;
+    self.lightStateLabel = nil;
     self.lastLoggedFuelLiters = -1.0;
     self.lastLoggedCabinTempC = -999.0;
     self.lastLoggedExteriorTempC = -999.0;
@@ -1059,18 +1124,42 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (void)finishCANMonitorSnapshot {
-    if ([self.canMonitorTargetID isEqualToString:@"620"] && !self.can127FrameCaptured) {
-        self.can620Misses++;
-        [self obdLog:@"CAN 0x620 snapshot empty (%lu/4)%@", (unsigned long)self.can620Misses,
-         self.can620Misses >= 4 ? @"; pausing door monitor until reconnect" : @""];
+    if (!self.can127FrameCaptured) {
+        if ([self.canMonitorTargetID isEqualToString:@"620"]) {
+            self.can620Misses++;
+            [self obdLog:@"CAN 0x620 snapshot empty (%lu/4)%@", (unsigned long)self.can620Misses,
+             self.can620Misses >= 4 ? @"; pausing door monitor until reconnect" : @""];
+        } else if ([self.canMonitorTargetID isEqualToString:@"622"]) {
+            self.can622Misses++;
+            [self obdLog:@"CAN 0x622 snapshot empty (%lu/3)%@", (unsigned long)self.can622Misses,
+             self.can622Misses >= 3 ? @"; pausing 0x622 light monitor" : @""];
+        } else if ([self.canMonitorTargetID isEqualToString:@"57F"]) {
+            self.can57FMisses++;
+            [self obdLog:@"CAN 0x57F snapshot empty (%lu/3)%@", (unsigned long)self.can57FMisses,
+             self.can57FMisses >= 3 ? @"; pausing 0x57F light monitor" : @""];
+        }
     }
 }
 
 - (void)expireDoorDataIfNeeded {
-    if (self.doorSensorsLive && (!self.lastCAN620At || [[NSDate date] timeIntervalSinceDate:self.lastCAN620At] >= 30.0)) {
+    NSDate *now = [NSDate date];
+    if (self.doorSensorsLive && (!self.lastCAN620At || [now timeIntervalSinceDate:self.lastCAN620At] >= 30.0)) {
         self.doorSensorsLive = NO;
         [self obdLog:@"CAN 0x620 stale; door status unavailable"];
         [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+    }
+    if (self.headlightSensorsLive) {
+        NSTimeInterval stale622 = self.lastCAN622At ? [now timeIntervalSinceDate:self.lastCAN622At] : 999.0;
+        NSTimeInterval stale57F = self.lastCAN57FAt ? [now timeIntervalSinceDate:self.lastCAN57FAt] : 999.0;
+        if (stale622 >= 90.0 && stale57F >= 90.0) {
+            self.headlightSensorsLive = NO;
+            self.tailLightsOn = NO;
+            self.headlightsOn = NO;
+            self.highBeamOn = NO;
+            self.lightStateLabel = nil;
+            [self obdLog:@"CAN lighting stale; headlight status unavailable"];
+            [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+        }
     }
 }
 
@@ -1090,12 +1179,15 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     if (!self.obdInitialized) return;
     if (self.waitingForResponse) {
         if (self.canMonitorPhase == 4) {
-            if (!self.can127AbortSent && elapsed >= 0.25) {
+            NSString *monID = self.canMonitorTargetID ?: @"127";
+            BOOL isSlowBodyCAN = ([monID isEqualToString:@"622"] || [monID isEqualToString:@"620"]);
+            NSTimeInterval abortAfter = isSlowBodyCAN ? 1.15 : 0.25;
+            NSTimeInterval timeoutAfter = isSlowBodyCAN ? 1.50 : 0.60;
+            if (!self.can127AbortSent && elapsed >= abortAfter) {
                 [self sendRawMonitorAbort];
                 return;
             }
-            if (elapsed < 0.60) return;
-            NSString *monID = self.canMonitorTargetID ?: @"127";
+            if (elapsed < timeoutAfter) return;
             [self obdLog:@"CAN 0x%@ monitor timeout; restoring normal ELM state", monID];
             [self finishCANMonitorSnapshot];
             [self.rxBuffer setString:@""];
@@ -1185,8 +1277,22 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             self.activePollSchedule = nil;
             BOOL anyDoorOpen = self.doorSensorsLive && (self.doorFrontLeftOpen || self.doorFrontRightOpen || self.doorRearLeftOpen || self.doorRearRightOpen || self.trunkOpen);
             NSInteger doorStride = (self.currentSpeedKmh < 5.0 || anyDoorOpen) ? 4 : 8;
-            // Prioritize CAN 0x127 reverse/gear detection (~1s cycle); sample 0x620 doors cleanly without stalling 127.
-            self.canMonitorTargetID = (self.fastCycleCount % doorStride == 0 && self.can620Misses < 4) ? @"620" : @"127";
+            // Prioritize CAN 0x127 reverse/gear (~1s cycle); interleave 0x620 doors and 0x622/0x57F headlights cleanly.
+            BOOL canPoll622 = (self.lastCAN622At != nil || self.can622Misses < 6);
+            BOOL canPoll57F = (self.lastCAN57FAt != nil || self.can57FMisses < 3);
+            NSString *nextTarget = @"127";
+            if (self.fastCycleCount % doorStride == 0 && (self.lastCAN620At != nil || self.can620Misses < 4)) {
+                nextTarget = @"620";
+            } else if (self.fastCycleCount % 4 == 2) {
+                if (canPoll622 && canPoll57F) {
+                    nextTarget = (((self.fastCycleCount / 4) % 2) == 0) ? @"622" : @"57F";
+                } else if (canPoll622) {
+                    nextTarget = @"622";
+                } else if (canPoll57F) {
+                    nextTarget = @"57F";
+                }
+            }
+            self.canMonitorTargetID = nextTarget;
             self.canMonitorPhase = 1;
             [self sendCommand:@"AT CAF0"];
             return;
@@ -1299,6 +1405,98 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     return YES;
 }
 
+- (BOOL)parseVariableCANFrameLine:(NSString *)line expectedPrefix:(NSString *)prefix outBytes:(uint8_t *)raw outLen:(NSUInteger *)outLen {
+    if (![line hasPrefix:prefix]) return NO;
+    NSString *hex = [line substringFromIndex:prefix.length];
+    if (hex.length < 2 || hex.length > 16 || (hex.length % 2) != 0) return NO;
+    NSUInteger len = hex.length / 2;
+    for (NSUInteger i = 0; i < len; i++) {
+        unichar c0 = [hex characterAtIndex:i * 2];
+        unichar c1 = [hex characterAtIndex:i * 2 + 1];
+        BOOL ok0 = ((c0 >= '0' && c0 <= '9') || (c0 >= 'A' && c0 <= 'F'));
+        BOOL ok1 = ((c1 >= '0' && c1 <= '9') || (c1 >= 'A' && c1 <= 'F'));
+        if (!ok0 || !ok1) return NO;
+        unsigned int val = 0;
+        [[NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(i * 2, 2)]] scanHexInt:&val];
+        raw[i] = (uint8_t)val;
+    }
+    if (outLen) *outLen = len;
+    return YES;
+}
+
+- (void)updateLightingWithTail:(BOOL)tail low:(BOOL)low high:(BOOL)high source:(NSString *)src {
+    BOOL effTail = (tail || low || high);
+    BOOL effHead = (low || high);
+    NSString *label = @"OFF";
+    if (high) label = @"ไฟสูง (HIGH)";
+    else if (effHead) label = @"ไฟหน้าเปิด (LOW)";
+    else if (effTail) label = @"ไฟหรี่เปิด (TAIL)";
+
+    BOOL changed = (!self.headlightSensorsLive ||
+                    effTail != self.tailLightsOn ||
+                    effHead != self.headlightsOn ||
+                    high != self.highBeamOn ||
+                    ![self.lightStateLabel isEqualToString:label]);
+    self.headlightSensorsLive = YES;
+    self.tailLightsOn = effTail;
+    self.headlightsOn = effHead;
+    self.highBeamOn = high;
+    self.lightStateLabel = label;
+    if (changed) {
+        [self obdLog:@"LIGHTS (%@) -> tail=%d low=%d high=%d (%@)", src, effTail ? 1 : 0, effHead ? 1 : 0, high ? 1 : 0, label];
+        [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+    }
+}
+
+- (BOOL)parseCAN622Line:(NSString *)line {
+    uint8_t raw[8];
+    NSUInteger len = 0;
+    if (![self parseVariableCANFrameLine:line expectedPrefix:@"622" outBytes:raw outLen:&len]) return NO;
+    self.can622Misses = 0;
+    self.lastCAN622At = [NSDate date];
+
+    if (!self.lastLoggedCAN622Hex || ![self.lastLoggedCAN622Hex isEqualToString:line]) {
+        self.lastLoggedCAN622Hex = line;
+        [self obdLog:@"CAN_622 (len=%lu) -> raw=%@ b1=0x%02X b2=0x%02X b3=0x%02X b4=0x%02X",
+         (unsigned long)len, line,
+         len > 1 ? raw[1] : 0, len > 2 ? raw[2] : 0, len > 3 ? raw[3] : 0, len > 4 ? raw[4] : 0];
+    }
+
+    // Toyota ZVW30 BO_ 1570 (0x622) LIGHT_STALK: raw[3] bits 28..30 -> 0x10 Park, 0x20 Low Beam, 0x40 High Beam
+    if (len >= 4) {
+        BOOL tail = (raw[3] & 0x10) != 0;
+        BOOL low  = (raw[3] & 0x20) != 0;
+        BOOL high = (raw[3] & 0x40) != 0;
+        [self updateLightingWithTail:tail low:low high:high source:@"CAN 0x622"];
+    }
+    return YES;
+}
+
+- (BOOL)parseCAN57FLine:(NSString *)line {
+    uint8_t raw[8];
+    NSUInteger len = 0;
+    if (![self parseVariableCANFrameLine:line expectedPrefix:@"57F" outBytes:raw outLen:&len]) return NO;
+    self.can57FMisses = 0;
+    self.lastCAN57FAt = [NSDate date];
+
+    if (!self.lastLoggedCAN57FHex || ![self.lastLoggedCAN57FHex isEqualToString:line]) {
+        self.lastLoggedCAN57FHex = line;
+        [self obdLog:@"CAN_57F (len=%lu) -> raw=%@ b0=0x%02X b1=0x%02X b2=0x%02X b3=0x%02X",
+         (unsigned long)len, line,
+         len > 0 ? raw[0] : 0, len > 1 ? raw[1] : 0, len > 2 ? raw[2] : 0, len > 3 ? raw[3] : 0];
+    }
+
+    // Fallback lighting decode from 0x57F only if 0x622 is not active
+    BOOL hasRecent622 = (self.lastCAN622At && [[NSDate date] timeIntervalSinceDate:self.lastCAN622At] < 10.0);
+    if (!hasRecent622 && len >= 2) {
+        BOOL tail = (raw[1] & 0x10) != 0;
+        BOOL low  = (raw[1] & 0x20) != 0;
+        BOOL high = (raw[1] & 0x08) != 0;
+        [self updateLightingWithTail:tail low:low high:high source:@"CAN 0x57F"];
+    }
+    return YES;
+}
+
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
     if (peripheral != self.activePeripheral || characteristic != self.notifyCharacteristic || !self.isConnected) return;
     if (error || !characteristic.value) return;
@@ -1312,13 +1510,17 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         return;
     }
 
-    // While AT MA is streaming CAN 0x127 / 0x620, catch first complete frame and abort cleanly
+    // While AT MA is streaming CAN 0x127 / 0x620 / 0x622 / 0x57F, catch first complete frame and abort cleanly
     if (self.canMonitorPhase == 4 && !self.can127FrameCaptured) {
         NSArray *parts = [self.rxBuffer componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"\r\n"]];
-        BOOL target620 = [self.canMonitorTargetID isEqualToString:@"620"];
+        NSString *targetID = self.canMonitorTargetID ?: @"127";
         for (NSUInteger i = 0; i + 1 < parts.count; i++) {
             NSString *candidate = [[parts[i] stringByReplacingOccurrencesOfString:@" " withString:@""] uppercaseString];
-            BOOL matched = target620 ? [self parseCAN620Line:candidate] : [self parseCAN127Line:candidate];
+            BOOL matched = NO;
+            if ([targetID isEqualToString:@"620"]) matched = [self parseCAN620Line:candidate];
+            else if ([targetID isEqualToString:@"622"]) matched = [self parseCAN622Line:candidate];
+            else if ([targetID isEqualToString:@"57F"]) matched = [self parseCAN57FLine:candidate];
+            else matched = [self parseCAN127Line:candidate];
             if (matched) {
                 self.can127FrameCaptured = YES;
                 if ([self.rxBuffer rangeOfString:@"STOPPED"].location == NSNotFound &&
@@ -1482,13 +1684,19 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     // 0110: MAF -> (A*256 + B)/100 g/s
     if ((b = [self bytesFromHex:hex afterPrefix:@"4110" minBytes:2])) {
         double mafGps = (([b[0] unsignedIntValue] * 256.0) + [b[1] unsignedIntValue]) / 100.0;
+        self.hasLiveMAFFuel = YES;
         NSDate *now = [NSDate date];
         if (self.lastFuelCalcTime) {
             NSTimeInterval dt = [now timeIntervalSinceDate:self.lastFuelCalcTime];
             if (dt > 0.0 && dt < 5.0) {
                 double lps = (mafGps / 14.7) / 740.0;
                 self.tripFuelUsedLiters += (CGFloat)(lps * dt);
-                self.tripFuelCostTHB = self.tripFuelUsedLiters * self.fuelPricePerLiter;
+                double price = (self.fuelPricePerLiter > 0.0) ? self.fuelPricePerLiter : 38.50;
+                self.tripFuelCostTHB = self.tripFuelUsedLiters * price;
+                if (self.currentSpeedKmh > 1.0) {
+                    self.obdEstimatedMeters += (self.currentSpeedKmh / 3.6) * dt;
+                }
+                [self updateRealConsumptionWithDistanceKm:(MAX(self.totalTripMeters, self.obdEstimatedMeters) / 1000.0)];
             }
         }
         self.lastFuelCalcTime = now;
