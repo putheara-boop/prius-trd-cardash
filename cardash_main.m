@@ -14,6 +14,7 @@
 #include <spawn.h>
 #include <sys/wait.h>
 #include <dlfcn.h>
+#import <objc/message.h>
 #include "MeterShared.h"
 #include <sys/mman.h>
 #include <fcntl.h>
@@ -5963,35 +5964,82 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  }if([UIApplication sharedApplication].applicationState!=UIApplicationStateBackground){[self refreshSpeed];[self refreshTrip];[self updateMapCar];}}
 -(void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error{self.gpsError=error.description;self.fix=nil;[self.trip breakSegment];[self saveTrip];[self refreshSpeed];[self refreshTrip];}
 -(BOOL)launchBundleApp:(NSString *)identifier{
- if(!identifier.length)return NO;
- Class wsClass=NSClassFromString(@"LSApplicationWorkspace");
- if(!wsClass){
-  dlopen("/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_LAZY);
-  wsClass=NSClassFromString(@"LSApplicationWorkspace");
- }
- if(wsClass){
-  id ws=[wsClass performSelector:@selector(defaultWorkspace)];
-  if([ws respondsToSelector:@selector(openApplicationWithBundleID:)]){
-   BOOL launched=(BOOL)[ws performSelector:@selector(openApplicationWithBundleID:) withObject:identifier];
-   if(launched){
-    [self refreshNowPlaying];
-    return YES;
-   }
+ if(!identifier.length || [identifier isEqualToString:@"com.apple.camera"])return NO;
+ static uint64_t trdLaunchGeneration=0;
+ uint64_t gen=++trdLaunchGeneration;
+ if([identifier isEqualToString:@"com.codex.h109viewer"] || [identifier isEqualToString:@"com.codex.cardash"]){
+  const char *notif=[identifier isEqualToString:@"com.codex.h109viewer"]?"com.codex.trd.launch.h109viewer":"com.codex.trd.launch.cardash";
+  notify_post(notif);
+  __weak typeof(self) weakSelf=self;
+  dispatch_async(dispatch_get_main_queue(),^{
+   [weakSelf refreshNowPlaying];
+  });
+  if([identifier isEqualToString:@"com.codex.h109viewer"] && [UIApplication sharedApplication].applicationState!=UIApplicationStateBackground){
+   NSString *targetID=[identifier copy];
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.65*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+    if(gen!=trdLaunchGeneration)return;
+    if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+     Class wsClass=NSClassFromString(@"LSApplicationWorkspace");
+     if(!wsClass){
+      dlopen("/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_LAZY);
+      wsClass=NSClassFromString(@"LSApplicationWorkspace");
+     }
+     id ws=(wsClass && [wsClass respondsToSelector:@selector(defaultWorkspace)])?((id (*)(id, SEL))objc_msgSend)(wsClass,@selector(defaultWorkspace)):nil;
+     if(ws && [ws respondsToSelector:@selector(openApplicationWithBundleID:)]){
+      ((BOOL (*)(id, SEL, NSString *))objc_msgSend)(ws,@selector(openApplicationWithBundleID:),targetID);
+     }
+    });
+   });
   }
- }
- void *sbs=dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_LAZY);
- if(sbs){
-  int (*launch)(CFStringRef, Boolean)=(int (*)(CFStringRef, Boolean))dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
-  if(launch&&launch((__bridge CFStringRef)identifier, false)==0){
-   [self refreshNowPlaying];
-   return YES;
-  }
+  return YES;
  }
  if([identifier isEqualToString:@"com.apple.Preferences"] && (&UIApplicationOpenSettingsURLString != NULL)){
   NSURL *settingsURL=[NSURL URLWithString:UIApplicationOpenSettingsURLString];
   UIApplication *app=[UIApplication sharedApplication];
   if(settingsURL && [app canOpenURL:settingsURL]){
    [app openURL:settingsURL];
+   [self refreshNowPlaying];
+   return YES;
+  }
+ }
+ Class wsClass=NSClassFromString(@"LSApplicationWorkspace");
+ if(!wsClass){
+  dlopen("/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_LAZY);
+  wsClass=NSClassFromString(@"LSApplicationWorkspace");
+ }
+ id ws=(wsClass && [wsClass respondsToSelector:@selector(defaultWorkspace)])?((id (*)(id, SEL))objc_msgSend)(wsClass,@selector(defaultWorkspace)):nil;
+ if(ws && [ws respondsToSelector:@selector(applicationIsInstalled:)]){
+  BOOL installed=((BOOL (*)(id, SEL, NSString *))objc_msgSend)(ws,@selector(applicationIsInstalled:),identifier);
+  if(!installed)return NO;
+ }
+ if(ws && [ws respondsToSelector:@selector(openApplicationWithBundleID:)]){
+  NSString *targetID=[identifier copy];
+  __weak typeof(self) weakSelf=self;
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+   BOOL launched=((BOOL (*)(id, SEL, NSString *))objc_msgSend)(ws,@selector(openApplicationWithBundleID:),targetID);
+   if(!launched){
+    void *sbs=dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_LAZY);
+    if(sbs){
+     int (*launch)(CFStringRef, Boolean)=(int (*)(CFStringRef, Boolean))dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
+     if(launch && launch((__bridge CFStringRef)targetID, false)==0){
+      launched=YES;
+     }
+    }
+   }
+   if(launched){
+    dispatch_async(dispatch_get_main_queue(),^{
+     [weakSelf refreshNowPlaying];
+    });
+   }
+  });
+  return YES;
+ }
+ void *sbs=dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_LAZY);
+ if(sbs){
+  int (*launch)(CFStringRef, Boolean)=(int (*)(CFStringRef, Boolean))dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
+  if(launch&&launch((__bridge CFStringRef)identifier, false)==0){
+   [self refreshNowPlaying];
    return YES;
   }
  }
@@ -7157,9 +7205,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [self prepareForExternalAppLaunch];
  [@{@"rear": @YES, @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/reverse-camera.plist" atomically:YES];
  notify_post("com.codex.trd.network.camera");
- if(![self launchBundleApp:@"com.codex.h109viewer"]){
-  [self launchBundleApp:@"com.apple.camera"];
- }
+ [self launchBundleApp:@"com.codex.h109viewer"];
  if(self.radioPlayer){
   self.radioPlayer.volume=0.0f;
  }
@@ -7713,7 +7759,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [v ensureActiveRunLoopHealth];
  [v restoreDisplayBrightness];
 }
--(void)applicationDidBecomeActive:(UIApplication *)app{notify_post("com.codex.trd.network.internet");[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];Dashboard *v=(Dashboard *)self.window.rootViewController;[v ensureActiveRunLoopHealth];[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.10;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[v ensureActiveRunLoopHealth];[v startGPS];[v update];[v captureLifecycle];}
+-(void)applicationDidBecomeActive:(UIApplication *)app{Dashboard *v=(Dashboard *)self.window.rootViewController;if(!v.isReverseActive && ![TRDOBDClient sharedClient].isReverseGear){notify_post("com.codex.trd.network.internet");}[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];[v ensureActiveRunLoopHealth];[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.10;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[v ensureActiveRunLoopHealth];[v startGPS];[v update];[v captureLifecycle];}
 
 @end
 static void TRDCrashHandler(NSException *exception) {

@@ -5033,9 +5033,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  self.isReverseActive=YES;
  [self prepareForExternalAppLaunch];
  notify_post("com.codex.trd.network.camera");
- if(![self launchBundleApp:@"com.codex.h109viewer"]){
-  [self launchBundleApp:@"com.apple.camera"];
- }
+ [self launchBundleApp:@"com.codex.h109viewer"];
  if(self.radioPlayer){
   self.radioPlayer.volume=0.5f;
  }

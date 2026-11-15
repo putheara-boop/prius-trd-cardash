@@ -23,6 +23,7 @@ static int gSleepGeneration = 0;
 + (id)defaultWorkspace;
 + (id)eventWithName:(NSString *)name mode:(NSString *)mode;
 - (BOOL)openApplicationWithBundleID:(NSString *)bundleID;
+- (BOOL)launchApplicationWithIdentifier:(NSString *)identifier suspended:(BOOL)suspended;
 - (NSString *)currentEventMode;
 - (void)sendEvent:(id)event toListenerWithName:(NSString *)name;
 - (void)setState:(int)state forSwitchIdentifier:(NSString *)ident;
@@ -213,6 +214,110 @@ static void TRDWriteStatus(NSString *action) {
     if (!ok) {
         [[dict description] writeToFile:@"/var/mobile/codex-car/sb-power-state.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }
+}
+
+static uint64_t gLaunchGeneration = 0;
+
+static NSString *TRDCurrentFrontmostBundleID(void) {
+    UIApplication *sbApp = [UIApplication sharedApplication];
+    id frontApp = [sbApp respondsToSelector:@selector(_accessibilityFrontMostApplication)] ? [sbApp _accessibilityFrontMostApplication] : nil;
+    return (frontApp && [frontApp respondsToSelector:@selector(bundleIdentifier)]) ? ([frontApp bundleIdentifier] ?: @"") : @"";
+}
+
+static void TRDLogAppLaunch(NSString *bundleID, NSString *stage, BOOL directOk, BOOL wsOk, NSString *frontNow) {
+    NSDictionary *info = @{
+        @"bundleID": bundleID ?: @"",
+        @"stage": stage ?: @"",
+        @"directOk": @(directOk),
+        @"wsOk": @(wsOk),
+        @"frontmost": frontNow ?: @"",
+        @"at": [[NSDate date] description]
+    };
+    [info writeToFile:@"/var/mobile/codex-car/sb-launch.plist" atomically:YES];
+}
+
+static void TRDOpenBundleViaWorkspaceAsync(NSString *bundleID, NSString *stage) {
+    if (!bundleID.length || [bundleID isEqualToString:@"com.apple.camera"]) return;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        Class wsCls = objc_getClass("LSApplicationWorkspace");
+        id ws = (wsCls && [wsCls respondsToSelector:@selector(defaultWorkspace)]) ? ((id (*)(id, SEL))objc_msgSend)(wsCls, @selector(defaultWorkspace)) : nil;
+        BOOL wsOk = NO;
+        if (ws && [ws respondsToSelector:@selector(openApplicationWithBundleID:)]) {
+            wsOk = ((BOOL (*)(id, SEL, NSString *))objc_msgSend)(ws, @selector(openApplicationWithBundleID:), bundleID);
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            TRDLogAppLaunch(bundleID, stage, NO, wsOk, TRDCurrentFrontmostBundleID());
+        });
+    });
+}
+
+static void TRDLaunchAppFromSpringBoard(NSString *bundleID, BOOL wakeIfLocked) {
+    if (!bundleID.length || [bundleID isEqualToString:@"com.apple.camera"]) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        TRDInitSymbols();
+        uint64_t gen = ++gLaunchGeneration;
+
+        if (wakeIfLocked) {
+            if (pBKSDisplayServicesSetScreenBlanked) {
+                pBKSDisplayServicesSetScreenBlanked(NO);
+            }
+            Class blCls = objc_getClass("SBBacklightController");
+            id blMgr = [blCls respondsToSelector:@selector(sharedInstance)] ? [blCls sharedInstance] : nil;
+            BOOL screenOn = (blMgr && [blMgr respondsToSelector:@selector(screenIsOn)]) ? [blMgr screenIsOn] : YES;
+            BOOL screenDim = (blMgr && [blMgr respondsToSelector:@selector(screenIsDim)]) ? [blMgr screenIsDim] : NO;
+            if (blMgr && (!screenOn || screenDim)) {
+                if ([blMgr respondsToSelector:@selector(turnOnScreenFullyWithBacklightSource:)]) {
+                    [blMgr turnOnScreenFullyWithBacklightSource:1];
+                }
+                if ([blMgr respondsToSelector:@selector(setBacklightFactor:source:)]) {
+                    [blMgr setBacklightFactor:1.0f source:1];
+                }
+            }
+            if (blMgr && [blMgr respondsToSelector:@selector(preventIdleSleep)]) {
+                [blMgr preventIdleSleep];
+            }
+            Class lockCls = objc_getClass("SBLockScreenManager");
+            id lockMgr = [lockCls respondsToSelector:@selector(sharedInstance)] ? [lockCls sharedInstance] : nil;
+            Class csmCls = objc_getClass("SBCoverSheetPresentationManager");
+            id csmi = [csmCls respondsToSelector:@selector(sharedInstance)] ? [csmCls sharedInstance] : nil;
+            BOOL locked = (lockMgr && [lockMgr respondsToSelector:@selector(isUILocked)]) ? [lockMgr isUILocked] : NO;
+            BOOL covP = (csmi && [csmi respondsToSelector:@selector(isPresented)]) ? [csmi isPresented] : NO;
+            BOOL covV = (csmi && [csmi respondsToSelector:@selector(isVisible)]) ? [csmi isVisible] : NO;
+            if (locked || covP || covV || TRDHasLockScreenLayoutElement()) {
+                TRDDismissCoverSheetCompletely(NO);
+            }
+        }
+
+        UIApplication *sbApp = [UIApplication sharedApplication];
+        BOOL directOk = NO;
+        if ([sbApp respondsToSelector:@selector(launchApplicationWithIdentifier:suspended:)]) {
+            directOk = ((BOOL (*)(id, SEL, NSString *, BOOL))objc_msgSend)(sbApp, @selector(launchApplicationWithIdentifier:suspended:), bundleID, NO);
+        }
+        TRDLogAppLaunch(bundleID, @"sb-direct", directOk, NO, TRDCurrentFrontmostBundleID());
+        if (!directOk) {
+            TRDOpenBundleViaWorkspaceAsync(bundleID, @"sb-ws-immediate");
+        }
+
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.20 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (gen != gLaunchGeneration) return;
+            NSString *frontNow = TRDCurrentFrontmostBundleID();
+            if ([frontNow isEqualToString:bundleID]) {
+                TRDLogAppLaunch(bundleID, @"sb-verified", directOk, NO, frontNow);
+                return;
+            }
+            if ([sbApp respondsToSelector:@selector(launchApplicationWithIdentifier:suspended:)]) {
+                ((BOOL (*)(id, SEL, NSString *, BOOL))objc_msgSend)(sbApp, @selector(launchApplicationWithIdentifier:suspended:), bundleID, NO);
+            }
+            TRDOpenBundleViaWorkspaceAsync(bundleID, @"sb-retry-fast");
+        });
+
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.65 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (gen != gLaunchGeneration) return;
+            NSString *frontNow = TRDCurrentFrontmostBundleID();
+            if ([frontNow isEqualToString:bundleID]) return;
+            TRDOpenBundleViaWorkspaceAsync(bundleID, @"sb-retry-late");
+        });
+    });
 }
 
 static void TRDApplySleepStep(void) {
@@ -481,7 +586,7 @@ static void TRDSpringBoardPowerInit(void) {
                                                          name:UIDeviceBatteryStateDidChangeNotification
                                                        object:nil];
 
-            static int sleepToken = 0, wakeToken = 0, statusToken = 0;
+            static int sleepToken = 0, wakeToken = 0, statusToken = 0, launchH109Token = 0, launchCarDashToken = 0;
             notify_register_dispatch("com.codex.trd.sleep", &sleepToken, dispatch_get_main_queue(), ^(int token) {
                 TRDPerformSleep();
             });
@@ -490,6 +595,12 @@ static void TRDSpringBoardPowerInit(void) {
             });
             notify_register_dispatch("com.codex.trd.status", &statusToken, dispatch_get_main_queue(), ^(int token) {
                 TRDWriteStatus(@"status");
+            });
+            notify_register_dispatch("com.codex.trd.launch.h109viewer", &launchH109Token, dispatch_get_main_queue(), ^(int token) {
+                TRDLaunchAppFromSpringBoard(@"com.codex.h109viewer", YES);
+            });
+            notify_register_dispatch("com.codex.trd.launch.cardash", &launchCarDashToken, dispatch_get_main_queue(), ^(int token) {
+                TRDLaunchAppFromSpringBoard(@"com.codex.cardash", NO);
             });
 
             TRDWriteStatus(@"loaded");

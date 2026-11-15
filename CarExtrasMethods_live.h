@@ -438,7 +438,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
  [self startGPS];
 }
 
--(void)openCamera{[self prepareForExternalAppLaunch];notify_post("com.codex.trd.network.camera");if(![self launchBundleApp:@"com.codex.h109viewer"]){[self launchBundleApp:@"com.apple.camera"];}}
+-(void)openCamera{[self prepareForExternalAppLaunch];notify_post("com.codex.trd.network.camera");[self launchBundleApp:@"com.codex.h109viewer"];}
 -(void)toggleCalmDrive{self.calmDrive=!self.calmDrive;[[NSUserDefaults standardUserDefaults]setBool:self.calmDrive forKey:@"TRDCalmDrive"];[[NSUserDefaults standardUserDefaults]synchronize];[self applyMotionPolicy];[self refreshSpeed];[self.view setNeedsLayout];}
 -(void)applyMotionPolicy{BOOL calm=self.driveMode&&self.calmDrive;self.audioBars.hidden=!self.musicMode;self.audioBars.multicolor=self.musicMode;if(!self.musicMode||[UIApplication sharedApplication].applicationState==UIApplicationStateBackground){if(self.audioBars.refreshTimer)[self.audioBars stop];}else [self.audioBars start];if(calm)[self.driveCar stop];}
 -(void)refreshAudioRoute{
