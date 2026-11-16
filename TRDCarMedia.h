@@ -105,8 +105,11 @@ static MPRemoteCommandHandlerStatus TRDYouTubeTransport(NSInteger kind,NSString 
    if([pb respondsToSelector:@selector(pause)]){[pb pause];delivered=YES;}
    if([avp isKindOfClass:[AVPlayer class]]&&((AVPlayer *)avp).rate>0.0f){[(AVPlayer *)avp pause];delivered=YES;}
   }else if(effectiveKind==0){
+   AVAudioSession *ytSess=[AVAudioSession sharedInstance];
+   [ytSess setCategory:AVAudioSessionCategoryPlayback error:nil];
+   [ytSess setActive:YES error:nil];
    if([pb respondsToSelector:@selector(play)]){[pb play];delivered=YES;}
-   else if([avp isKindOfClass:[AVPlayer class]]){[(AVPlayer *)avp play];delivered=YES;}
+   if([avp isKindOfClass:[AVPlayer class]]&&((AVPlayer *)avp).rate<=0.0f){[(AVPlayer *)avp play];delivered=YES;}
   }
   if([pb respondsToSelector:@selector(updateNowPlaying)])[pb updateNowPlaying];
   BOOL nowPlaying=TRDYouTubeIsCurrentlyPlaying(yt);
@@ -134,8 +137,21 @@ static NSInteger TRDLastTransportKind=-1;
   if(kind==1){
    if(!playing)delivered=YES;
    else if([p respondsToSelector:@selector(pausePlayback)]){[p pausePlayback];delivered=YES;}
-  }else if((kind==0&&playing)){delivered=YES;}
-  else if([p respondsToSelector:@selector(togglePlayPause)]){[p togglePlayPause];delivered=YES;}
+  }else if((kind==0&&playing)){
+   AVAudioSession *audSess=[AVAudioSession sharedInstance];
+   [audSess setCategory:AVAudioSessionCategoryPlayback error:nil];
+   [audSess setActive:YES error:nil];
+   if([p respondsToSelector:@selector(setVolume:)])[(id)p setVolume:1.0f];
+   delivered=YES;
+  }else{
+   if(kind==0){
+    AVAudioSession *audSess=[AVAudioSession sharedInstance];
+    [audSess setCategory:AVAudioSessionCategoryPlayback error:nil];
+    [audSess setActive:YES error:nil];
+    if([p respondsToSelector:@selector(setVolume:)])[(id)p setVolume:1.0f];
+   }
+   if([p respondsToSelector:@selector(togglePlayPause)]){[p togglePlayPause];delivered=YES;}
+  }
   if(delivered){
    TRDCarRefreshMetadata(kind==0?@"play":kind==1?@"pause":@"toggle");
    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/2),dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"transport-updated");});

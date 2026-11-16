@@ -18,9 +18,30 @@ static NSString *const Log=@"/var/mobile/codex-car/browse-return-state.plist";
 @end
 
 @implementation TRDFloatingHome
+static CFAbsoluteTime gTRDLastGoHomeAt = 0;
+static const void *kTRDGesturesInstalledKey = &kTRDGesturesInstalledKey;
+
 +(void)goHome{
  dispatch_async(dispatch_get_main_queue(),^{
-  [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"]];
+  CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+  if(now - gTRDLastGoHomeAt < 0.55) return;
+  gTRDLastGoHomeAt = now;
+  NSURL *dashURL = [NSURL URLWithString:@"cardash://home"];
+  UIApplication *app = [UIApplication sharedApplication];
+  if(dashURL && [app respondsToSelector:@selector(openURL:options:completionHandler:)]){
+   [app openURL:dashURL options:@{} completionHandler:^(BOOL success){
+    if(!success){
+     notify_post("com.codex.trd.launch.cardash");
+    }
+   }];
+  } else if(dashURL){
+   [app openURL:dashURL];
+  }
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+   if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
+    notify_post("com.codex.trd.launch.cardash");
+   }
+  });
  });
 }
 -(void)goHome{
@@ -28,7 +49,10 @@ static NSString *const Log=@"/var/mobile/codex-car/browse-return-state.plist";
 }
 +(void)onGesture:(UIGestureRecognizer *)g{
  if([g isKindOfClass:[UIScreenEdgePanGestureRecognizer class]]){
-  if(g.state==UIGestureRecognizerStateBegan||g.state==UIGestureRecognizerStateRecognized){
+  UIScreenEdgePanGestureRecognizer *ep = (UIScreenEdgePanGestureRecognizer *)g;
+  CGPoint trans = [ep translationInView:ep.view];
+  if(ep.state == UIGestureRecognizerStateEnded ||
+     (ep.state == UIGestureRecognizerStateChanged && fabs(trans.x) >= 24.0)){
    [self goHome];
   }
  } else if([g isKindOfClass:[UISwipeGestureRecognizer class]]){
@@ -37,53 +61,99 @@ static NSString *const Log=@"/var/mobile/codex-car/browse-return-state.plist";
   }
  }
 }
++(BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)g{
+ if([g isKindOfClass:[UISwipeGestureRecognizer class]]){
+  UISwipeGestureRecognizer *sw = (UISwipeGestureRecognizer *)g;
+  if(sw.numberOfTouchesRequired == 1 && sw.view){
+   CGPoint pt = [sw locationInView:sw.view];
+   CGFloat w = sw.view.bounds.size.width;
+   BOOL inSideZone = (pt.x <= 140.0 || pt.x >= (w - 140.0));
+   UIView *hit = [sw.view hitTest:pt withEvent:nil];
+   for(UIView *v = hit; v && v != sw.view; v = v.superview){
+    if([v isKindOfClass:[UISlider class]] || [NSStringFromClass([v class]) containsString:@"Scrubber"]){
+     return inSideZone;
+    }
+    if([v isKindOfClass:[UIScrollView class]]){
+     UIScrollView *sv = (UIScrollView *)v;
+     if(sv.contentSize.width > sv.bounds.size.width + 24.0){
+      return inSideZone;
+     }
+    }
+   }
+  }
+ }
+ return YES;
+}
 +(BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer{
  return YES;
 }
++(void)attachGesturesToWindow:(UIWindow *)window{
+ if(!window)return;
+ if([objc_getAssociatedObject(window, kTRDGesturesInstalledKey) boolValue])return;
+ objc_setAssociatedObject(window, kTRDGesturesInstalledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+ // 1. Edge Pan Left (ปัดขวาจากขอบซ้ายเข้ามา)
+ UIScreenEdgePanGestureRecognizer *edgeLeft=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
+ edgeLeft.edges=UIRectEdgeLeft;
+ edgeLeft.cancelsTouchesInView=NO;
+ edgeLeft.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
+ [window addGestureRecognizer:edgeLeft];
+
+ // 2. Edge Pan Right (ปัดซ้ายจากขอบขวาเข้ามา)
+ UIScreenEdgePanGestureRecognizer *edgeRight=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
+ edgeRight.edges=UIRectEdgeRight;
+ edgeRight.cancelsTouchesInView=NO;
+ edgeRight.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
+ [window addGestureRecognizer:edgeRight];
+
+ // 3. One-Finger Swipe Left & Right (1 นิ้วปัดซ้าย / ปัดขวา กลับเข้า Dashboard)
+ UISwipeGestureRecognizer *swipe1Left=[[UISwipeGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
+ swipe1Left.numberOfTouchesRequired=1;
+ swipe1Left.direction=UISwipeGestureRecognizerDirectionLeft;
+ swipe1Left.cancelsTouchesInView=NO;
+ swipe1Left.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
+ [window addGestureRecognizer:swipe1Left];
+
+ UISwipeGestureRecognizer *swipe1Right=[[UISwipeGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
+ swipe1Right.numberOfTouchesRequired=1;
+ swipe1Right.direction=UISwipeGestureRecognizerDirectionRight;
+ swipe1Right.cancelsTouchesInView=NO;
+ swipe1Right.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
+ [window addGestureRecognizer:swipe1Right];
+
+ // 4. Two-Finger Swipe Down / Left / Right (2 นิ้วปัดเป็นทางลัดเสริมทุกจุดบนหน้าจอ)
+ UISwipeGestureRecognizer *swipe2Down=[[UISwipeGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
+ swipe2Down.numberOfTouchesRequired=2;
+ swipe2Down.direction=UISwipeGestureRecognizerDirectionDown;
+ swipe2Down.cancelsTouchesInView=NO;
+ swipe2Down.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
+ [window addGestureRecognizer:swipe2Down];
+
+ UISwipeGestureRecognizer *swipe2Left=[[UISwipeGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
+ swipe2Left.numberOfTouchesRequired=2;
+ swipe2Left.direction=UISwipeGestureRecognizerDirectionLeft;
+ swipe2Left.cancelsTouchesInView=NO;
+ swipe2Left.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
+ [window addGestureRecognizer:swipe2Left];
+
+ UISwipeGestureRecognizer *swipe2Right=[[UISwipeGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
+ swipe2Right.numberOfTouchesRequired=2;
+ swipe2Right.direction=UISwipeGestureRecognizerDirectionRight;
+ swipe2Right.cancelsTouchesInView=NO;
+ swipe2Right.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
+ [window addGestureRecognizer:swipe2Right];
+}
 +(void)installIfNeeded{
  dispatch_async(dispatch_get_main_queue(),^{
-  UIWindow *window=nil;
-  for(UIWindow *w in [UIApplication sharedApplication].windows){
-   if([w class]==[UIWindow class]||w.rootViewController){window=w;break;}
+  UIWindow *window=[UIApplication sharedApplication].keyWindow;
+  if(!window || window.windowLevel > UIWindowLevelNormal){
+   for(UIWindow *w in [UIApplication sharedApplication].windows){
+    if(w.windowLevel == UIWindowLevelNormal && ([w class]==[UIWindow class]||w.rootViewController)){window=w;break;}
+   }
   }
   if(!window)return;
 
-  static BOOL gesturesInstalled=NO;
-  if(!gesturesInstalled){
-   gesturesInstalled=YES;
-   // 1. Edge Pan Left (ปัดจากขอบซ้ายเข้ามา)
-   UIScreenEdgePanGestureRecognizer *edgeLeft=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
-   edgeLeft.edges=UIRectEdgeLeft;
-   edgeLeft.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
-   [window addGestureRecognizer:edgeLeft];
-
-   // 2. Edge Pan Right (ปัดจากขอบขวาเข้ามา)
-   UIScreenEdgePanGestureRecognizer *edgeRight=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
-   edgeRight.edges=UIRectEdgeRight;
-   edgeRight.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
-   [window addGestureRecognizer:edgeRight];
-
-   // 3. Two-Finger Swipe Down (2 นิ้วปัดลงที่ไหนก็ได้บนจอ)
-   UISwipeGestureRecognizer *swipe2Down=[[UISwipeGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
-   swipe2Down.numberOfTouchesRequired=2;
-   swipe2Down.direction=UISwipeGestureRecognizerDirectionDown;
-   swipe2Down.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
-   [window addGestureRecognizer:swipe2Down];
-
-   // 4. Two-Finger Swipe Left (2 นิ้วปัดซ้าย)
-   UISwipeGestureRecognizer *swipe2Left=[[UISwipeGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
-   swipe2Left.numberOfTouchesRequired=2;
-   swipe2Left.direction=UISwipeGestureRecognizerDirectionLeft;
-   swipe2Left.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
-   [window addGestureRecognizer:swipe2Left];
-
-   // 5. Two-Finger Swipe Right (2 นิ้วปัดขวา)
-   UISwipeGestureRecognizer *swipe2Right=[[UISwipeGestureRecognizer alloc]initWithTarget:[TRDFloatingHome class] action:@selector(onGesture:)];
-   swipe2Right.numberOfTouchesRequired=2;
-   swipe2Right.direction=UISwipeGestureRecognizerDirectionRight;
-   swipe2Right.delegate=(id<UIGestureRecognizerDelegate>)[TRDFloatingHome class];
-   [window addGestureRecognizer:swipe2Right];
-  }
+  [self attachGesturesToWindow:window];
 
   static TRDFloatingHome *btn;
   if(!btn){
@@ -91,37 +161,65 @@ static NSString *const Log=@"/var/mobile/codex-car/browse-return-state.plist";
    CGRect screen = window.bounds;
    CGFloat sw = screen.size.width;
    CGFloat sh = screen.size.height;
-   // Place at bottom right (above tab bar) so it never blocks top navigation back buttons
-   btn.frame=CGRectMake(sw - 116, sh - 105, 100, 44);
-   btn.backgroundColor=[UIColor colorWithRed:.10 green:.02 blue:.04 alpha:0.92];
-   btn.layer.cornerRadius=8;
+   NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+   CGFloat bx = [ud objectForKey:@"TRDFloatingHomeX"] ? [ud floatForKey:@"TRDFloatingHomeX"] : (sw - 134);
+   CGFloat by = [ud objectForKey:@"TRDFloatingHomeY"] ? [ud floatForKey:@"TRDFloatingHomeY"] : (sh - 108);
+   btn.frame=CGRectMake(bx, by, 122, 42);
+   btn.backgroundColor=[UIColor colorWithRed:.08 green:.02 blue:.04 alpha:0.94];
+   btn.layer.cornerRadius=21;
    btn.autoresizingMask=UIViewAutoresizingFlexibleLeftMargin|UIViewAutoresizingFlexibleTopMargin;
-   btn.layer.borderWidth=1;
-   btn.layer.borderColor=[UIColor colorWithRed:1 green:.12 blue:.18 alpha:0.85].CGColor;
-   btn.layer.zPosition=9999;
-   [btn setTitle:@"\xE2\x80\xB9 TRD" forState:UIControlStateNormal];
+   btn.layer.borderWidth=1.5;
+   btn.layer.borderColor=[UIColor colorWithRed:1.0 green:.20 blue:.26 alpha:0.92].CGColor;
+   btn.layer.shadowColor=[UIColor blackColor].CGColor;
+   btn.layer.shadowOpacity=0.65;
+   btn.layer.shadowRadius=6;
+   btn.layer.shadowOffset=CGSizeMake(0,2);
+   btn.layer.zPosition=99999;
+   [btn setTitle:@"\xE2\x80\xB9 DASHBOARD" forState:UIControlStateNormal];
    [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-   btn.titleLabel.font=[UIFont boldSystemFontOfSize:15];
+   btn.titleLabel.font=[UIFont boldSystemFontOfSize:13.5];
    btn.accessibilityLabel=@"Return to TRD dashboard";btn.accessibilityIdentifier=@"trd.return.home";
    [btn addTarget:btn action:@selector(goHome) forControlEvents:UIControlEventTouchUpInside];
-   UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:btn action:@selector(dragged:)];
-   [btn addGestureRecognizer:pan];
+
+   // Allow left/right swipe directly on the shortcut button too; hold 0.30s to reposition it cleanly.
+   UISwipeGestureRecognizer *btnSwL=[[UISwipeGestureRecognizer alloc]initWithTarget:btn action:@selector(goHome)];
+   btnSwL.direction=UISwipeGestureRecognizerDirectionLeft;
+   [btn addGestureRecognizer:btnSwL];
+   UISwipeGestureRecognizer *btnSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:btn action:@selector(goHome)];
+   btnSwR.direction=UISwipeGestureRecognizerDirectionRight;
+   [btn addGestureRecognizer:btnSwR];
+
+   UILongPressGestureRecognizer *holdDrag=[[UILongPressGestureRecognizer alloc]initWithTarget:btn action:@selector(dragged:)];
+   holdDrag.minimumPressDuration=0.30;
+   [btn addGestureRecognizer:holdDrag];
   }
+  btn.hidden=NO;
   if(btn.superview!=window)[window addSubview:btn];
-  CGRect frame=btn.frame;frame.origin.x=MAX(12,MIN(frame.origin.x,window.bounds.size.width-frame.size.width-12));frame.origin.y=MAX(20,MIN(frame.origin.y,window.bounds.size.height-frame.size.height-61));btn.frame=frame;
+  CGRect frame=btn.frame;frame.origin.x=MAX(12,MIN(frame.origin.x,window.bounds.size.width-frame.size.width-12));frame.origin.y=MAX(24,MIN(frame.origin.y,window.bounds.size.height-frame.size.height-58));btn.frame=frame;
   [window bringSubviewToFront:btn];
  });
 }
--(void)dragged:(UIPanGestureRecognizer *)p{
+-(void)dragged:(UILongPressGestureRecognizer *)p{
  if(!self.superview)return;
- CGPoint t=[p translationInView:self.superview];
- CGPoint c=CGPointMake(self.center.x+t.x,self.center.y+t.y);
- CGRect bounds=self.superview.bounds;
- CGFloat hw=self.bounds.size.width/2.0,hh=self.bounds.size.height/2.0;
- c.x=MAX(hw,MIN(bounds.size.width-hw,c.x));
- c.y=MAX(hh,MIN(bounds.size.height-hh,c.y));
- self.center=c;
- [p setTranslation:CGPointMake(0,0) inView:self.superview];
+ static CGPoint grabOffset;
+ CGPoint pt = [p locationInView:self.superview];
+ if(p.state == UIGestureRecognizerStateBegan){
+  grabOffset = CGPointMake(self.center.x - pt.x, self.center.y - pt.y);
+  self.transform = CGAffineTransformMakeScale(1.06, 1.06);
+ }else if(p.state == UIGestureRecognizerStateChanged){
+  CGPoint c = CGPointMake(pt.x + grabOffset.x, pt.y + grabOffset.y);
+  CGRect bounds=self.superview.bounds;
+  CGFloat hw=self.bounds.size.width/2.0,hh=self.bounds.size.height/2.0;
+  c.x=MAX(12+hw,MIN(bounds.size.width-hw-12,c.x));
+  c.y=MAX(24+hh,MIN(bounds.size.height-hh-58,c.y));
+  self.center=c;
+ }else if(p.state == UIGestureRecognizerStateEnded || p.state == UIGestureRecognizerStateCancelled){
+  self.transform = CGAffineTransformIdentity;
+  NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+  [ud setFloat:self.frame.origin.x forKey:@"TRDFloatingHomeX"];
+  [ud setFloat:self.frame.origin.y forKey:@"TRDFloatingHomeY"];
+  [ud synchronize];
+ }
 }
 @end
 
@@ -187,13 +285,14 @@ static id networkRouteObserver;
 static void(*oldMusic)(id,SEL,id,NSUInteger);
 static void Music(id obj,SEL sel,id queue,NSUInteger index){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-selection");if(!TRDAutoStarting)queue=TRDExpandQueue(obj,queue,&index);oldMusic(obj,sel,queue,index);if(!TRDAutoStarting){TRDSaveQueue();[TRDBrowseReturn selected:obj];}[TRDRoadAudio install];}
 static void(*oldPause)(id,SEL);
-static void AutoPause(id obj,SEL sel){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-pause");oldPause(obj,sel);TRDSaveQueue();}
+static BOOL TRDReversePaused = NO;
+static void AutoPause(id obj,SEL sel){if(!TRDAutoStarting && !TRDReversePaused)TRDManualPlaybackOverride(@"manual-pause");oldPause(obj,sel);TRDSaveQueue();}
 static void(*oldSeek)(id,SEL,double);
 static void AutoSeek(id obj,SEL sel,double seconds){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-seek");oldSeek(obj,sel,seconds);dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_main_queue(),^{TRDSaveQueue();});}
 static void(*oldToggle)(id,SEL);
 static void NinjaToggle(id obj,SEL sel){oldToggle(obj,sel);}
 static void(*oldYT)(id,SEL,id,double);
-static void YouTube(id obj,SEL sel,id watch,double at){gYTPlaybackInstance=obj;oldYT(obj,sel,watch,at);[TRDRoadAudio install];[@{@"bundle":@"com.himais0giiiin.ytnine",@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];}
+static void YouTube(id obj,SEL sel,id watch,double at){gYTPlaybackInstance=obj;oldYT(obj,sel,watch,at);[TRDRoadAudio install];[TRDFloatingHome installIfNeeded];[@{@"bundle":@"com.himais0giiiin.ytnine",@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];}
 static void(*oldPod)(id,SEL,NSInteger);
 static void Podcast(id obj,SEL sel,NSInteger index){oldPod(obj,sel,index);[TRDBrowseReturn selected:obj];}
 static BOOL TypeIs(const char *allowed,char value){for(const char *p=allowed;*p;p++)if(*p==value)return YES;return NO;}
@@ -310,6 +409,9 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   [[NSNotificationCenter defaultCenter]addObserverForName:UIApplicationDidChangeStatusBarOrientationNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note){
    [TRDFloatingHome installIfNeeded];
   }];
+  [[NSNotificationCenter defaultCenter]addObserverForName:UIWindowDidBecomeKeyNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note){
+   [TRDFloatingHome installIfNeeded];
+  }];
   dispatch_async(dispatch_get_main_queue(),^{
    if([UIApplication sharedApplication].applicationState==UIApplicationStateActive){
     if([bundle isEqual:@"com.legacymusic.app"])TRDNormalizeNinjaOutput();
@@ -320,6 +422,25 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   });
  }
  if([bundle isEqual:@"com.legacymusic.app"]){
+  static int musicPlayTok=0,musicPauseTok=0;
+  notify_register_dispatch("com.codex.trd.music.pause",&musicPauseTok,dispatch_get_main_queue(),^(int t){
+   TRDReversePaused=YES;
+   [roadAudio carPause:nil];
+   TRDReversePaused=NO;
+  });
+  notify_register_dispatch("com.codex.trd.music.play",&musicPlayTok,dispatch_get_main_queue(),^(int t){
+   TRDAudioInterrupted=NO;
+   TRDNormalizeNinjaOutput();
+   [roadAudio carPlay:nil];
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.55*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+    id p=TRDCarPlayer();
+    if(p && [p respondsToSelector:@selector(hasActivePlayer)] && [p hasActivePlayer] &&
+       [p respondsToSelector:@selector(playerIsPlaying)] && ![p playerIsPlaying]){
+     TRDNormalizeNinjaOutput();
+     [roadAudio carPlay:nil];
+    }
+   });
+  });
   TRDAutoPlayIfRequested();TRDSaveQueueLoop();
   for(NSString *event in @[UIApplicationWillResignActiveNotification,UIApplicationDidEnterBackgroundNotification,UIApplicationWillTerminateNotification])[[NSNotificationCenter defaultCenter]addObserverForName:event object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note){TRDSaveQueue();}];
   [[NSNotificationCenter defaultCenter]addObserverForName:AVAudioSessionInterruptionNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note){TRDAudioInterrupted=[note.userInfo[AVAudioSessionInterruptionTypeKey]unsignedIntegerValue]==AVAudioSessionInterruptionTypeBegan;if(TRDAudioInterrupted)TRDCancelAutoResume(@"audio-interrupted");TRDSaveQueue();}];

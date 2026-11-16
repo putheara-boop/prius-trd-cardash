@@ -586,7 +586,7 @@ static void TRDSpringBoardPowerInit(void) {
                                                          name:UIDeviceBatteryStateDidChangeNotification
                                                        object:nil];
 
-            static int sleepToken = 0, wakeToken = 0, statusToken = 0, launchH109Token = 0, launchCarDashToken = 0;
+            static int sleepToken = 0, wakeToken = 0, statusToken = 0, launchH109Token = 0, launchCarDashToken = 0, launchYTToken = 0, launchMusicToken = 0;
             notify_register_dispatch("com.codex.trd.sleep", &sleepToken, dispatch_get_main_queue(), ^(int token) {
                 TRDPerformSleep();
             });
@@ -601,6 +601,12 @@ static void TRDSpringBoardPowerInit(void) {
             });
             notify_register_dispatch("com.codex.trd.launch.cardash", &launchCarDashToken, dispatch_get_main_queue(), ^(int token) {
                 TRDLaunchAppFromSpringBoard(@"com.codex.cardash", NO);
+            });
+            notify_register_dispatch("com.codex.trd.launch.ytnine", &launchYTToken, dispatch_get_main_queue(), ^(int token) {
+                TRDLaunchAppFromSpringBoard(@"com.himais0giiiin.ytnine", NO);
+            });
+            notify_register_dispatch("com.codex.trd.launch.legacymusic", &launchMusicToken, dispatch_get_main_queue(), ^(int token) {
+                TRDLaunchAppFromSpringBoard(@"com.legacymusic.app", NO);
             });
 
             TRDWriteStatus(@"loaded");

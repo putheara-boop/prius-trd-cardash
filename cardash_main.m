@@ -1425,6 +1425,10 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property (nonatomic, strong) UILabel *obdAlertBanner;
 @property (nonatomic, strong) NSDate *lastOBDWarnDate;
 @property (nonatomic, assign) BOOL pausedMusicForReverse;
+@property (nonatomic, assign) NSUInteger reverseAudioGen;
+@property (nonatomic, assign) NSInteger reverseAudioSource;
+@property (nonatomic, copy) NSString *reverseResumeRadioURL;
+@property (nonatomic, copy) NSString *reverseResumeRadioName;
 
 @property UIView *navigation;
 @property NSArray *navButtons;
@@ -1535,6 +1539,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property AVPlayer *radioPlayer;
 @property NSUInteger radioGeneration;
 @property NSString *currentRadioStation;
+@property NSString *currentRadioURL;
 @property (nonatomic, copy) NSArray *offlineTracks;
 @property (nonatomic, assign) NSInteger offlineTrackIndex;
 @property (nonatomic, assign) BOOL offlinePlaybackActive;
@@ -4665,6 +4670,7 @@ static NSUInteger gTRDUpdateTicks=0;
  }
  if(!url.length){
   self.currentRadioStation=nil;
+  self.currentRadioURL=nil;
   self.song.text=@"Radio stopped";
   self.artist.text=@"Tap RADIO to select station";
   [self refreshNowPlaying];
@@ -4674,6 +4680,7 @@ static NSUInteger gTRDUpdateTicks=0;
  }
 
  self.currentRadioStation=name;
+ self.currentRadioURL=url;
  self.song.text=[NSString stringWithFormat:@"[CONNECTING...] %@", name];
  self.artist.text=@"Buffering live stream...";
  self.sourceBadge.text=@"RADIO";
@@ -6030,6 +6037,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  if(!identifier.length || [identifier isEqualToString:@"com.apple.camera"])return NO;
  static uint64_t trdLaunchGeneration=0;
  uint64_t gen=++trdLaunchGeneration;
+ [self logNavigation:[NSString stringWithFormat:@"launchBundleApp: %@",identifier]];
  if([identifier isEqualToString:@"com.codex.h109viewer"] || [identifier isEqualToString:@"com.codex.cardash"]){
   const char *notif=[identifier isEqualToString:@"com.codex.h109viewer"]?"com.codex.trd.launch.h109viewer":"com.codex.trd.launch.cardash";
   notify_post(notif);
@@ -6062,6 +6070,66 @@ static NSData *TRDBuildLoudBeepWAVData(void){
   UIApplication *app=[UIApplication sharedApplication];
   if(settingsURL && [app canOpenURL:settingsURL]){
    [app openURL:settingsURL];
+   [self refreshNowPlaying];
+   return YES;
+  }
+ }
+ NSDictionary *schemeMap=@{
+  @"com.himais0giiiin.ytnine":@"ytnine://",
+  @"com.google.ios.youtube":@"youtube://",
+  @"com.legacymusic.app":@"legacymusic://",
+  @"com.apple.Maps":@"maps://"
+ };
+ NSString *schemeStr=schemeMap[identifier];
+ if(schemeStr.length){
+  NSURL *targetURL=[NSURL URLWithString:schemeStr];
+  UIApplication *app=[UIApplication sharedApplication];
+  NSString *targetID=[identifier copy];
+  __weak typeof(self) weakSelf=self;
+  void (^sbFallback)(void)=^{
+   if([targetID isEqualToString:@"com.himais0giiiin.ytnine"])notify_post("com.codex.trd.launch.ytnine");
+   else if([targetID isEqualToString:@"com.legacymusic.app"])notify_post("com.codex.trd.launch.legacymusic");
+   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+    Class wsClass=NSClassFromString(@"LSApplicationWorkspace");
+    if(!wsClass){
+     dlopen("/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_LAZY);
+     wsClass=NSClassFromString(@"LSApplicationWorkspace");
+    }
+    id ws=(wsClass && [wsClass respondsToSelector:@selector(defaultWorkspace)])?((id (*)(id, SEL))objc_msgSend)(wsClass,@selector(defaultWorkspace)):nil;
+    BOOL launched=NO;
+    if(ws && [ws respondsToSelector:@selector(openApplicationWithBundleID:)]){
+     launched=((BOOL (*)(id, SEL, NSString *))objc_msgSend)(ws,@selector(openApplicationWithBundleID:),targetID);
+    }
+    if(!launched){
+     void *sbs=dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_LAZY);
+     if(sbs){
+      int (*launch)(CFStringRef, Boolean)=(int (*)(CFStringRef, Boolean))dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
+      if(launch && launch((__bridge CFStringRef)targetID, false)==0)launched=YES;
+     }
+    }
+    if(!launched){
+     dispatch_async(dispatch_get_main_queue(),^{
+      Dashboard *v=weakSelf;
+      if(v && [UIApplication sharedApplication].applicationState==UIApplicationStateActive){
+       [v logNavigation:[NSString stringWithFormat:@"launch failed: %@",targetID]];
+      }
+     });
+    }
+   });
+  };
+  if(targetURL && [app respondsToSelector:@selector(openURL:options:completionHandler:)]){
+   [app openURL:targetURL options:@{} completionHandler:^(BOOL success){
+    [weakSelf logNavigation:[NSString stringWithFormat:@"openURL %@ -> %d",schemeStr,success?1:0]];
+    if(success){
+     [weakSelf refreshNowPlaying];
+    }else{
+     sbFallback();
+    }
+   }];
+   return YES;
+  }
+  if(targetURL && [app openURL:targetURL]){
+   [self logNavigation:[NSString stringWithFormat:@"legacy openURL %@ -> 1",schemeStr]];
    [self refreshNowPlaying];
    return YES;
   }
@@ -6141,10 +6209,11 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  [ud synchronize];
 }
 -(void)openYouTubeSource{
+ [self cancelNavigationTouch:nil forEvent:nil];
  [self prepareForExternalAppLaunch];
  self.radioGeneration++;
  if(self.radioPlayer){[self.radioPlayer pause];[self.radioPlayer replaceCurrentItemWithPlayerItem:nil];self.radioPlayer=nil;}
- Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
+ [self logNavigation:@"opening YouTube (ytnine)"];
  notify_post("com.codex.trd.network.internet");
  [self send:@"com.himais0giiiin.ytnine"];
 }
@@ -7270,27 +7339,164 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [@{@"rear": @YES, @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/reverse-camera.plist" atomically:YES];
  notify_post("com.codex.trd.network.camera");
  [self launchBundleApp:@"com.codex.h109viewer"];
- if(self.radioPlayer){
-  self.radioPlayer.volume=0.0f;
- }
  self.pausedMusicForReverse=NO;
- if(self.mediaRate>0){
-  if([self isYouTubeMediaActive]){
-   notify_post("com.codex.trd.youtube.pause");
+ self.reverseAudioSource=0;
+ self.reverseResumeRadioURL=nil;
+ self.reverseResumeRadioName=nil;
+ NSUInteger revGen=++self.reverseAudioGen;
+ if(self.radioPlayer){
+  BOOL activelyPlaying=(self.radioPlayer.rate>0.05 ||
+                        (![self.song.text hasPrefix:@"[PAUSED]"] && (self.offlinePlaybackActive || self.currentRadioStation.length>0) &&
+                         self.radioPlayer.currentItem && self.radioPlayer.currentItem.status!=AVPlayerItemStatusFailed));
+  if(activelyPlaying){
    self.pausedMusicForReverse=YES;
-  }else{
-   Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
-   if(pauseCmd && pauseCmd(1,nil)){
-    self.pausedMusicForReverse=YES;
+   self.reverseAudioSource=self.offlinePlaybackActive?1:2;
+   self.reverseResumeRadioURL=self.currentRadioURL;
+   self.reverseResumeRadioName=self.currentRadioStation;
+   [self.radioPlayer pause];
+   [[TRDOBDClient sharedClient] obdLog:@"REVERSE paused in-app audio (src=%ld)",(long)self.reverseAudioSource];
+  }
+  self.radioPlayer.volume=0.0f;
+  [[AVAudioSession sharedInstance] setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+ }else{
+  BOOL cachedPlaying=(self.mediaRate>0.05);
+  if(cachedPlaying){
+   self.pausedMusicForReverse=YES;
+   self.reverseAudioSource=[self isYouTubeMediaActive]?3:4;
+   if(self.reverseAudioSource==3){
+    notify_post("com.codex.trd.youtube.pause");
    }else{
-    [self send:@"libactivator.ipod.pause-playback"];
-    self.pausedMusicForReverse=YES;
+    notify_post("com.codex.trd.music.pause");
+    TRDSendMediaRemoteExternal(1,nil);
+   }
+   [[TRDOBDClient sharedClient] obdLog:@"REVERSE paused external audio (src=%ld cachedRate=%.2f)",(long)self.reverseAudioSource,self.mediaRate];
+  }else{
+   // Backgrounded CarDash may have stale self.mediaRate == 0; query live MediaRemote rate + owner PID now.
+   void (*mrInfo)(dispatch_queue_t,void (^)(CFDictionaryRef))=dlsym(RTLD_DEFAULT,"MRMediaRemoteGetNowPlayingInfo");
+   void (*mrOwner)(dispatch_queue_t,void (^)(int))=dlsym(RTLD_DEFAULT,"MRMediaRemoteGetNowPlayingApplicationPID");
+   BOOL otherAudio=[AVAudioSession sharedInstance].otherAudioPlaying;
+   if(mrInfo){
+    __weak typeof(self) weakSelf=self;
+    mrInfo(dispatch_get_main_queue(),^(CFDictionaryRef raw){
+     Dashboard *v=weakSelf;
+     if(!v || v.reverseAudioGen!=revGen || !v.isReverseActive || v.pausedMusicForReverse)return;
+     NSDictionary *info=[(__bridge id)raw isKindOfClass:[NSDictionary class]]?(__bridge id)raw:nil;
+     double liveRate=[info[@"kMRMediaRemoteNowPlayingInfoPlaybackRate"] respondsToSelector:@selector(doubleValue)]?[info[@"kMRMediaRemoteNowPlayingInfoPlaybackRate"] doubleValue]:0.0;
+     if(liveRate>0.05 || otherAudio){
+      void (^applyPause)(NSInteger)=^(NSInteger detectedSrc){
+       if(v.reverseAudioGen!=revGen || !v.isReverseActive || v.pausedMusicForReverse)return;
+       v.pausedMusicForReverse=YES;
+       v.reverseAudioSource=detectedSrc;
+       if(detectedSrc==3){
+        notify_post("com.codex.trd.youtube.pause");
+       }else{
+        notify_post("com.codex.trd.music.pause");
+        TRDSendMediaRemoteExternal(1,nil);
+       }
+       [[TRDOBDClient sharedClient] obdLog:@"REVERSE paused live external audio (src=%ld liveRate=%.2f other=%d)",(long)detectedSrc,liveRate,otherAudio?1:0];
+      };
+      if(mrOwner){
+       mrOwner(dispatch_get_main_queue(),^(int pid){
+        NSInteger detectedSrc=[v isYouTubeMediaActive]?3:4;
+        if(pid>0 && pid!=getpid()){
+         int (*pathfn)(int,void *,uint32_t)=dlsym(RTLD_DEFAULT,"proc_pidpath");
+         char path[4096];path[0]=0;
+         if(pathfn && pathfn(pid,path,sizeof(path))>0){
+          NSString *proc=[[NSString stringWithUTF8String:path] lastPathComponent];
+          if([proc isEqualToString:@"YTNine"])detectedSrc=3;
+          else if([proc isEqualToString:@"LegacyMusic"])detectedSrc=4;
+         }
+        }
+        applyPause(detectedSrc);
+       });
+      }else{
+       applyPause([v isYouTubeMediaActive]?3:4);
+      }
+     }
+    });
    }
   }
  }
  [self.reverseBeepTimer invalidate];
  self.reverseBeepTimer=[NSTimer scheduledTimerWithTimeInterval:0.85 target:self selector:@selector(playReverseBeep) userInfo:nil repeats:YES];
  [self playReverseBeep];
+}
+
+-(void)resumeAudioAfterReverseWithGen:(NSUInteger)gen srcKind:(NSInteger)srcKind attempt:(NSInteger)attempt{
+ if(gen!=self.reverseAudioGen || self.isReverseActive || srcKind<=0)return;
+ if(srcKind==1 || srcKind==2){
+  if(!self.radioPlayer){
+   if(srcKind==2 && self.reverseResumeRadioURL.length && attempt>=1){
+    [self playRadio:self.reverseResumeRadioURL name:self.reverseResumeRadioName?:@"Live Radio"];
+   }
+   return;
+  }
+  AVAudioSession *sess=[AVAudioSession sharedInstance];
+  [sess setCategory:AVAudioSessionCategoryPlayback error:nil];
+  [sess setActive:YES error:nil];
+  self.radioPlayer.volume=1.0f;
+  AVPlayerItemStatus st=self.radioPlayer.currentItem?self.radioPlayer.currentItem.status:AVPlayerItemStatusUnknown;
+  if(srcKind==2 && (st==AVPlayerItemStatusFailed || (attempt>=1 && self.radioPlayer.rate<=0.05)) && self.reverseResumeRadioURL.length){
+   [[TRDOBDClient sharedClient] obdLog:@"REVERSE restarting radio stream (attempt=%ld status=%ld)",(long)attempt,(long)st];
+   [self playRadio:self.reverseResumeRadioURL name:self.reverseResumeRadioName?:@"Live Radio"];
+  }else if(self.radioPlayer.rate<=0.05){
+   [self.radioPlayer play];
+  }
+  [self refreshNowPlaying];
+  [self refreshTransportState];
+  [self refreshMini];
+  if(attempt<3){
+   NSTimeInterval waitSec=(srcKind==2)?2.0:1.1;
+   __weak typeof(self) weakSelf=self;
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(waitSec*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+    Dashboard *v=weakSelf;
+    if(!v || v.reverseAudioGen!=gen || v.isReverseActive)return;
+    if(!v.radioPlayer || v.radioPlayer.rate<=0.05 || (v.radioPlayer.currentItem && v.radioPlayer.currentItem.status==AVPlayerItemStatusFailed)){
+     [v resumeAudioAfterReverseWithGen:gen srcKind:srcKind attempt:attempt+1];
+    }
+   });
+  }
+  return;
+ }
+
+ // External app (3=YouTube, 4=audioNINJA/MediaRemote): release CarDash audio session focus cleanly first
+ [[AVAudioSession sharedInstance] setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+ if(attempt==0){
+  if(srcKind==3){
+   notify_post("com.codex.trd.youtube.play");
+  }else{
+   notify_post("com.codex.trd.music.play");
+   TRDSendMediaRemoteExternal(0,nil);
+  }
+  [[TRDOBDClient sharedClient] obdLog:@"REVERSE resume posted (src=%ld attempt=0)",(long)srcKind];
+ }
+ if(attempt<3){
+  NSTimeInterval delay=(attempt==0)?1.4:1.8;
+  __weak typeof(self) weakSelf=self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(delay*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   Dashboard *v=weakSelf;
+   if(!v || v.reverseAudioGen!=gen || v.isReverseActive)return;
+   void (*mrInfo)(dispatch_queue_t,void (^)(CFDictionaryRef))=dlsym(RTLD_DEFAULT,"MRMediaRemoteGetNowPlayingInfo");
+   if(!mrInfo){
+    return;
+   }
+   mrInfo(dispatch_get_main_queue(),^(CFDictionaryRef raw){
+    if(v.reverseAudioGen!=gen || v.isReverseActive)return;
+    NSDictionary *info=[(__bridge id)raw isKindOfClass:[NSDictionary class]]?(__bridge id)raw:nil;
+    double rate=[info[@"kMRMediaRemoteNowPlayingInfoPlaybackRate"] respondsToSelector:@selector(doubleValue)]?[info[@"kMRMediaRemoteNowPlayingInfoPlaybackRate"] doubleValue]:0.0;
+    if(rate<=0.05){
+     if(srcKind==3){
+      notify_post("com.codex.trd.youtube.play");
+     }else{
+      notify_post("com.codex.trd.music.play");
+      TRDSendMediaRemoteExternal(0,nil);
+     }
+     [[TRDOBDClient sharedClient] obdLog:@"REVERSE retry resume (src=%ld attempt=%ld rate=%.2f)",(long)srcKind,(long)(attempt+1),rate];
+     [v resumeAudioAfterReverseWithGen:gen srcKind:srcKind attempt:attempt+1];
+    }
+   });
+  });
+ }
 }
 
 -(void)handleReverseDisengaged{
@@ -7301,18 +7507,22 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(self.radioPlayer){
   self.radioPlayer.volume=1.0f;
  }
- if(self.pausedMusicForReverse){
-  self.pausedMusicForReverse=NO;
-  if([self isYouTubeMediaActive]){
-   notify_post("com.codex.trd.youtube.play");
-  }else{
-   Boolean (*playCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
-   if(!playCmd || !playCmd(0,nil))[self send:@"libactivator.ipod.toggle-playback"];
-  }
+ NSUInteger rGen=++self.reverseAudioGen;
+ BOOL shouldResume=self.pausedMusicForReverse;
+ NSInteger srcKind=self.reverseAudioSource;
+ self.pausedMusicForReverse=NO;
+ if(srcKind<=0 && shouldResume){
+  srcKind=self.radioPlayer?(self.offlinePlaybackActive?1:2):([self isYouTubeMediaActive]?3:4);
  }
  notify_post("com.codex.trd.network.internet");
  [self homePage];
  [self launchBundleApp:@"com.codex.cardash"];
+ if(shouldResume && srcKind>0){
+  __weak typeof(self) weakSelf=self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.18*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   [weakSelf resumeAudioAfterReverseWithGen:rGen srcKind:srcKind attempt:0];
+  });
+ }
 }
 
 -(void)playReverseBeep{
@@ -7754,6 +7964,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if([url.host isEqualToString:@"grid"])[v toggleCarPlayGrid];
  if([url.host isEqualToString:@"trip"])[v openTrip];
  if([url.host isEqualToString:@"music"])[v openMusic];
+ if([url.host isEqualToString:@"youtube"])[v openYouTubeSource];
  if([url.host isEqualToString:@"camera"])[v openCamera];
  if([url.host isEqualToString:@"map"])[v requestMapURL:NO];
  if([url.host isEqualToString:@"settings"])[v carSettings];
