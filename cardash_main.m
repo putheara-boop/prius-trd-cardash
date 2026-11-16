@@ -1429,6 +1429,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property (nonatomic, assign) NSInteger reverseAudioSource;
 @property (nonatomic, copy) NSString *reverseResumeRadioURL;
 @property (nonatomic, copy) NSString *reverseResumeRadioName;
+@property (nonatomic, assign) NSTimeInterval lastMapVisibleAt;
+@property (nonatomic, assign) BOOL ownsSpeechAudioSession;
 
 @property UIView *navigation;
 @property NSArray *navButtons;
@@ -4220,6 +4222,14 @@ static NSUInteger gTRDUpdateTicks=0;
   [self checkBatteryHealthGuard];
  }
  [self applyMotionPolicy];[self refreshTrip];
+ if(self.mapMode || self.carplayMode){
+  self.lastMapVisibleAt=[NSProcessInfo processInfo].systemUptime;
+ }else if(self.mapWebView && self.lastMapVisibleAt>0 && ([NSProcessInfo processInfo].systemUptime-self.lastMapVisibleAt)>=60.0){
+  self.lastMapVisibleAt=0;
+  [self teardownMapWebView];
+  [[NSURLCache sharedURLCache] removeAllCachedResponses];
+  [[TRDOBDClient sharedClient] obdLog:@"MEM reclaimed idle mapWebView after 60s"];
+ }
  if(!self.carplayMode && !self.mapMode && !self.focused){
   [self refreshDriveTripDisplay];[self refreshMini];[self refreshBrakeStatus];
  }
@@ -5627,6 +5637,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
    AVAudioSession *session = [AVAudioSession sharedInstance];
    [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
    [session setActive:YES error:nil];
+   self.ownsSpeechAudioSession = YES;
    if(!gTRDWelcomeSynth) gTRDWelcomeSynth = [[AVSpeechSynthesizer alloc] init];
    if([gTRDWelcomeSynth isSpeaking]){
     [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
@@ -5636,6 +5647,14 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
    NSString *langCode = (voiceLang == 1 || hasThai) ? @"th-TH" : @"en-US";
    float rate = [langCode isEqualToString:@"th-TH"] ? 0.46f : 0.44f;
    TRDEnqueueCalmSpeech(gTRDWelcomeSynth, @[phrase], langCode, rate);
+   __weak typeof(self) weakSelf = self;
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    Dashboard *v = weakSelf;
+    if(v && !v.radioPlayer && v.ownsSpeechAudioSession && (!gTRDWelcomeSynth || !gTRDWelcomeSynth.isSpeaking)){
+     v.ownsSpeechAudioSession = NO;
+     [[AVAudioSession sharedInstance] setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+    }
+   });
   } @catch(NSException *e){}
  });
 }
@@ -7441,6 +7460,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
    [self playRadio:self.reverseResumeRadioURL name:self.reverseResumeRadioName?:@"Live Radio"];
   }else if(self.radioPlayer.rate<=0.05){
    [self.radioPlayer play];
+   [[TRDOBDClient sharedClient] obdLog:@"REVERSE resumed in-app audio (src=%ld rate=%.2f attempt=%ld)",(long)srcKind,self.radioPlayer.rate,(long)attempt];
   }
   [self refreshNowPlaying];
   [self refreshTransportState];
@@ -7502,10 +7522,14 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 -(void)handleReverseDisengaged{
  if(!self.isReverseActive)return;
  self.isReverseActive=NO;
+ [[NSFileManager defaultManager] removeItemAtPath:@"/var/mobile/codex-car/reverse-camera.plist" error:nil];
  [self.reverseBeepTimer invalidate];
  self.reverseBeepTimer=nil;
  if(self.radioPlayer){
   self.radioPlayer.volume=1.0f;
+ }else if(self.ownsSpeechAudioSession){
+  self.ownsSpeechAudioSession=NO;
+  [[AVAudioSession sharedInstance] setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
  }
  NSUInteger rGen=++self.reverseAudioGen;
  BOOL shouldResume=self.pausedMusicForReverse;

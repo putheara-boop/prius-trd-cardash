@@ -441,10 +441,11 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 
     // Alternate explicit OBD service UUIDs (reliable on iOS 9.3.6 for 18F0) with unfiltered scan on even cycles.
     NSArray *scanServices = unfiltered ? nil : [self knownOBDServiceCBUUIDs];
+    BOOL lowPowerScan = (self.emptyBLEScanCount >= 6);
     self.connectionStatus = unfiltered ? @"Auto-scanning all BLE..." : @"Auto-scanning vLinker MC+...";
     self.lastScanSummary = unfiltered ? @"Scanning BLE (all)..." : @"Scanning BLE (18F0)...";
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
-    [self.centralManager scanForPeripheralsWithServices:scanServices options:@{CBCentralManagerScanOptionAllowDuplicatesKey: @YES}];
+    [self.centralManager scanForPeripheralsWithServices:scanServices options:@{CBCentralManagerScanOptionAllowDuplicatesKey: @(!lowPowerScan)}];
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (gen == self.scanGeneration && !self.isConnected && !self.activePeripheral) {
@@ -472,7 +473,12 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
 
             if (self.pendingScan && self.centralManager.state == CBCentralManagerStatePoweredOn) {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                // Back off BLE scan cadence when parked away from car to reduce idle CPU & radio drain.
+                NSTimeInterval retryPause = (self.emptyBLEScanCount >= 16) ? 8.0 : ((self.emptyBLEScanCount >= 6) ? 4.0 : 0.6);
+                if (retryPause >= 2.0) {
+                    [self.centralManager stopScan];
+                }
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(retryPause * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                     if (gen == self.scanGeneration && self.pendingScan && !self.isConnected && !self.activePeripheral) {
                         [self beginBLEScan];
                     }
@@ -521,12 +527,14 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         [self forceReconnect];
         return;
     }
+    self.emptyBLEScanCount = 0;
     [self obdLog:@"ensureConnectedOrScan: launching BLE auto-scan"];
     [self beginBLEScan];
 }
 
 - (void)forceReconnect {
     self.pendingScan = YES;
+    self.emptyBLEScanCount = 0;
     if (!self.centralManager) {
         [self initBluetooth];
         return;

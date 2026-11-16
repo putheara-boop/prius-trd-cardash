@@ -76,6 +76,7 @@ static NSString *CurrentAddress(void){
 @property (nonatomic, assign) BOOL callbackDone;
 @property (nonatomic, assign) int callbackError;
 @property (nonatomic, copy) NSString *previousSSID;
+@property (nonatomic, strong) NSDate *lastMissingInternetAt;
 
 -(BOOL)start;
 -(void)request:(NSString *)mode;
@@ -250,6 +251,14 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
   return;
  }
 
+ if([mode isEqual:@"camera"]){
+  self.lastMissingInternetAt=nil;
+ }else if(currentIsCamera){
+  self.lastMissingInternetAt=nil;
+ }else if(!current.length && self.lastMissingInternetAt && -[self.lastMissingInternetAt timeIntervalSinceNow]<15.0){
+  return;
+ }
+
  if([mode isEqual:@"camera"]&&currentIsCamera&&[currentAddr hasPrefix:self.cameraPrefix]){
   [self.timer invalidate];
   self.timer=nil;
@@ -284,7 +293,7 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  self.stableSince=nil;
  self.retryAt=nil;
  
- self.deadline=[NSDate dateWithTimeIntervalSinceNow:25];
+ self.deadline=[NSDate dateWithTimeIntervalSinceNow:[mode isEqual:@"camera"]?14.0:12.0];
  self.timer=[NSTimer scheduledTimerWithTimeInterval:0.20 target:self selector:@selector(tick) userInfo:nil repeats:YES];
  self.timer.tolerance=0.05;
  [self attemptJoin];
@@ -364,12 +373,13 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  if(!_network){
   [self triggerScanIfNeeded];
   BOOL keepCameraOnMissingInternet=([self.mode isEqual:@"internet"]&&[CurrentAddress() hasPrefix:self.cameraPrefix]);
-  NSUInteger maxScanAttempts=keepCameraOnMissingInternet?5:25;
+  NSUInteger maxScanAttempts=keepCameraOnMissingInternet?5:([self.mode isEqual:@"internet"]?6:10);
   if(self.attempt<maxScanAttempts){
    self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.5];
    [self writePhase:@"scanning" error:nil];
    return;
   }
+  if([self.mode isEqual:@"internet"])self.lastMissingInternetAt=[NSDate date];
   [self failed:keepCameraOnMissingInternet?@"No internet Wi-Fi in range; kept camera Wi-Fi.":@"Network not found in scan. Check hotspot availability."];
   return;
  }
@@ -423,7 +433,8 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  if((self.callbackDone&&self.callbackError&&!onTarget)||(!onTarget&&[self.attemptDeadline timeIntervalSinceNow]<=0)){
   if(Disassociate&&_device)Disassociate(_device);
   if(CancelAssociation&&_device)CancelAssociation(_device);
-  if(self.attempt>=20){
+  if(self.attempt>=8){
+   if([self.mode isEqual:@"internet"])self.lastMissingInternetAt=[NSDate date];
    [self failed:@"Could not join network. Check hotspot availability."];
    return;
   }
