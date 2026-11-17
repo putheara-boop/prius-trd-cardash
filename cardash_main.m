@@ -148,6 +148,98 @@ typedef void (*NowPlayingReader)(dispatch_queue_t,void (^)(CFDictionaryRef));
 @end
 @interface TRDCarLightBeamsView : UIView
 @end
+
+static UIImage *TRDAutoVectorIcon(NSInteger kind, CGFloat ptSize, UIColor *tint) {
+  static NSMutableDictionary *cache = nil;
+  if (!cache) cache = [NSMutableDictionary dictionary];
+  CGFloat r = 1, g = 1, b = 1, a = 1;
+  [tint getRed:&r green:&g blue:&b alpha:&a];
+  NSString *key = [NSString stringWithFormat:@"%ld_%.0f_%.2f_%.2f_%.2f", (long)kind, ptSize, r, g, b];
+  UIImage *hit = cache[key];
+  if (hit) return hit;
+
+  UIGraphicsBeginImageContextWithOptions(CGSizeMake(ptSize, ptSize), NO, 0.0);
+  CGContextRef ctx = UIGraphicsGetCurrentContext();
+  [tint setStroke];
+  [tint setFill];
+  CGFloat s = ptSize;
+  CGContextSetLineWidth(ctx, MAX(1.3, s * 0.095));
+  CGContextSetLineCap(ctx, kCGLineCapRound);
+  CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+  if (kind == 1) {
+    // OBD-II J1962 16-pin trapezoidal connector
+    UIBezierPath *trap = [UIBezierPath bezierPath];
+    [trap moveToPoint:CGPointMake(s * 0.14, s * 0.28)];
+    [trap addLineToPoint:CGPointMake(s * 0.86, s * 0.28)];
+    [trap addLineToPoint:CGPointMake(s * 0.76, s * 0.74)];
+    [trap addLineToPoint:CGPointMake(s * 0.24, s * 0.74)];
+    [trap closePath];
+    trap.lineWidth = MAX(1.3, s * 0.09);
+    [trap stroke];
+    for (int col = 0; col < 4; col++) {
+      CGFloat px = s * (0.31 + col * 0.125);
+      CGContextFillEllipseInRect(ctx, CGRectMake(px - s * 0.035, s * 0.40, s * 0.07, s * 0.07));
+      CGContextFillEllipseInRect(ctx, CGRectMake(px - s * 0.035, s * 0.56, s * 0.07, s * 0.07));
+    }
+  } else if (kind == 2) {
+    // Automotive Rear-View Camera + wide-angle guideline cone
+    UIBezierPath *body = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(s * 0.10, s * 0.26, s * 0.46, s * 0.48) cornerRadius:s * 0.10];
+    body.lineWidth = MAX(1.3, s * 0.095);
+    [body stroke];
+    CGContextFillEllipseInRect(ctx, CGRectMake(s * 0.25, s * 0.42, s * 0.16, s * 0.16));
+    UIBezierPath *fov = [UIBezierPath bezierPath];
+    [fov moveToPoint:CGPointMake(s * 0.60, s * 0.42)];
+    [fov addLineToPoint:CGPointMake(s * 0.90, s * 0.26)];
+    [fov addLineToPoint:CGPointMake(s * 0.90, s * 0.74)];
+    [fov addLineToPoint:CGPointMake(s * 0.60, s * 0.58)];
+    [fov closePath];
+    fov.lineWidth = MAX(1.2, s * 0.085);
+    [fov stroke];
+  } else if (kind == 3) {
+    // Automotive Car Door icon (angled window frame + handle)
+    UIBezierPath *door = [UIBezierPath bezierPath];
+    [door moveToPoint:CGPointMake(s * 0.22, s * 0.80)];
+    [door addLineToPoint:CGPointMake(s * 0.22, s * 0.46)];
+    [door addLineToPoint:CGPointMake(s * 0.42, s * 0.20)];
+    [door addLineToPoint:CGPointMake(s * 0.80, s * 0.20)];
+    [door addLineToPoint:CGPointMake(s * 0.80, s * 0.80)];
+    [door closePath];
+    door.lineWidth = MAX(1.3, s * 0.095);
+    [door stroke];
+    CGContextMoveToPoint(ctx, s * 0.24, s * 0.47);
+    CGContextAddLineToPoint(ctx, s * 0.78, s * 0.47);
+    CGContextStrokePath(ctx);
+    CGContextMoveToPoint(ctx, s * 0.60, s * 0.58);
+    CGContextAddLineToPoint(ctx, s * 0.72, s * 0.58);
+    CGContextStrokePath(ctx);
+  } else if (kind == 4) {
+    // Minimalist Fuel Pump glyph
+    UIBezierPath *p = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(s * 0.20, s * 0.20, s * 0.44, s * 0.62) cornerRadius:s * 0.07];
+    p.lineWidth = MAX(1.3, s * 0.09);
+    [p stroke];
+    UIRectFill(CGRectMake(s * 0.28, s * 0.28, s * 0.28, s * 0.16));
+    CGContextMoveToPoint(ctx, s * 0.64, s * 0.34);
+    CGContextAddLineToPoint(ctx, s * 0.78, s * 0.44);
+    CGContextAddLineToPoint(ctx, s * 0.78, s * 0.72);
+    CGContextStrokePath(ctx);
+  } else {
+    // Coolant Temp Gauge glyph
+    CGContextMoveToPoint(ctx, s * 0.50, s * 0.18);
+    CGContextAddLineToPoint(ctx, s * 0.50, s * 0.62);
+    CGContextStrokePath(ctx);
+    CGContextFillEllipseInRect(ctx, CGRectMake(s * 0.35, s * 0.58, s * 0.30, s * 0.30));
+    CGContextMoveToPoint(ctx, s * 0.62, s * 0.30);
+    CGContextAddLineToPoint(ctx, s * 0.78, s * 0.30);
+    CGContextMoveToPoint(ctx, s * 0.62, s * 0.45);
+    CGContextAddLineToPoint(ctx, s * 0.74, s * 0.45);
+    CGContextStrokePath(ctx);
+  }
+  UIImage *img = [UIGraphicsGetImageFromCurrentImageContext() imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+  UIGraphicsEndImageContext();
+  if (img) cache[key] = img;
+  return img;
+}
 @interface TRDDoorDiagramView : UIControl
 @property (nonatomic, assign) BOOL doorsLive;
 @property (nonatomic, assign) BOOL flOpen;
@@ -262,11 +354,12 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   [[UIColor colorWithRed:0.04 green:0.22 blue:0.34 alpha:0.88] setFill];
   [rearGlass fill];
 
-  // RHD Steering wheel indicator (Front Right)
-  UIBezierPath *wheel = [UIBezierPath bezierPathWithOvalInRect:CGRectMake(carX + carW - 15.5, carY + carH * 0.32, 7.0, 7.0)];
-  [[UIColor colorWithRed:0.45 green:0.95 blue:1.0 alpha:0.85] setStroke];
-  wheel.lineWidth = 1.2;
-  [wheel stroke];
+  // Clean RHD cockpit steering bar inside front-right dash (minimalist top-down look)
+  CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.35 green:0.88 blue:1.0 alpha:0.65].CGColor);
+  CGContextSetLineWidth(ctx, 2.0);
+  CGContextMoveToPoint(ctx, carX + carW - 15.0, carY + carH * 0.35);
+  CGContextAddLineToPoint(ctx, carX + carW - 8.5, carY + carH * 0.35);
+  CGContextStrokePath(ctx);
 
   // Side L / R labels
   NSDictionary *lrAttr = @{
@@ -3318,7 +3411,11 @@ static NSUInteger gTRDUpdateTicks=0;
     self.obdStatusPill.hidden = NO;
     self.obdStatusPill.frame = CGRectMake(curRx, barY - 5, 148, pillH);
     BOOL obdLiveNow = [TRDOBDClient sharedClient].isConnected;
-    [self.obdStatusPill setTitle:(obdLiveNow ? @"● OBD2: LIVE BLE" : @"● OBD2: SCAN BLE") forState:UIControlStateNormal];
+    UIColor *obdTint = obdLiveNow ? [UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.78 blue:0.30 alpha:1.0];
+    [self.obdStatusPill setImage:TRDAutoVectorIcon(1, 16.0, obdTint) forState:UIControlStateNormal];
+    self.obdStatusPill.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 6);
+    [self.obdStatusPill setTitle:(obdLiveNow ? @"OBD2 LIVE" : @"OBD2 SCAN") forState:UIControlStateNormal];
+    [self.obdStatusPill setTitleColor:obdTint forState:UIControlStateNormal];
 
     curRx -= 112;
     self.dayNightPill.hidden = NO;
@@ -3522,12 +3619,14 @@ static NSUInteger gTRDUpdateTicks=0;
 
     self.driveCameraButton.hidden = NO;
     self.driveCameraButton.frame = CGRectMake(centerX + 16, topY + 388, centerW - 32, 40);
-    [self.driveCameraButton setTitle:@"📷  เปิดกล้องมองหลัง / มุมอับสายตา (REAR CAMERA)" forState:UIControlStateNormal];
+    [self.driveCameraButton setImage:TRDAutoVectorIcon(2, 20.0, [UIColor colorWithRed:0.25 green:0.92 blue:1.0 alpha:1.0]) forState:UIControlStateNormal];
+    self.driveCameraButton.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 10);
+    [self.driveCameraButton setTitle:@"เปิดกล้องมองหลัง / มุมอับสายตา (REAR CAMERA)" forState:UIControlStateNormal];
     self.driveCameraButton.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
     self.driveCameraButton.layer.cornerRadius = 8;
     self.driveCameraButton.layer.borderWidth = 1.2;
-    self.driveCameraButton.layer.borderColor = [UIColor colorWithWhite:.28 alpha:1].CGColor;
-    self.driveCameraButton.backgroundColor = [UIColor colorWithRed:.06 green:.10 blue:.15 alpha:.95];
+    self.driveCameraButton.layer.borderColor = [UIColor colorWithRed:0.15 green:0.80 blue:1.0 alpha:0.55].CGColor;
+    self.driveCameraButton.backgroundColor = [UIColor colorWithRed:.04 green:.09 blue:.15 alpha:.96];
     self.driveCameraButton.showsTouchWhenHighlighted = YES;
 
     self.compassLabel.hidden = NO;
@@ -4457,12 +4556,16 @@ static NSUInteger gTRDUpdateTicks=0;
   if(self.obdStatusPill && !self.obdStatusPill.hidden){
     TRDOBDClient *obd = [TRDOBDClient sharedClient];
     BOOL live = obd.isConnected;
-    NSString *obdTitle = live ? @"● OBD2: LIVE BLE" : @"● OBD2: SCAN BLE";
+    NSString *obdTitle = live ? @"OBD2 LIVE" : @"OBD2 SCAN";
+    UIColor *obdTint = live ? [UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.78 blue:0.30 alpha:1.0];
     if(![self.obdStatusPill.currentTitle isEqualToString:obdTitle]){
+      [self.obdStatusPill setImage:TRDAutoVectorIcon(1, 16.0, obdTint) forState:UIControlStateNormal];
+      self.obdStatusPill.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 6);
       [self.obdStatusPill setTitle:obdTitle forState:UIControlStateNormal];
+      [self.obdStatusPill setTitleColor:obdTint forState:UIControlStateNormal];
       self.obdStatusPill.backgroundColor = live
-        ? [UIColor colorWithRed:0.04 green:0.24 blue:0.12 alpha:0.95]
-        : [UIColor colorWithRed:0.16 green:0.10 blue:0.04 alpha:0.95];
+        ? [UIColor colorWithRed:0.04 green:0.22 blue:0.12 alpha:0.95]
+        : [UIColor colorWithRed:0.14 green:0.09 blue:0.04 alpha:0.95];
       self.obdStatusPill.layer.borderColor = (live
         ? [UIColor colorWithRed:0.20 green:0.92 blue:0.50 alpha:0.8]
         : [UIColor colorWithRed:0.95 green:0.65 blue:0.20 alpha:0.6]).CGColor;
@@ -8055,12 +8158,16 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(self.carplayMode || self.mapMode || self.focused){
   if(self.carplayMode)[self refreshCarPlayTelemetryWidget:obd];
   if(self.mapMode && self.obdStatusPill){
-   NSString *obdT = obd.isConnected ? @"● OBD2: LIVE BLE" : @"● OBD2: SCAN BLE";
+   NSString *obdT = obd.isConnected ? @"OBD2 LIVE" : @"OBD2 SCAN";
+   UIColor *obdTint = obd.isConnected ? [UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.78 blue:0.30 alpha:1.0];
    if(![[self.obdStatusPill titleForState:UIControlStateNormal] isEqualToString:obdT]){
+    [self.obdStatusPill setImage:TRDAutoVectorIcon(1, 16.0, obdTint) forState:UIControlStateNormal];
+    self.obdStatusPill.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 6);
     [self.obdStatusPill setTitle:obdT forState:UIControlStateNormal];
+    [self.obdStatusPill setTitleColor:obdTint forState:UIControlStateNormal];
     self.obdStatusPill.backgroundColor = obd.isConnected
-     ? [UIColor colorWithRed:0.04 green:0.24 blue:0.12 alpha:0.95]
-     : [UIColor colorWithRed:0.16 green:0.10 blue:0.04 alpha:0.95];
+     ? [UIColor colorWithRed:0.04 green:0.22 blue:0.12 alpha:0.95]
+     : [UIColor colorWithRed:0.14 green:0.09 blue:0.04 alpha:0.95];
    }
   }
   return;
@@ -8070,12 +8177,16 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
  // Top OBD status pill
  if(self.obdStatusPill){
-  NSString *obdT = obd.isConnected ? @"● OBD2: LIVE BLE" : @"● OBD2: SCAN BLE";
+  NSString *obdT = obd.isConnected ? @"OBD2 LIVE" : @"OBD2 SCAN";
+  UIColor *obdTint = obd.isConnected ? [UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.78 blue:0.30 alpha:1.0];
   if(![[self.obdStatusPill titleForState:UIControlStateNormal] isEqualToString:obdT]){
+   [self.obdStatusPill setImage:TRDAutoVectorIcon(1, 16.0, obdTint) forState:UIControlStateNormal];
+   self.obdStatusPill.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 6);
    [self.obdStatusPill setTitle:obdT forState:UIControlStateNormal];
+   [self.obdStatusPill setTitleColor:obdTint forState:UIControlStateNormal];
    self.obdStatusPill.backgroundColor = obd.isConnected
-    ? [UIColor colorWithRed:0.04 green:0.24 blue:0.12 alpha:0.95]
-    : [UIColor colorWithRed:0.16 green:0.10 blue:0.04 alpha:0.95];
+    ? [UIColor colorWithRed:0.04 green:0.22 blue:0.12 alpha:0.95]
+    : [UIColor colorWithRed:0.14 green:0.09 blue:0.04 alpha:0.95];
   }
  }
 
@@ -8189,20 +8300,56 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   NSString *openDoors = TRDOpenDoorsSummary(obd.doorSensorsLive, obd.doorFrontLeftOpen, obd.doorFrontRightOpen, obd.doorRearLeftOpen, obd.doorRearRightOpen, obd.trunkOpen);
   BOOL doorAlert = (openDoors.length > 0);
   BOOL lightsActive = (obd.headlightSensorsLive && (obd.tailLightsOn || obd.headlightsOn || obd.highBeamOn));
-  NSString *lightTag = lightsActive ? [NSString stringWithFormat:@" • 💡 %@", obd.lightStateLabel ?: @"เปิดไฟ"] : @"";
+  NSString *lightTag = lightsActive ? [NSString stringWithFormat:@" • %@", obd.lightStateLabel ?: @"เปิดไฟ"] : @"";
   NSString *csText = nil;
   NSInteger styleTag = 0;
   if(doorAlert){
-   csText = [NSString stringWithFormat:@"🚨 ประตูเปิด: %@ • เกียร์ %@ • 🔋 %.2fV%@", openDoors, obd.currentGear ?: @"P", obd.auxBatteryVoltage, lightTag];
+   csText = [NSString stringWithFormat:@"เปิด: %@ • เกียร์ %@ • %.2fV%@", openDoors, obd.currentGear ?: @"P", obd.auxBatteryVoltage, lightTag];
    styleTag = 1;
   } else if(self.driveMode){
-   csText = [NSString stringWithFormat:@"🔌 OBD2 %@ • 🚪 ปิดครบ • ⛽ %.1fL (~%.0f กม.) • 🌡️ %.0f°C%@", obd.isConnected ? @"LIVE" : @"SCAN", obd.fuelRemainingLiters, estRangeKm, obd.coolantTempC, lightTag];
+   csText = [NSString stringWithFormat:@"OBD2 %@  •  ปิดครบ  •  %.1fL (~%.0f กม.)  •  %.0f°C%@", obd.isConnected ? @"LIVE" : @"SCAN", obd.fuelRemainingLiters, estRangeKm, obd.coolantTempC, lightTag];
    styleTag = 2;
   } else {
-   csText = [NSString stringWithFormat:@"🔌 %@  •  ⚙️ เกียร์ %@  •  ⛽ %.1f ลิตร (~%.0f กม. • %.1f km/L)%@", obd.isConnected ? @"LIVE" : (obd.connectionStatus ?: @"รอเชื่อมต่อ"), obd.currentGear ?: @"P", obd.fuelRemainingLiters, estRangeKm, liveAvgKmL, lightTag];
+   csText = [NSString stringWithFormat:@"%@  •  เกียร์ %@  •  %.1f ลิตร (~%.0f กม. • %.1f km/L)%@", obd.isConnected ? @"OBD2 LIVE" : (obd.connectionStatus ?: @"รอเชื่อมต่อ"), obd.currentGear ?: @"P", obd.fuelRemainingLiters, estRangeKm, liveAvgKmL, lightTag];
    styleTag = self.nightMode ? 3 : 4;
   }
-  if(![self.carStatus.text isEqualToString:csText]) self.carStatus.text = csText;
+  static NSString *sLastCarStatusKey = nil;
+  NSString *fullKey = [NSString stringWithFormat:@"%ld_%@", (long)styleTag, csText];
+  if(![sLastCarStatusKey isEqualToString:fullKey]){
+   sLastCarStatusKey = fullKey;
+   if(self.driveMode && !doorAlert){
+    NSMutableAttributedString *att = [[NSMutableAttributedString alloc] init];
+    UIFont *f = self.carStatus.font ?: [UIFont boldSystemFontOfSize:13.0];
+    void (^addIcon)(NSInteger, UIColor *) = ^(NSInteger kind, UIColor *c){
+     NSTextAttachment *ta = [[NSTextAttachment alloc] init];
+     ta.image = TRDAutoVectorIcon(kind, 15.0, c);
+     ta.bounds = CGRectMake(0, -3.0, 15.0, 15.0);
+     [att appendAttributedString:[NSAttributedString attributedStringWithAttachment:ta]];
+     [att appendAttributedString:[[NSAttributedString alloc] initWithString:@" " attributes:@{NSFontAttributeName:f}]];
+    };
+    UIColor *obdC = obd.isConnected ? [UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1] : [UIColor colorWithRed:1.0 green:0.78 blue:0.30 alpha:1];
+    addIcon(1, obdC);
+    [att appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"OBD2 %@  •  ", obd.isConnected ? @"LIVE" : @"SCAN"] attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:obdC}]];
+    addIcon(3, [UIColor colorWithRed:0.25 green:0.95 blue:0.58 alpha:1]);
+    [att appendAttributedString:[[NSAttributedString alloc] initWithString:@"ปิดครบ  •  " attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor whiteColor]}]];
+    addIcon(4, [UIColor colorWithRed:0.35 green:0.90 blue:1.0 alpha:1]);
+    [att appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%.1fL (~%.0f กม.)  •  ", obd.fuelRemainingLiters, estRangeKm] attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor whiteColor]}]];
+    addIcon(5, [UIColor colorWithRed:0.55 green:0.92 blue:1.0 alpha:1]);
+    [att appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%.0f°C%@", obd.coolantTempC, lightTag] attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor whiteColor]}]];
+    self.carStatus.attributedText = att;
+   }else if(doorAlert){
+    NSMutableAttributedString *att = [[NSMutableAttributedString alloc] init];
+    UIFont *f = self.carStatus.font ?: [UIFont boldSystemFontOfSize:13.0];
+    NSTextAttachment *ta = [[NSTextAttachment alloc] init];
+    ta.image = TRDAutoVectorIcon(3, 16.0, [UIColor colorWithRed:1.0 green:0.35 blue:0.35 alpha:1]);
+    ta.bounds = CGRectMake(0, -3.0, 16.0, 16.0);
+    [att appendAttributedString:[NSAttributedString attributedStringWithAttachment:ta]];
+    [att appendAttributedString:[[NSAttributedString alloc] initWithString:[@" " stringByAppendingString:csText] attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor colorWithRed:1.0 green:0.88 blue:0.88 alpha:1.0]}]];
+    self.carStatus.attributedText = att;
+   }else{
+    self.carStatus.text = csText;
+   }
+  }
   if(self.carStatus.tag != styleTag){
    self.carStatus.tag = styleTag;
    if(styleTag == 1){
