@@ -26,6 +26,16 @@ int main(int argc, char *argv[]) {
                 }
                 return 0;
             }
+            if ([arg isEqualToString:@"--guardian"]) {
+                [UIDevice currentDevice].batteryMonitoringEnabled = YES;
+                [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.2]];
+                int state = (int)[UIDevice currentDevice].batteryState;
+                if (state != 2 && state != 3) {
+                    notify_post("com.codex.trd.guardian");
+                    usleep(250000);
+                }
+                return 0;
+            }
         }
         [UIDevice currentDevice].batteryMonitoringEnabled = YES;
         [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.2]];

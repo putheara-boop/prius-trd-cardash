@@ -93,6 +93,7 @@
 -(void)cancelBrowseReturn{NSString *path=@"/var/mobile/codex-car/browse-return.plist";NSMutableDictionary *arm=[[NSDictionary dictionaryWithContentsOfFile:path]mutableCopy];if([arm[@"pending"]boolValue]){arm[@"pending"]=@NO;arm[@"cancelled"]=@YES;[arm writeToFile:path atomically:YES];}}
 -(void)browseSource:(NSString *)bundle target:(NSString *)target{
  if(![@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash"]containsObject:bundle])return;
+ notify_post("com.codex.trd.network.internet.force");
  if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
  if(![bundle isEqualToString:@"com.himais0giiiin.ytnine"])notify_post("com.codex.trd.youtube.pause");
  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");

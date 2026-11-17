@@ -402,6 +402,12 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 - (void)beginBLEScan {
     if (!self.centralManager || self.centralManager.state != CBCentralManagerStatePoweredOn) return;
     if (self.isConnected || self.activePeripheral) return;
+    if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground &&
+        [UIDevice currentDevice].batteryState == UIDeviceBatteryStateUnplugged) {
+        self.pendingScan = NO;
+        [self.centralManager stopScan];
+        return;
+    }
     [self.centralManager stopScan];
     [self.seenPeripheralIDs removeAllObjects];
     [self.seenDeviceSummaries removeAllObjects];
@@ -559,6 +565,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 
 - (void)stopScanning {
     self.pendingScan = NO;
+    self.scanGeneration++;
     if (self.centralManager && self.centralManager.isScanning) {
         [self.centralManager stopScan];
     }

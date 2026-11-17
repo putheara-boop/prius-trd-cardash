@@ -137,18 +137,61 @@
 -(void)screenOff{
  [UIApplication sharedApplication].idleTimerDisabled=NO;
  [UIScreen mainScreen].brightness=0.0;
+ if([self.gps respondsToSelector:@selector(setAllowsBackgroundLocationUpdates:)])self.gps.allowsBackgroundLocationUpdates=NO;
  [self.gps stopUpdatingLocation];
+ [[TRDOBDClient sharedClient] stopScanning];
+ if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
  [self.audioBars stop];
  [self.driveCar stop];
  [self.timer invalidate];
  self.timer=nil;
  [self saveTrip];
+ [self syncTripSlotsDelta:YES];
+ [self releaseTransientSpeechAudio:YES];
  notify_post("com.codex.trd.sleep");
 }
 static AVSpeechSynthesizer *gTRDWelcomeSynth;
 static NSTimer *gTRDWelcomeBTTimer;
 static NSDate *gTRDWelcomeWaitStart;
 static BOOL gTRDWelcomeSpoken;
+static NSUInteger gTRDSpeechGen = 0;
+
+-(void)releaseTransientSpeechAudio:(BOOL)stopSpeaking{
+ gTRDSpeechGen++;
+ if(stopSpeaking && gTRDWelcomeSynth && gTRDWelcomeSynth.isSpeaking){
+  [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
+ }
+ if(!self.radioPlayer && self.ownsSpeechAudioSession){
+  self.ownsSpeechAudioSession=NO;
+  @try {
+   AVAudioSession *session=[AVAudioSession sharedInstance];
+   [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
+   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+   [session setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+  } @catch(NSException *e){}
+ }
+}
+
+-(void)scheduleSpeechAudioReleaseAfter:(NSTimeInterval)initialDelay gen:(NSUInteger)gen{
+ __weak typeof(self) weakSelf=self;
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(initialDelay*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+  Dashboard *v=weakSelf;
+  if(!v || gen!=gTRDSpeechGen)return;
+  if(gTRDWelcomeSynth && gTRDWelcomeSynth.isSpeaking){
+   [v scheduleSpeechAudioReleaseAfter:1.0 gen:gen];
+   return;
+  }
+  if(!v.radioPlayer && v.ownsSpeechAudioSession){
+   v.ownsSpeechAudioSession=NO;
+   @try {
+    AVAudioSession *session=[AVAudioSession sharedInstance];
+    [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
+    [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+    [session setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+   } @catch(NSException *e){}
+  }
+ });
+}
 
 -(BOOL)isCarBluetoothReady{
  AVAudioSession *session=[AVAudioSession sharedInstance];
@@ -198,6 +241,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
    [session setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker|AVAudioSessionCategoryOptionDuckOthers error:nil];
    [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
    [session setActive:YES error:nil];
+   self.ownsSpeechAudioSession=YES;
    if(!gTRDWelcomeSynth) gTRDWelcomeSynth=[[AVSpeechSynthesizer alloc]init];
    if([gTRDWelcomeSynth isSpeaking]){
     [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
@@ -247,6 +291,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
     }
    }
    TRDEnqueueCalmSpeech(gTRDWelcomeSynth, sentences, langCode, rate);
+   [self scheduleSpeechAudioReleaseAfter:4.5 gen:++gTRDSpeechGen];
   } @catch(NSException *e){}
  });
 }
@@ -260,6 +305,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
    [session setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker|AVAudioSessionCategoryOptionDuckOthers error:nil];
    [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
    [session setActive:YES error:nil];
+   self.ownsSpeechAudioSession=YES;
    if(!gTRDWelcomeSynth) gTRDWelcomeSynth=[[AVSpeechSynthesizer alloc]init];
    if([gTRDWelcomeSynth isSpeaking]){
     [gTRDWelcomeSynth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
@@ -290,6 +336,7 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
     }
    }
    TRDEnqueueCalmSpeech(gTRDWelcomeSynth, sentences, langCode, rate);
+   [self scheduleSpeechAudioReleaseAfter:4.5 gen:++gTRDSpeechGen];
   } @catch(NSException *e){}
  });
 }
@@ -444,7 +491,9 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
 
 -(void)restoreDisplayBrightness{
  if([UIApplication sharedApplication].applicationState==UIApplicationStateBackground)return;
- [UIApplication sharedApplication].idleTimerDisabled=YES;
+ UIDeviceBatteryState bat=[UIDevice currentDevice].batteryState;
+ BOOL powered=(bat==UIDeviceBatteryStateCharging||bat==UIDeviceBatteryStateFull);
+ [UIApplication sharedApplication].idleTimerDisabled=powered;
  while([UIApplication sharedApplication].isIgnoringInteractionEvents)[[UIApplication sharedApplication] endIgnoringInteractionEvents];
  self.view.userInteractionEnabled=YES;
  self.view.window.userInteractionEnabled=YES;

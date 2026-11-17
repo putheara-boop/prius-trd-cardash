@@ -76,10 +76,14 @@ static NSString *CurrentAddress(void){
 @property (nonatomic, assign) BOOL callbackDone;
 @property (nonatomic, assign) int callbackError;
 @property (nonatomic, copy) NSString *previousSSID;
+@property (nonatomic, copy) NSString *lastInternetSSID;
+@property (nonatomic, strong) NSMutableSet *failedSSIDs;
+@property (nonatomic, assign) BOOL forceInternetSwitch;
 @property (nonatomic, strong) NSDate *lastMissingInternetAt;
 
 -(BOOL)start;
 -(void)request:(NSString *)mode;
+-(void)request:(NSString *)mode force:(BOOL)force;
 -(void)attemptJoin;
 -(void)tick;
 -(void)writePhase:(NSString *)phase error:(NSString *)error;
@@ -144,19 +148,23 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  return _device!=NULL;
 }
 
--(void)writePhase:(NSString *)phase error:(NSString *)error{
- NSDictionary *state=@{
-  @"phase":phase?:@"",
-  @"mode":self.mode?:@"idle",
-  @"targetSSID":self.target?:@"",
-  @"actualSSID":CurrentSSID(),
-  @"address":CurrentAddress(),
-  @"previousSSID":self.previousSSID?:@"",
-  @"attempt":@(self.attempt),
-  @"associationError":@(self.callbackError),
-  @"error":error?:@"",
-  @"at":[NSDate date]
- };
+ -(void)writePhase:(NSString *)phase error:(NSString *)error{
+  NSString *actual=CurrentSSID();
+  if([phase isEqual:@"ready"]&&[self.mode isEqual:@"internet"]&&actual.length){
+   self.lastInternetSSID=actual;
+  }
+  NSDictionary *state=@{
+   @"phase":phase?:@"",
+   @"mode":self.mode?:@"idle",
+   @"targetSSID":self.target?:@"",
+   @"actualSSID":actual,
+   @"address":CurrentAddress(),
+   @"previousSSID":self.previousSSID?:@"",
+   @"attempt":@(self.attempt),
+   @"associationError":@(self.callbackError),
+   @"error":error?:@"",
+   @"at":[NSDate date]
+  };
  [state writeToFile:StatePath atomically:YES];
  NSMutableArray *history=[[NSArray arrayWithContentsOfFile:HistoryPath]mutableCopy]?:[NSMutableArray array];
  [history addObject:state];
@@ -211,7 +219,11 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  }
 }
 
--(void)request:(NSString *)mode{@autoreleasepool{
+-(void)request:(NSString *)mode{
+ [self request:mode force:NO];
+}
+
+-(void)request:(NSString *)mode force:(BOOL)force{@autoreleasepool{
  if(![@[@"camera",@"internet"]containsObject:mode])return;
  NSDictionary *config=[NSDictionary dictionaryWithContentsOfFile:ConfigPath];
  
@@ -237,6 +249,10 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
    [targets addObject:@"P-Phut"];
    [targets addObject:@"Silver-L10"];
   }
+  if(self.lastInternetSSID.length && [targets containsObject:self.lastInternetSSID]){
+   [targets removeObject:self.lastInternetSSID];
+   [targets insertObject:self.lastInternetSSID atIndex:0];
+  }
  }
  
  self.targetList=targets;
@@ -247,11 +263,16 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  NSString *currentAddr=CurrentAddress();
  BOOL currentIsCamera=([current localizedCaseInsensitiveContainsString:@"H109"]||[current localizedCaseInsensitiveContainsString:@"H108"]||[currentAddr hasPrefix:self.cameraPrefix]);
  
- if([self.mode isEqual:mode]&&self.timer){
+ if([self.mode isEqual:mode]&&self.timer&&!force){
   return;
  }
 
- if([mode isEqual:@"camera"]){
+ if(force){
+  self.lastMissingInternetAt=nil;
+  if([mode isEqual:@"internet"]&&!current.length){
+   self.scannedNetworks=nil;
+  }
+ }else if([mode isEqual:@"camera"]){
   self.lastMissingInternetAt=nil;
  }else if(currentIsCamera){
   self.lastMissingInternetAt=nil;
@@ -277,12 +298,20 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  [self.timer invalidate];
  self.timer=nil;
  if(_network){CFRelease(_network);_network=NULL;}
+ self.failedSSIDs=[NSMutableSet set];
+ self.forceInternetSwitch=force;
  
- // Only leave camera Wi-Fi proactively when joining camera mode from another SSID.
- // In internet mode, keep camera Wi-Fi attached until a known internet SSID is actually found in scan.
+ BOOL didDisassociate=NO;
+ // Proactively tear down previous Wi-Fi when switching to camera, OR when leaving camera Wi-Fi explicitly (e.g. R -> D)
  if([mode isEqual:@"camera"]&&!currentIsCamera&&current.length){
   if(Disassociate&&_device)Disassociate(_device);
   if(CancelAssociation&&_device)CancelAssociation(_device);
+  didDisassociate=YES;
+  [self writePhase:@"disassociating" error:nil];
+ }else if([mode isEqual:@"internet"]&&currentIsCamera&&(force||current.length)){
+  if(Disassociate&&_device)Disassociate(_device);
+  if(CancelAssociation&&_device)CancelAssociation(_device);
+  didDisassociate=YES;
   [self writePhase:@"disassociating" error:nil];
  }
  
@@ -291,12 +320,16 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  self.callbackDone=NO;
  self.callbackError=0;
  self.stableSince=nil;
- self.retryAt=nil;
+ self.retryAt=didDisassociate?[NSDate dateWithTimeIntervalSinceNow:0.10]:nil;
  
- self.deadline=[NSDate dateWithTimeIntervalSinceNow:[mode isEqual:@"camera"]?14.0:12.0];
- self.timer=[NSTimer scheduledTimerWithTimeInterval:0.20 target:self selector:@selector(tick) userInfo:nil repeats:YES];
- self.timer.tolerance=0.05;
- [self attemptJoin];
+ self.deadline=[NSDate dateWithTimeIntervalSinceNow:[mode isEqual:@"camera"]?12.0:(force?14.0:12.0)];
+ self.timer=[NSTimer scheduledTimerWithTimeInterval:0.08 target:self selector:@selector(tick) userInfo:nil repeats:YES];
+ self.timer.tolerance=0.02;
+ if(!didDisassociate){
+  [self attemptJoin];
+ }else if([mode isEqual:@"internet"]){
+  [self triggerScanIfNeeded];
+ }
 }}
 
 -(WiFiRef)findMatchingNetworkInList:(NSArray *)list outName:(NSString **)outName{
@@ -312,16 +345,19 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
    }
   }
  }else{
-  for(NSString *candidate in self.targetList){
-   for(id obj in list){
-    WiFiRef net=(__bridge WiFiRef)obj;
-    NSString *name=(__bridge NSString *)GetSSID(net);
-    if(!name.length)continue;
-    if([name caseInsensitiveCompare:candidate]==NSOrderedSame||
-       [name localizedCaseInsensitiveContainsString:candidate]||
-       [candidate localizedCaseInsensitiveContainsString:name]){
-     if(outName)*outName=name;
-     return net;
+  for(NSInteger pass=0;pass<2;pass++){
+   for(NSString *candidate in self.targetList){
+    for(id obj in list){
+     WiFiRef net=(__bridge WiFiRef)obj;
+     NSString *name=(__bridge NSString *)GetSSID(net);
+     if(!name.length)continue;
+     if(pass==0 && [self.failedSSIDs containsObject:name])continue;
+     if([name caseInsensitiveCompare:candidate]==NSOrderedSame||
+        [name localizedCaseInsensitiveContainsString:candidate]||
+        [candidate localizedCaseInsensitiveContainsString:name]){
+      if(outName)*outName=name;
+      return net;
+     }
     }
    }
   }
@@ -384,7 +420,7 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
   return;
  }
  
- self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:[self.mode isEqual:@"camera"]?5.5:8.5];
+ self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:[self.mode isEqual:@"camera"]?4.0:6.0];
  [self writePhase:@"joining" error:nil];
  
  int result=Associate(_device,_network,AssociationReturned,NULL);
@@ -392,7 +428,7 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
   self.callbackDone=YES;
   self.callbackError=result;
   if(![self isCurrentOnTarget]&&Disassociate&&_device)Disassociate(_device);
-  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.4];
+  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.15];
  }
 }}
 
@@ -401,9 +437,12 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  self.callbackDone=YES;
  self.callbackError=error;
  if(error!=0&&![self isCurrentOnTarget]){
+  if(ssid.length)[self.failedSSIDs addObject:ssid];
   if(Disassociate&&_device)Disassociate(_device);
-  self.scannedNetworks=nil;
-  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.4];
+  if(![self.mode isEqual:@"camera"]){
+   [self triggerScanIfNeeded];
+  }
+  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.15];
  }
 }}
 
@@ -489,9 +528,10 @@ int main(int argc,char **argv){@autoreleasepool{
  TRDCarWatch *carWatch=[TRDCarWatch new];
  broker=[TRDNetworkBroker new];
  if(![broker start])return 1;
- int cam=0,net=0;
- notify_register_dispatch("com.codex.trd.network.camera",&cam,dispatch_get_main_queue(),^(int t){[broker request:@"camera"];});
- notify_register_dispatch("com.codex.trd.network.internet",&net,dispatch_get_main_queue(),^(int t){[broker request:@"internet"];});
+ int cam=0,net=0,forceNet=0;
+ notify_register_dispatch("com.codex.trd.network.camera",&cam,dispatch_get_main_queue(),^(int t){[broker request:@"camera" force:YES];});
+ notify_register_dispatch("com.codex.trd.network.internet",&net,dispatch_get_main_queue(),^(int t){[broker request:@"internet" force:NO];});
+ notify_register_dispatch("com.codex.trd.network.internet.force",&forceNet,dispatch_get_main_queue(),^(int t){[broker request:@"internet" force:YES];});
  CFRunLoopRun();
  (void)carWatch;
  return 0;

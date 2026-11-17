@@ -320,6 +320,29 @@ static void TRDLaunchAppFromSpringBoard(NSString *bundleID, BOOL wakeIfLocked) {
     });
 }
 
+static void TRDApplySleepStep(void);
+static void TRDPerformSleep(void);
+
+static void TRDScheduleLockScreenSleepWatchdog(void) {
+    int gen = gSleepGeneration;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (gen != gSleepGeneration) return;
+        UIDeviceBatteryState st = [UIDevice currentDevice].batteryState;
+        if (st != UIDeviceBatteryStateUnplugged) return;
+        Class lockCls = objc_getClass("SBLockScreenManager");
+        id lockMgr = [lockCls respondsToSelector:@selector(sharedInstance)] ? [lockCls sharedInstance] : nil;
+        BOOL uiLocked = (lockMgr && [lockMgr respondsToSelector:@selector(isUILocked)]) ? [lockMgr isUILocked] : NO;
+        BOOL lockActive = (lockMgr && [lockMgr respondsToSelector:@selector(isLockScreenActive)]) ? [lockMgr isLockScreenActive] : NO;
+        if (!uiLocked && !lockActive && !TRDHasLockScreenLayoutElement()) return;
+        Class blCls = objc_getClass("SBBacklightController");
+        id blMgr = [blCls respondsToSelector:@selector(sharedInstance)] ? [blCls sharedInstance] : nil;
+        BOOL screenOn = (blMgr && [blMgr respondsToSelector:@selector(screenIsOn)]) ? [blMgr screenIsOn] : NO;
+        if (screenOn) {
+            TRDApplySleepStep();
+        }
+    });
+}
+
 static void TRDApplySleepStep(void) {
     TRDInitSymbols();
 
@@ -405,6 +428,7 @@ static void TRDPerformSleep(void) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (gen != gSleepGeneration) return;
             TRDWriteStatus(@"sleep-verified");
+            TRDScheduleLockScreenSleepWatchdog();
         });
     });
 }
@@ -558,15 +582,21 @@ static NSTimeInterval gLastWakeAt = 0;
         }
     } else if (state == UIDeviceBatteryStateCharging || state == UIDeviceBatteryStateFull) {
         gSleepScheduled = NO;
-        gSleepGeneration++;
-        NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-        if (!gWasCharging && (now - gLastWakeAt) > 8.0) {
-            gWasCharging = YES;
-            gLastWakeAt = now;
-            TRDPerformWake();
-        } else {
-            gWasCharging = YES;
-        }
+        int wakeGen = ++gSleepGeneration;
+        // Brief 0.6s verify avoids full wake + CarDash launch on transient electrical/door blips while parked
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (wakeGen != gSleepGeneration) return;
+            UIDeviceBatteryState confirmed = [UIDevice currentDevice].batteryState;
+            if (confirmed != UIDeviceBatteryStateCharging && confirmed != UIDeviceBatteryStateFull) return;
+            NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+            if (!gWasCharging && (now - gLastWakeAt) > 8.0) {
+                gWasCharging = YES;
+                gLastWakeAt = now;
+                TRDPerformWake();
+            } else {
+                gWasCharging = YES;
+            }
+        });
     }
 }
 @end
@@ -586,7 +616,7 @@ static void TRDSpringBoardPowerInit(void) {
                                                          name:UIDeviceBatteryStateDidChangeNotification
                                                        object:nil];
 
-            static int sleepToken = 0, wakeToken = 0, statusToken = 0, launchH109Token = 0, launchCarDashToken = 0, launchYTToken = 0, launchMusicToken = 0;
+            static int sleepToken = 0, wakeToken = 0, statusToken = 0, guardianToken = 0, launchH109Token = 0, launchCarDashToken = 0, launchYTToken = 0, launchMusicToken = 0;
             notify_register_dispatch("com.codex.trd.sleep", &sleepToken, dispatch_get_main_queue(), ^(int token) {
                 TRDPerformSleep();
             });
@@ -595,6 +625,18 @@ static void TRDSpringBoardPowerInit(void) {
             });
             notify_register_dispatch("com.codex.trd.status", &statusToken, dispatch_get_main_queue(), ^(int token) {
                 TRDWriteStatus(@"status");
+            });
+            notify_register_dispatch("com.codex.trd.guardian", &guardianToken, dispatch_get_main_queue(), ^(int token) {
+                UIDeviceBatteryState curSt = [UIDevice currentDevice].batteryState;
+                if (curSt != UIDeviceBatteryStateUnplugged) return;
+                Class lockCls = objc_getClass("SBLockScreenManager");
+                id lockMgr = [lockCls respondsToSelector:@selector(sharedInstance)] ? [lockCls sharedInstance] : nil;
+                BOOL locked = (lockMgr && [lockMgr respondsToSelector:@selector(isUILocked)]) ? [lockMgr isUILocked] : NO;
+                if (locked || TRDHasLockScreenLayoutElement()) {
+                    TRDPerformSleep();
+                } else {
+                    TRDWriteStatus(@"guardian-unlocked");
+                }
             });
             notify_register_dispatch("com.codex.trd.launch.h109viewer", &launchH109Token, dispatch_get_main_queue(), ^(int token) {
                 TRDLaunchAppFromSpringBoard(@"com.codex.h109viewer", YES);
@@ -615,6 +657,8 @@ static void TRDSpringBoardPowerInit(void) {
             UIDeviceBatteryState st = [UIDevice currentDevice].batteryState;
             if (st == UIDeviceBatteryStateCharging || st == UIDeviceBatteryStateFull) {
                 TRDPerformWake();
+            } else if (st == UIDeviceBatteryStateUnplugged) {
+                TRDScheduleLockScreenSleepWatchdog();
             }
         });
     }
