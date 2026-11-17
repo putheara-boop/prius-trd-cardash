@@ -254,6 +254,14 @@ static UIImage *TRDAutoVectorIcon(NSInteger kind, CGFloat ptSize, UIColor *tint)
   if (img) cache[key] = img;
   return img;
 }
+static NSString *TRDFuelShortCode(NSInteger idx) {
+  switch (idx) {
+    case 1: return @"GSH91";
+    case 2: return @"E20";
+    case 3: return @"PREM95";
+    default: return @"GSH95";
+  }
+}
 @interface TRDDoorDiagramView : UIControl
 @property (nonatomic, assign) BOOL doorsLive;
 @property (nonatomic, assign) BOOL flOpen;
@@ -2341,6 +2349,12 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
       else if(slot == 1) subL.text = @"⛽ ทริปถังน้ำมันนี้ B (สะสมจริงต่อเนื่อง)";
       else subL.text = @"🏁 ทริประยะยาว C (สะสมจริงต่อเนื่อง)";
     }
+    UILabel *lCostTitle = (UILabel *)[self.driveTripCard viewWithTag:873];
+    if(lCostTitle){
+      NSString *fuelTag = TRDFuelShortCode(obd.selectedFuelTypeIndex);
+      NSString *costTitle = [NSString stringWithFormat:@"ค่าน้ำมัน (%@)", fuelTag];
+      if(![lCostTitle.text isEqualToString:costTitle]) lCostTitle.text = costTitle;
+    }
     UILabel *vDist = (UILabel *)[self.driveTripCard viewWithTag:851];
     UILabel *vKml  = (UILabel *)[self.driveTripCard viewWithTag:852];
     UILabel *vCost = (UILabel *)[self.driveTripCard viewWithTag:853];
@@ -2376,7 +2390,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
       NSString *slotTitle = (slot == 0) ? @"TRIP A • ทริปนี้ (คำนวณจริง)" : (slot == 1) ? @"TRIP B • ถังน้ำมันนี้ (คำนวณจริง)" : @"TRIP C • สะสมระยะยาว (คำนวณจริง)";
       NSString *enTimeStr = [[timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@" hrs"] stringByReplacingOccurrencesOfString:@" นาที" withString:@" min"];
       NSString *distFmt = (dist < 100.0) ? [NSString stringWithFormat:@"%.2f km", dist] : [NSString stringWithFormat:@"%.1f km", dist];
-      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %@ (น้ำมัน %.2f L)\nECONOMY: %@ (%@)\nFUEL COST: ฿ %.2f (ค่าน้ำมันจริง)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, distFmt, fuelL, kmlDisplay, kmlNote, cost, avgSpd, enTimeStr];
+      NSString *fuelTag = TRDFuelShortCode(obd.selectedFuelTypeIndex);
+      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %@ (น้ำมัน %.2f L)\nECONOMY: %@ (%@)\nFUEL COST (%@): ฿ %.2f (%.2f ฿/L)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, distFmt, fuelL, kmlDisplay, kmlNote, fuelTag, cost, price, avgSpd, enTimeStr];
     }
   }
 }
@@ -3782,7 +3797,8 @@ static NSUInteger gTRDUpdateTicks=0;
       [self.driveTripCard addSubview:subL];
 
       // 4 Metric Rows (Left Label + Right Bold Value)
-      NSArray *rTitles = @[@"ระยะทางสะสม", @"อัตราสิ้นเปลือง", @"ค่าน้ำมัน (GSH95)", @"เวลาขับ / เฉลี่ย"];
+      NSString *fuelTag = TRDFuelShortCode([TRDOBDClient sharedClient].selectedFuelTypeIndex);
+      NSArray *rTitles = @[@"ระยะทางสะสม", @"อัตราสิ้นเปลือง", [NSString stringWithFormat:@"ค่าน้ำมัน (%@)", fuelTag], @"เวลาขับ / เฉลี่ย"];
       for (int r = 0; r < 4; r++) {
         CGFloat ry = 76 + r * 39;
         UIView *rBg = [[UIView alloc] initWithFrame:CGRectMake(10, ry, tcW - 20, 33)];
@@ -3791,6 +3807,7 @@ static NSUInteger gTRDUpdateTicks=0;
         [self.driveTripCard addSubview:rBg];
 
         UILabel *rL = [[UILabel alloc] initWithFrame:CGRectMake(16, ry, 98, 33)];
+        rL.tag = 871 + r;
         rL.font = [UIFont boldSystemFontOfSize:12.5];
         rL.adjustsFontSizeToFitWidth = YES;
         rL.minimumScaleFactor = 0.85;
@@ -7811,6 +7828,22 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   [self presentSettingsMenu:m];
 }
 
+-(void)syncActiveFuelRateToTripA{
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ double price=(obd.fuelPricePerLiter>0)?obd.fuelPricePerLiter:38.50;
+ NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];
+ NSMutableDictionary *slotA=[[self loadTripSlot:0] mutableCopy];
+ double fuelA=[slotA[@"fuel"] doubleValue];
+ double newCostA=fuelA*price;
+ slotA[@"cost"]=@(newCostA);
+ [ud setObject:slotA forKey:@"TRDTripSlot_0"];
+ self.lastSlotCost=obd.tripFuelUsedLiters*price;
+ [ud setDouble:self.lastSlotCost forKey:@"TRDLastSyncedTripCost"];
+ [ud synchronize];
+ [self refreshDriveTripDisplay];
+ [self refreshLiveOBDDashboard];
+}
+
 -(void)openFuelPriceSettings{
  TRDOBDClient *obd=[TRDOBDClient sharedClient];
  NSString *msg=[NSString stringWithFormat:@"น้ำมัน: %@ (%.2f ฿/L)\nที่มา: %@ · %@",obd.selectedFuelTypeName?:@"แก๊สโซฮอล์ 95",obd.fuelPricePerLiter,obd.oilPriceSource?:@"ปตท.",obd.oilPriceDate?:@"วันนี้"];
@@ -7823,21 +7856,25 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   NSString *title=[NSString stringWithFormat:@"%@⛽ %@ (%.2f ฿/L)",check,names[i],price];
   [m addAction:[TRDSettingAction actionWithTitle:title style:0 handler:^(TRDSettingAction *a){
    [obd selectFuelTypeIndex:i];
+   [self syncActiveFuelRateToTripA];
    [self openFuelPriceSettings];
   }]];
  }
  [m addAction:[TRDSettingAction actionWithTitle:@"🔄 ดึงราคาล่าสุดจากปั๊ม ปตท. ออนไลน์" style:0 handler:^(TRDSettingAction *a){
   [obd fetchLiveOilPrices];
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   [self syncActiveFuelRateToTripA];
    [self openFuelPriceSettings];
   });
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➕ ปรับราคาเอง +0.50 ฿ (%.2f ฿)",obd.fuelPricePerLiter+0.5] style:0 handler:^(TRDSettingAction *a){
   [obd setCustomFuelPrice:obd.fuelPricePerLiter+0.5];
+  [self syncActiveFuelRateToTripA];
   [self openFuelPriceSettings];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➖ ปรับราคาเอง -0.50 ฿ (%.2f ฿)",obd.fuelPricePerLiter-0.5] style:0 handler:^(TRDSettingAction *a){
   [obd setCustomFuelPrice:obd.fuelPricePerLiter-0.5];
+  [self syncActiveFuelRateToTripA];
   [self openFuelPriceSettings];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🚨 ทดสอบแจ้งเตือนน้ำมันใกล้หมด + ค้นหาปั๊ม (Demo)" style:0 handler:^(TRDSettingAction *a){
@@ -7846,6 +7883,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🔄 Reset Trip A Fuel Counter" style:0 handler:^(TRDSettingAction *a){
   [self resetTripSlot:0];
+  [self syncActiveFuelRateToTripA];
   [self openFuelPriceSettings];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🔄 เชื่อมต่อ OBD2 ใหม่ (%@)",obd.connectionStatus] style:0 handler:^(TRDSettingAction *a){
