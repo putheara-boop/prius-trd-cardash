@@ -374,23 +374,227 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 }
 @end
 
+@interface TRDEnergyFlowXRayView : UIView
+@property (nonatomic, assign) CGFloat kmh;
+@property (nonatomic, assign) CGFloat wheelAngle;
+@property (nonatomic, assign) CGFloat flowPhase;
+@property (nonatomic, assign) NSInteger engineRPM;
+@property (nonatomic, assign) double hvCurrent;
+@property (nonatomic, assign) double hvSOC;
+@property (nonatomic, assign) BOOL isBraking;
+@end
+
+@implementation TRDEnergyFlowXRayView
+- (instancetype)initWithFrame:(CGRect)frame {
+  if ((self = [super initWithFrame:frame])) {
+    self.backgroundColor = [UIColor clearColor];
+    self.userInteractionEnabled = NO;
+    self.clipsToBounds = NO;
+    self.contentMode = UIViewContentModeRedraw;
+    self.hvSOC = 60.0;
+  }
+  return self;
+}
+- (void)drawChevronsFrom:(CGPoint)p1 to:(CGPoint)p2 color:(UIColor *)col phase:(CGFloat)ph count:(NSInteger)cnt ctx:(CGContextRef)ctx {
+  CGFloat dx = p2.x - p1.x, dy = p2.y - p1.y;
+  CGFloat len = hypot(dx, dy);
+  if (len < 6.0) return;
+  CGFloat ux = dx / len, uy = dy / len;
+  CGFloat px = -uy, py = ux;
+  CGContextSetStrokeColorWithColor(ctx, [col colorWithAlphaComponent:0.28].CGColor);
+  CGContextSetLineWidth(ctx, 3.0);
+  CGContextSetLineCap(ctx, kCGLineCapRound);
+  CGContextMoveToPoint(ctx, p1.x, p1.y);
+  CGContextAddLineToPoint(ctx, p2.x, p2.y);
+  CGContextStrokePath(ctx);
+
+  CGContextSetLineWidth(ctx, 2.2);
+  for (NSInteger i = 0; i < cnt; i++) {
+    CGFloat t = fmod(((CGFloat)i / (CGFloat)cnt) + ph, 1.0);
+    if (t < 0.0) t += 1.0;
+    CGFloat alpha = sin(t * M_PI) * 0.95;
+    if (alpha <= 0.08) continue;
+    CGFloat cx = p1.x + dx * t;
+    CGFloat cy = p1.y + dy * t;
+    CGFloat head = 4.5, wing = 3.8;
+    CGContextSetStrokeColorWithColor(ctx, [col colorWithAlphaComponent:alpha].CGColor);
+    CGContextMoveToPoint(ctx, cx - ux * head + px * wing, cy - uy * head + py * wing);
+    CGContextAddLineToPoint(ctx, cx + ux * 1.5, cy + uy * 1.5);
+    CGContextAddLineToPoint(ctx, cx - ux * head - px * wing, cy - uy * head - py * wing);
+    CGContextStrokePath(ctx);
+  }
+}
+- (void)drawSpinningRimAt:(CGPoint)c r:(CGFloat)r angle:(CGFloat)ang glow:(UIColor *)glow ctx:(CGContextRef)ctx {
+  if (glow) {
+    CGContextSetStrokeColorWithColor(ctx, [glow colorWithAlphaComponent:0.75].CGColor);
+    CGContextSetLineWidth(ctx, 2.0);
+    CGContextAddArc(ctx, c.x, c.y, r + 1.5, 0, M_PI * 2.0, 0);
+    CGContextStrokePath(ctx);
+  }
+  if (self.kmh > 1.0) {
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:0.96 alpha:0.65].CGColor);
+    CGContextSetLineWidth(ctx, 1.6);
+    CGContextSetLineCap(ctx, kCGLineCapRound);
+    for (int k = 0; k < 5; k++) {
+      CGFloat a = ang + (M_PI * 2.0 * k / 5.0);
+      CGContextMoveToPoint(ctx, c.x + cos(a) * (r * 0.28), c.y + sin(a) * (r * 0.28));
+      CGContextAddLineToPoint(ctx, c.x + cos(a) * (r * 0.84), c.y + sin(a) * (r * 0.84));
+      CGContextStrokePath(ctx);
+    }
+  }
+  CGContextSetFillColorWithColor(ctx, [UIColor colorWithRed:0.15 green:0.90 blue:1.0 alpha:0.9].CGColor);
+  CGContextFillEllipseInRect(ctx, CGRectMake(c.x - 2.5, c.y - 2.5, 5.0, 5.0));
+}
+- (void)drawRect:(CGRect)rect {
+  CGContextRef ctx = UIGraphicsGetCurrentContext();
+  CGFloat w = self.bounds.size.width;
+  CGFloat h = self.bounds.size.height;
+  if (w <= 0 || h <= 0) return;
+
+  // Aligned precisely to TRDRealPrius.png wheel center caps inside aspect-fit bounds
+  CGPoint fHub = CGPointMake(w * 0.195, h * 0.658);
+  CGPoint rHub = CGPointMake(w * 0.776, h * 0.658);
+  CGFloat wheelR = MIN(w, h) * 0.135;
+
+  CGPoint icePt = CGPointMake(w * 0.255, h * 0.495);
+  CGPoint mgPt  = CGPointMake(w * 0.220, h * 0.605);
+  CGPoint busJoin = CGPointMake(w * 0.340, h * 0.535);
+  CGRect batR   = CGRectMake(w * 0.675, h * 0.460, w * 0.145, h * 0.115);
+  CGPoint batPt = CGPointMake(CGRectGetMinX(batR), CGRectGetMidY(batR));
+
+  BOOL iceActive = (self.engineRPM > 100);
+  BOOL regen = self.isBraking || (self.hvCurrent < -0.9 && self.engineRPM < 1350);
+  BOOL hvDischarging = (self.hvCurrent > 0.8) || (!iceActive && !regen && self.kmh > 1.5);
+  BOOL hvCharging = (self.hvCurrent < -0.5);
+
+  // 1. Sleek Prius 2026 Powertrain Connecting Bus Rails (always softly visible so diagram reads unified)
+  UIColor *idleBus = [UIColor colorWithRed:0.30 green:0.65 blue:0.85 alpha:0.26];
+  CGContextSetLineWidth(ctx, 2.0);
+  CGContextSetLineCap(ctx, kCGLineCapRound);
+  CGContextSetStrokeColorWithColor(ctx, idleBus.CGColor);
+  CGContextMoveToPoint(ctx, icePt.x, icePt.y);
+  CGContextAddLineToPoint(ctx, busJoin.x, busJoin.y);
+  CGContextAddLineToPoint(ctx, batPt.x, batPt.y);
+  CGContextMoveToPoint(ctx, busJoin.x, busJoin.y);
+  CGContextAddLineToPoint(ctx, mgPt.x, mgPt.y);
+  CGContextStrokePath(ctx);
+
+  // 2. Minimalist Glowing Engine Core (ICE) — clean metallic block silhouette (no boxy text label)
+  CGRect iceR = CGRectMake(icePt.x - 14, icePt.y - 9, 28, 18);
+  UIBezierPath *iceBox = [UIBezierPath bezierPathWithRoundedRect:iceR cornerRadius:4.0];
+  [[UIColor colorWithRed:iceActive ? 0.95 : 0.16 green:iceActive ? 0.52 : 0.22 blue:iceActive ? 0.10 : 0.28 alpha:iceActive ? 0.80 : 0.55] setFill];
+  [iceBox fill];
+  [[UIColor colorWithRed:iceActive ? 1.0 : 0.45 green:iceActive ? 0.78 : 0.55 blue:iceActive ? 0.25 : 0.65 alpha:iceActive ? 0.95 : 0.55] setStroke];
+  iceBox.lineWidth = 1.3;
+  [iceBox stroke];
+  // 3 minimalist cylinder ribs inside engine core
+  for (int c = 0; c < 3; c++) {
+    CGFloat rx = iceR.origin.x + 5.5 + c * 6.5;
+    [[UIColor colorWithWhite:1.0 alpha:iceActive ? 0.85 : 0.30] setFill];
+    UIRectFill(CGRectMake(rx, iceR.origin.y + 4.0, 3.5, iceR.size.height - 8.0));
+  }
+
+  // 3. Sleek Isometric Prius 2026 HV Battery Stack in trunk (tilted 3D cells matching Gen-5 cluster)
+  CGContextSaveGState(ctx);
+  CGAffineTransform skew = CGAffineTransformMake(1.0, 0.0, -0.22, 1.0, batR.origin.x * 0.22, 0.0);
+  CGContextConcatCTM(ctx, skew);
+  UIBezierPath *batBox = [UIBezierPath bezierPathWithRoundedRect:batR cornerRadius:3.5];
+  [[UIColor colorWithRed:0.02 green:0.07 blue:0.12 alpha:0.90] setFill];
+  [batBox fill];
+  UIColor *batCol = (self.hvSOC > 0 && self.hvSOC < 40.0)
+    ? [UIColor colorWithRed:1.0 green:0.65 blue:0.15 alpha:0.95]
+    : (hvCharging ? [UIColor colorWithRed:0.20 green:0.98 blue:0.55 alpha:0.95] : [UIColor colorWithRed:0.15 green:0.75 blue:1.0 alpha:0.95]);
+  [[batCol colorWithAlphaComponent:0.85] setStroke];
+  batBox.lineWidth = 1.3;
+  [batBox stroke];
+  NSInteger bars = 6;
+  double dispSOC = (self.hvSOC > 0.5) ? self.hvSOC : 62.0;
+  NSInteger lit = (NSInteger)ceil(MAX(15.0, MIN(100.0, dispSOC)) / (100.0 / bars));
+  CGFloat bw = (batR.size.width - 8.0) / bars;
+  for (NSInteger b = 0; b < bars; b++) {
+    CGRect cell = CGRectMake(batR.origin.x + 4.0 + b * bw + 0.8, batR.origin.y + 3.5, MAX(2.0, bw - 1.6), batR.size.height - 7.0);
+    [(b < lit ? batCol : [UIColor colorWithWhite:0.25 alpha:0.45]) setFill];
+    [[UIBezierPath bezierPathWithRoundedRect:cell cornerRadius:1.0] fill];
+  }
+  CGContextRestoreGState(ctx);
+
+  // 4. Prius 2026 Live X-Ray Energy Flow Chevrons along the bus rails
+  UIColor *iceCol = [UIColor colorWithRed:1.0 green:0.78 blue:0.18 alpha:1.0];
+  UIColor *evCol  = [UIColor colorWithRed:0.15 green:0.92 blue:1.0 alpha:1.0];
+  UIColor *chgCol = [UIColor colorWithRed:0.22 green:0.98 blue:0.54 alpha:1.0];
+  CGFloat ph = fmod(self.flowPhase, 1.0);
+  if (iceActive) {
+    [self drawChevronsFrom:icePt to:mgPt color:iceCol phase:ph count:3 ctx:ctx];
+    if (hvCharging) {
+      [self drawChevronsFrom:busJoin to:batPt color:chgCol phase:ph count:4 ctx:ctx];
+    }
+  }
+  if (regen) {
+    [self drawChevronsFrom:mgPt to:batPt color:chgCol phase:ph count:4 ctx:ctx];
+  } else if (hvDischarging) {
+    [self drawChevronsFrom:batPt to:mgPt color:evCol phase:ph count:4 ctx:ctx];
+  }
+
+  // 5. Spinning Wheel Spokes + Subtle Axle Telemetry Glow centered on caps
+  UIColor *wheelGlow = regen ? chgCol : (hvDischarging ? evCol : (iceActive ? iceCol : nil));
+  [self drawSpinningRimAt:fHub r:wheelR angle:self.wheelAngle glow:wheelGlow ctx:ctx];
+  [self drawSpinningRimAt:rHub r:wheelR angle:self.wheelAngle glow:wheelGlow ctx:ctx];
+}
+@end
+
 @interface DrivePrius:UIView
 @property UIImageView *body;
 @property TRDCarLightBeamsView *lightBeams;
+@property TRDEnergyFlowXRayView *xrayOverlay;
 @property PriusWheel *front,*rear;
 @property NSTimer *wheelTimer;
 @property CGFloat kmh,angle;
 @property CFTimeInterval lastTick;
 -(void)setSpeed:(CGFloat)speed;
+-(void)updateEnergyWithSpeed:(CGFloat)speed engineRPM:(NSInteger)rpm hvCurrent:(double)hvCurrent hvSOC:(double)hvSOC isBraking:(BOOL)isBraking dt:(NSTimeInterval)dt;
 -(void)stop;
 @end
 @implementation DrivePrius
--(instancetype)init{if((self=[super init])){self.userInteractionEnabled=NO;self.clipsToBounds=NO;self.body=[[UIImageView alloc]initWithImage:[UIImage imageNamed:@"TRDRealPrius.png"]];self.body.contentMode=UIViewContentModeScaleAspectFit;[self addSubview:self.body];self.lightBeams=[[TRDCarLightBeamsView alloc]initWithFrame:CGRectZero];self.lightBeams.hidden=YES;[self addSubview:self.lightBeams];}return self;}
--(void)layoutSubviews{[super layoutSubviews];self.body.frame=self.bounds;self.lightBeams.frame=self.bounds;[self.lightBeams setNeedsDisplay];}
--(void)setSpeed:(CGFloat)speed{self.kmh=MAX(0,speed);}
+-(instancetype)init{if((self=[super init])){self.userInteractionEnabled=NO;self.clipsToBounds=NO;self.body=[[UIImageView alloc]initWithImage:[UIImage imageNamed:@"TRDRealPrius.png"]];self.body.contentMode=UIViewContentModeScaleAspectFit;self.body.alpha=0.68;[self addSubview:self.body];self.xrayOverlay=[[TRDEnergyFlowXRayView alloc]initWithFrame:CGRectZero];[self addSubview:self.xrayOverlay];self.lightBeams=[[TRDCarLightBeamsView alloc]initWithFrame:CGRectZero];self.lightBeams.hidden=YES;[self addSubview:self.lightBeams];}return self;}
+-(void)layoutSubviews{[super layoutSubviews];self.body.frame=self.bounds;self.xrayOverlay.frame=self.bounds;self.lightBeams.frame=self.bounds;[self.lightBeams setNeedsDisplay];[self.xrayOverlay setNeedsDisplay];}
+-(void)setSpeed:(CGFloat)speed{
+ self.kmh=MAX(0,speed);
+ self.xrayOverlay.kmh=self.kmh;
+ if(self.kmh>1.0&&!self.wheelTimer&&!self.hidden&&[UIApplication sharedApplication].applicationState==UIApplicationStateActive){
+  self.lastTick=CACurrentMediaTime();
+  self.wheelTimer=[NSTimer scheduledTimerWithTimeInterval:0.10 target:self selector:@selector(spin) userInfo:nil repeats:YES];
+  self.wheelTimer.tolerance=0.025;
+ }else if(self.kmh<=1.0&&self.wheelTimer){
+  [self.wheelTimer invalidate];
+  self.wheelTimer=nil;
+ }
+}
+-(void)updateEnergyWithSpeed:(CGFloat)speed engineRPM:(NSInteger)rpm hvCurrent:(double)hvCurrent hvSOC:(double)hvSOC isBraking:(BOOL)isBraking dt:(NSTimeInterval)dt{
+ [self setSpeed:speed];
+ self.xrayOverlay.engineRPM=rpm;
+ self.xrayOverlay.hvCurrent=hvCurrent;
+ self.xrayOverlay.hvSOC=hvSOC;
+ self.xrayOverlay.isBraking=isBraking;
+ BOOL flowActive=(speed>1.0||rpm>100||fabs(hvCurrent)>0.6||isBraking);
+ if(flowActive&&!self.wheelTimer){
+  self.xrayOverlay.flowPhase=fmod(self.xrayOverlay.flowPhase+MAX(0.06,MIN(0.35,dt*1.15)),1.0);
+ }
+ [self.xrayOverlay setNeedsDisplay];
+}
 -(void)startRotation{}
--(void)spin{}
--(void)stop{self.kmh=0;}
+-(void)spin{
+ if(self.hidden||[UIApplication sharedApplication].applicationState!=UIApplicationStateActive){[self stop];return;}
+ CFTimeInterval now=CACurrentMediaTime();
+ double dt=MAX(0.02,MIN(0.25,now-self.lastTick));
+ self.lastTick=now;
+ if(self.kmh>1.0){
+  self.angle=fmod(self.angle+(self.kmh*0.18*dt),M_PI*2.0);
+ }
+ self.xrayOverlay.wheelAngle=self.angle;
+ self.xrayOverlay.flowPhase=fmod(self.xrayOverlay.flowPhase+dt*(self.kmh>1.0?1.35:0.85),1.0);
+ [self.xrayOverlay setNeedsDisplay];
+}
+-(void)stop{self.kmh=0;self.xrayOverlay.kmh=0;[self.wheelTimer invalidate];self.wheelTimer=nil;[self.xrayOverlay setNeedsDisplay];}
 @end
 @interface TRDHybridEcoBar:UIView
 @property UILabel *evPowerLabel;
@@ -511,6 +715,10 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 @interface TRDAnalogSpeedoDial : UIView
 @property (nonatomic, assign) BOOL driveStyle;
 @property (nonatomic, assign) CGFloat speed;
+@property (nonatomic, assign) CGFloat powerRatio;
+@property (nonatomic, assign) CGFloat fuelRatio;
+@property (nonatomic, assign) BOOL hasFuel;
+@property (nonatomic, assign) BOOL evActive;
 @property (nonatomic, copy) NSString *gear;
 @property (nonatomic, strong) UILabel *speedLabel;
 @property (nonatomic, strong) UIView *gearBadge;
@@ -525,6 +733,9 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
     self.userInteractionEnabled = YES;
     self.clipsToBounds = NO;
     self.contentMode = UIViewContentModeRedraw;
+    self.powerRatio = -0.46;
+    self.fuelRatio = 0.55;
+    self.evActive = YES;
     
     self.speedLabel = [[UILabel alloc] init];
     self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:52] ?: [UIFont boldSystemFontOfSize:52];
@@ -584,12 +795,12 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   self.speedLabel.minimumScaleFactor = 0.72;
   if (self.driveStyle) {
     self.speedLimitBadge.frame = CGRectMake(w - 36, 4, 30, 30);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:118] ?: [UIFont boldSystemFontOfSize:118];
-    self.speedLabel.frame = CGRectMake(8, 34, w - 16, 114);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:86] ?: [UIFont boldSystemFontOfSize:86];
+    self.speedLabel.frame = CGRectMake(24, 46, w - 58, 86);
     self.gearBadge.hidden = YES;
-    self.unitLabel.frame = CGRectMake(10, h - 26, w - 20, 22);
-    self.unitLabel.font = [UIFont boldSystemFontOfSize:13.0];
-    self.unitLabel.text = @"km/h  •  GPS SPEED";
+    self.unitLabel.frame = CGRectMake(24, 134, w - 58, 20);
+    self.unitLabel.font = [UIFont boldSystemFontOfSize:12.0];
+    self.unitLabel.text = @"km/h  •  GPS";
   } else {
     self.speedLimitBadge.frame = CGRectMake(w - 30, 8, 28, 28);
     self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:108] ?: [UIFont boldSystemFontOfSize:108];
@@ -633,25 +844,86 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   CGFloat h = self.bounds.size.height;
   
   if (self.driveStyle) {
-    CGPoint center = CGPointMake(w / 2.0, h / 2.0 + 10);
-    CGFloat radius = MIN(w / 2.0 - 14, h / 2.0 - 4);
-    CGFloat startAngle = M_PI * 0.85;
-    CGFloat endAngle = M_PI * 2.15;
-    CGFloat totalAngle = endAngle - startAngle;
+    // Prius 2026 Minimal HSI Circular Halo Ring (CHG cyan | ECO green | PWR crimson + right Fuel Arc + EV pill)
+    CGPoint center = CGPointMake(w / 2.0 - 6.0, h / 2.0 + 10.0);
+    CGFloat radius = MIN(w / 2.0 - 18.0, h / 2.0 - 6.0);
+    CGFloat hsiStart = M_PI * 0.78;
+    CGFloat hsiEnd = M_PI * 1.92;
+    CGFloat hsiSpan = hsiEnd - hsiStart;
 
-    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:0.85].CGColor);
-    CGContextSetLineWidth(ctx, 5.5);
-    CGContextAddArc(ctx, center.x, center.y, radius, startAngle, startAngle + totalAngle * 0.5, 0);
+    // Matte obsidian inner disc glow for high contrast in daylight
+    CGContextSetFillColorWithColor(ctx, [UIColor colorWithRed:0.015 green:0.025 blue:0.04 alpha:0.85].CGColor);
+    CGContextFillEllipseInRect(ctx, CGRectMake(center.x - radius + 5, center.y - radius + 5, (radius - 5) * 2, (radius - 5) * 2));
+
+    // Faint CHG / ECO / PWR halo background tracks
+    CGContextSetLineWidth(ctx, 4.5);
+    CGContextSetLineCap(ctx, kCGLineCapRound);
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.0 green:0.75 blue:0.95 alpha:0.25].CGColor);
+    CGContextAddArc(ctx, center.x, center.y, radius, hsiStart, hsiStart + hsiSpan * 0.27, 0);
     CGContextStrokePath(ctx);
-    
-    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:1.0 green:0.2 blue:0.25 alpha:0.85].CGColor);
-    CGContextSetLineWidth(ctx, 5.5);
-    CGContextAddArc(ctx, center.x, center.y, radius, startAngle + totalAngle * 0.5, endAngle, 0);
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.15 green:0.88 blue:0.50 alpha:0.28].CGColor);
+    CGContextAddArc(ctx, center.x, center.y, radius, hsiStart + hsiSpan * 0.29, hsiStart + hsiSpan * 0.68, 0);
     CGContextStrokePath(ctx);
-    
-    UIFont *trdFont = [UIFont boldSystemFontOfSize:14];
-    NSDictionary *trdAttrs = @{NSFontAttributeName: trdFont, NSForegroundColorAttributeName: [UIColor colorWithRed:1.0 green:0.2 blue:0.25 alpha:1]};
-    [@"TRD" drawAtPoint:CGPointMake(center.x - 16, center.y - radius + 7) withAttributes:trdAttrs];
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:1.0 green:0.24 blue:0.26 alpha:0.26].CGColor);
+    CGContextAddArc(ctx, center.x, center.y, radius, hsiStart + hsiSpan * 0.70, hsiEnd, 0);
+    CGContextStrokePath(ctx);
+
+    // Active illuminated HSI arc from CHG-ECO baseline (-0.46) to current powerRatio
+    CGFloat clamped = MAX(-1.0, MIN(1.0, self.powerRatio));
+    CGFloat norm = (clamped + 1.0) * 0.5;
+    CGFloat baseNorm = (-0.46 + 1.0) * 0.5; // 0.27
+    CGFloat baseAngle = hsiStart + hsiSpan * baseNorm;
+    CGFloat tipAngle = hsiStart + hsiSpan * norm;
+    UIColor *hsiCol = (clamped < -0.48)
+      ? [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:1.0]
+      : (clamped > 0.36 ? [UIColor colorWithRed:1.0 green:0.28 blue:0.28 alpha:1.0]
+                        : [UIColor colorWithRed:0.22 green:0.96 blue:0.55 alpha:1.0]);
+    CGContextSetStrokeColorWithColor(ctx, hsiCol.CGColor);
+    CGContextSetLineWidth(ctx, 6.0);
+    if (norm < baseNorm) {
+      CGContextAddArc(ctx, center.x, center.y, radius, tipAngle, baseAngle, 0);
+    } else {
+      CGContextAddArc(ctx, center.x, center.y, radius, baseAngle, MAX(baseAngle + 0.04, tipAngle), 0);
+    }
+    CGContextStrokePath(ctx);
+
+    // Bright marker tip dot on ring
+    CGFloat tx = center.x + radius * cos(tipAngle);
+    CGFloat ty = center.y + radius * sin(tipAngle);
+    CGContextSetFillColorWithColor(ctx, [UIColor whiteColor].CGColor);
+    CGContextFillEllipseInRect(ctx, CGRectMake(tx - 4.0, ty - 4.0, 8.0, 8.0));
+
+    // Prius 2026 Micro Arc Labels (CHG / ECO / PWR)
+    UIFont *mf = [UIFont boldSystemFontOfSize:8.5];
+    [@"CHG" drawAtPoint:CGPointMake(center.x - radius * 0.96, center.y + radius * 0.42) withAttributes:@{NSFontAttributeName:mf, NSForegroundColorAttributeName:[UIColor colorWithRed:0.15 green:0.88 blue:1.0 alpha:0.95]}];
+    [@"ECO" drawAtPoint:CGPointMake(center.x - radius * 0.82, center.y - radius * 0.72) withAttributes:@{NSFontAttributeName:mf, NSForegroundColorAttributeName:[UIColor colorWithRed:0.35 green:0.95 blue:0.65 alpha:0.95]}];
+    [@"PWR" drawAtPoint:CGPointMake(center.x - 10.0, center.y - radius - 9.0) withAttributes:@{NSFontAttributeName:mf, NSForegroundColorAttributeName:[UIColor colorWithRed:1.0 green:0.40 blue:0.40 alpha:0.95]}];
+
+    // Top EV badge inside dial (bright green pill like Gen 5 cluster)
+    if (self.evActive) {
+      CGRect evR = CGRectMake(center.x - 13.0, center.y - radius + 12.0, 26.0, 14.0);
+      [[UIColor colorWithRed:0.12 green:0.78 blue:0.36 alpha:0.95] setFill];
+      [[UIBezierPath bezierPathWithRoundedRect:evR cornerRadius:4.0] fill];
+      [@"EV" drawInRect:CGRectMake(evR.origin.x, evR.origin.y + 1.5, 26.0, 12.0) withAttributes:@{NSFontAttributeName:[UIFont boldSystemFontOfSize:9.5], NSForegroundColorAttributeName:[UIColor whiteColor], NSParagraphStyleAttributeName:({NSMutableParagraphStyle *p=[NSMutableParagraphStyle new];p.alignment=NSTextAlignmentCenter;p;})}];
+    }
+
+    // Right Inner Segmented Fuel Gauge Arc (E -> F) matching Prius 2026 right cluster edge
+    CGFloat fStart = M_PI * 0.28;
+    CGFloat fEnd = -M_PI * 0.04; // goes upward counter-clockwise on right rim
+    CGFloat fFrac = self.hasFuel ? MAX(0.05, MIN(1.0, self.fuelRatio)) : 0.55;
+    NSInteger segs = 8;
+    NSInteger litSegs = (NSInteger)llround(fFrac * segs);
+    for (NSInteger s = 0; s < segs; s++) {
+      CGFloat t0 = (CGFloat)s / (CGFloat)segs;
+      CGFloat a0 = fStart + (fEnd - fStart) * t0;
+      CGFloat a1 = fStart + (fEnd - fStart) * (t0 + 0.085);
+      UIColor *sc = (s < litSegs) ? ((fFrac < 0.18) ? [UIColor colorWithRed:1.0 green:0.55 blue:0.15 alpha:1.0] : [UIColor colorWithWhite:0.95 alpha:0.95]) : [UIColor colorWithWhite:0.25 alpha:0.50];
+      CGContextSetStrokeColorWithColor(ctx, sc.CGColor);
+      CGContextSetLineWidth(ctx, 4.5);
+      CGContextAddArc(ctx, center.x, center.y, radius, a0, a1, 1);
+      CGContextStrokePath(ctx);
+    }
+    [@"⛽" drawAtPoint:CGPointMake(center.x + radius - 6.0, center.y + radius * 0.42) withAttributes:@{NSFontAttributeName:[UIFont systemFontOfSize:9.5]}];
   } else {
     CGPoint center = CGPointMake(w / 2.0, h - 24);
     CGFloat radius = MIN(w / 2.0 - 30, h - 42);
@@ -773,95 +1045,111 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 @interface TRDHybridPowerMeterView : UIView
 @property (nonatomic, assign) CGFloat powerRatio;
 @property (nonatomic, strong) UIView *coachPill;
+@property (nonatomic, assign) NSInteger engineRPM;
+@property (nonatomic, assign) NSInteger mg2RPM;
+@property (nonatomic, assign) double coolantC;
+@property (nonatomic, assign) double hvKW;
+@property (nonatomic, assign) double rangeKm;
+@property (nonatomic, assign) double fuelLiters;
+@property (nonatomic, assign) double avgKmL;
+@property (nonatomic, assign) BOOL obdLive;
 @end
 
 @implementation TRDHybridPowerMeterView
 - (instancetype)initWithFrame:(CGRect)frame {
   if ((self = [super initWithFrame:frame])) {
     self.backgroundColor = [UIColor clearColor];
-    self.powerRatio = 0.2;
+    self.powerRatio = -0.46;
+    self.rangeKm = 398.0;
+    self.fuelLiters = 22.5;
+    self.avgKmL = 17.7;
     self.contentMode = UIViewContentModeRedraw;
-    
-    self.coachPill = [[UIView alloc] init];
-    self.coachPill.backgroundColor = [UIColor colorWithRed:0.02 green:0.18 blue:0.10 alpha:0.85];
-    self.coachPill.layer.cornerRadius = 11;
-    self.coachPill.layer.borderWidth = 1.0;
-    self.coachPill.layer.borderColor = [UIColor colorWithRed:0.2 green:0.85 blue:0.45 alpha:0.7].CGColor;
-    
-    UILabel *cl = [[UILabel alloc] init];
-    cl.tag = 201;
-    cl.font = [UIFont boldSystemFontOfSize:10.5];
-    cl.textColor = [UIColor colorWithRed:0.25 green:0.95 blue:0.50 alpha:1];
-    cl.textAlignment = NSTextAlignmentCenter;
-    cl.text = @"ECO  AI ECO COACH: 94 A+";
-    [self.coachPill addSubview:cl];
-    [self addSubview:self.coachPill];
+    // Hidden legacy pill handle preserved cleanly without rendering "ECO AI ECO COACH"
+    self.coachPill = [[UIView alloc] initWithFrame:CGRectZero];
+    self.coachPill.hidden = YES;
   }
   return self;
 }
 
 - (void)layoutSubviews {
   [super layoutSubviews];
-  CGFloat w = self.bounds.size.width;
-  CGFloat h = self.bounds.size.height;
-  self.coachPill.frame = CGRectMake((w - 180)/2, h - 24, 180, 22);
-  UILabel *cl = (UILabel *)[self.coachPill viewWithTag:201];
-  if (cl) cl.frame = self.coachPill.bounds;
 }
 
 - (void)drawRect:(CGRect)rect {
   CGContextRef ctx = UIGraphicsGetCurrentContext();
   CGFloat w = self.bounds.size.width;
   CGFloat h = self.bounds.size.height;
-  CGPoint center = CGPointMake(w / 2.0, h - 32);
-  CGFloat radius = MIN(w / 2.0 - 20, h - 42);
-  
-  CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:0.75].CGColor);
-  CGContextSetLineWidth(ctx, 7.0);
-  CGContextAddArc(ctx, center.x, center.y, radius, M_PI * 1.0, M_PI * 1.25, 0);
-  CGContextStrokePath(ctx);
-  
-  CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.1 green:0.88 blue:0.4 alpha:0.85].CGColor);
-  CGContextSetLineWidth(ctx, 7.0);
-  CGContextAddArc(ctx, center.x, center.y, radius, M_PI * 1.28, M_PI * 1.68, 0);
-  CGContextStrokePath(ctx);
-  
-  CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.95 green:0.25 blue:0.25 alpha:0.75].CGColor);
-  CGContextSetLineWidth(ctx, 7.0);
-  CGContextAddArc(ctx, center.x, center.y, radius, M_PI * 1.72, M_PI * 2.0, 0);
-  CGContextStrokePath(ctx);
-  
-  UIFont *f = [UIFont boldSystemFontOfSize:9.5];
-  NSDictionary *chgAttrs = @{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:1]};
-  NSDictionary *ecoAttrs = @{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor colorWithRed:0.2 green:0.95 blue:0.45 alpha:1]};
-  NSDictionary *pwrAttrs = @{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor colorWithRed:0.95 green:0.3 blue:0.3 alpha:1]};
-  
-  [@"CHG" drawAtPoint:CGPointMake(center.x - radius - 8, center.y + 4) withAttributes:chgAttrs];
-  [@"- ECO -" drawAtPoint:CGPointMake(center.x - 18, center.y - radius - 15) withAttributes:ecoAttrs];
-  [@"PWR" drawAtPoint:CGPointMake(center.x + radius - 14, center.y + 4) withAttributes:pwrAttrs];
-  
-  // Draw crisp Prius HSI analog needle with hub pivot + clamped [-1, 1] ratio
-  CGFloat clamped = MAX(-1.0, MIN(1.0, self.powerRatio));
-  CGFloat needleAngle = M_PI * 1.0 + (M_PI * 1.0) * ((clamped + 1.0) / 2.0);
-  CGFloat nx = center.x + (radius - 4) * cos(needleAngle);
-  CGFloat ny = center.y + (radius - 4) * sin(needleAngle);
+  if (w <= 0 || h <= 0) return;
 
-  UIColor *needleCol = (clamped < -0.46)
-    ? [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:1.0]
-    : (clamped > 0.36 ? [UIColor colorWithRed:1.0 green:0.32 blue:0.32 alpha:1.0]
-                      : [UIColor colorWithRed:0.25 green:1.0 blue:0.55 alpha:1.0]);
-  CGContextSetStrokeColorWithColor(ctx, needleCol.CGColor);
-  CGContextSetLineWidth(ctx, 3.0);
-  CGContextSetLineCap(ctx, kCGLineCapRound);
-  CGContextMoveToPoint(ctx, center.x, center.y);
-  CGContextAddLineToPoint(ctx, nx, ny);
-  CGContextStrokePath(ctx);
+  // Matte Prius 2026 Engine / Motor / Range Telemetry Pod (no duplicate needle or ECO AI text)
+  CGRect card = CGRectMake(6, 4, w - 12, h - 10);
+  UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:card cornerRadius:12];
+  [[UIColor colorWithRed:0.02 green:0.035 blue:0.055 alpha:0.92] setFill];
+  [bg fill];
+  [[UIColor colorWithWhite:0.18 alpha:0.9] setStroke];
+  bg.lineWidth = 1.0;
+  [bg stroke];
 
-  CGContextSetFillColorWithColor(ctx, needleCol.CGColor);
-  CGContextFillEllipseInRect(ctx, CGRectMake(center.x - 4.5, center.y - 4.5, 9.0, 9.0));
-  
-  CGContextSetFillColorWithColor(ctx, [UIColor whiteColor].CGColor);
-  CGContextFillEllipseInRect(ctx, CGRectMake(center.x - 3, center.y - 3, 6, 6));
+  BOOL isRegen = (self.powerRatio < -0.48);
+  BOOL isPWR = (self.powerRatio > 0.36);
+  BOOL iceOn = (self.engineRPM > 100);
+  UIColor *dotCol = isRegen ? [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:1.0]
+                   : (isPWR ? [UIColor colorWithRed:1.0 green:0.30 blue:0.30 alpha:1.0]
+                   : (iceOn ? [UIColor colorWithRed:1.0 green:0.75 blue:0.20 alpha:1.0]
+                            : [UIColor colorWithRed:0.20 green:0.95 blue:0.55 alpha:1.0]));
+
+  // 1. Minimal Powertrain Status Dot & Mode Pill (EV / HYBRID / PWR / REGEN)
+  CGFloat cx = card.origin.x + 12.0;
+  CGContextSetFillColorWithColor(ctx, dotCol.CGColor);
+  CGContextFillEllipseInRect(ctx, CGRectMake(cx, 18, 9, 9));
+
+  NSString *modeTxt = isRegen ? @"REGEN CHARGE"
+                     : (isPWR ? [NSString stringWithFormat:@"HYBRID PWR • %ld RPM", (long)self.engineRPM]
+                     : (iceOn ? [NSString stringWithFormat:@"ICE %ld RPM", (long)self.engineRPM]
+                              : @"EV DRIVE READY"));
+  [modeTxt drawInRect:CGRectMake(cx + 15, 14, card.size.width - 34, 18)
+       withAttributes:@{NSFontAttributeName:[UIFont boldSystemFontOfSize:12.0], NSForegroundColorAttributeName:dotCol}];
+
+  // Hairline divider
+  [[UIColor colorWithWhite:0.16 alpha:1.0] setFill];
+  UIRectFill(CGRectMake(card.origin.x + 12, 40, card.size.width - 24, 1));
+
+  // 2. Prius 2026 Remaining Driving Range Showcase (~398 km)
+  [@"EST. RANGE" drawInRect:CGRectMake(cx, 48, card.size.width - 24, 14)
+            withAttributes:@{NSFontAttributeName:[UIFont boldSystemFontOfSize:10.0], NSForegroundColorAttributeName:[UIColor colorWithWhite:0.58 alpha:1.0]}];
+
+  NSString *rngVal = [NSString stringWithFormat:@"%.0f", MAX(0.0, self.rangeKm)];
+  NSDictionary *rngAttr = @{NSFontAttributeName:([UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:44] ?: [UIFont boldSystemFontOfSize:44]),
+                            NSForegroundColorAttributeName:[UIColor whiteColor]};
+  CGSize rSz = [rngVal sizeWithAttributes:rngAttr];
+  [rngVal drawAtPoint:CGPointMake(cx, 62) withAttributes:rngAttr];
+  [@"km" drawAtPoint:CGPointMake(cx + rSz.width + 6, 84)
+      withAttributes:@{NSFontAttributeName:[UIFont boldSystemFontOfSize:15.0], NSForegroundColorAttributeName:[UIColor colorWithRed:0.30 green:0.90 blue:1.0 alpha:1.0]}];
+
+  NSString *fuelSub = [NSString stringWithFormat:@"⛽ %.1f L left • %.1f km/L", self.fuelLiters, self.avgKmL];
+  [fuelSub drawInRect:CGRectMake(cx, 114, card.size.width - 24, 16)
+       withAttributes:@{NSFontAttributeName:[UIFont boldSystemFontOfSize:11.5], NSForegroundColorAttributeName:[UIColor colorWithWhite:0.78 alpha:1.0]}];
+
+  // Hairline divider 2
+  [[UIColor colorWithWhite:0.16 alpha:1.0] setFill];
+  UIRectFill(CGRectMake(card.origin.x + 12, 138, card.size.width - 24, 1));
+
+  // 3. Clean 3-column Engine / Motor / HV kW readout
+  CGFloat colW = (card.size.width - 24) / 3.0;
+  NSArray *titles = @[@"MOTOR MG2", @"ENGINE ECT", @"HV POWER"];
+  NSArray *vals = @[
+    [NSString stringWithFormat:@"%ld rpm", (long)self.mg2RPM],
+    [NSString stringWithFormat:@"%.0f °C", self.coolantC],
+    [NSString stringWithFormat:@"%+.1f kW", self.hvKW]
+  ];
+  for (NSInteger i = 0; i < 3; i++) {
+    CGFloat x0 = cx + i * colW;
+    [titles[i] drawInRect:CGRectMake(x0, 148, colW - 2, 14)
+           withAttributes:@{NSFontAttributeName:[UIFont boldSystemFontOfSize:9.5], NSForegroundColorAttributeName:[UIColor colorWithWhite:0.52 alpha:1.0]}];
+    UIColor *vc = (i == 2) ? dotCol : [UIColor whiteColor];
+    [vals[i] drawInRect:CGRectMake(x0, 166, colW - 2, 22)
+         withAttributes:@{NSFontAttributeName:[UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightBold], NSForegroundColorAttributeName:vc}];
+  }
 }
 @end
 
@@ -4604,7 +4892,7 @@ static NSUInteger gTRDUpdateTicks=0;
  }else{
   self.parkedSince = nil;
  }
- self.gpsLive=valid;[self.driveCar setSpeed:self.driveMode&&!self.calmDrive&&(valid||obdLive)?kmh:0];
+ self.gpsLive=valid;
  static double prevEcoKmh = -1.0;
  static NSTimeInterval prevEcoTime = 0.0;
  static double filteredDvDt = 0.0;
@@ -4678,9 +4966,38 @@ static NSUInteger gTRDUpdateTicks=0;
  if(fabs(smoothedPowerRatio - targetRatio) < 0.004) smoothedPowerRatio = targetRatio;
  if(self.drivePowerMeter&&!self.drivePowerMeter.hidden){
   self.drivePowerMeter.powerRatio = (CGFloat)smoothedPowerRatio;
-  if(fabs(smoothedPowerRatio - renderedPowerRatio) >= 0.008){
+  self.drivePowerMeter.engineRPM = obdLive ? smoothRPM : 0;
+  self.drivePowerMeter.mg2RPM = obdLive ? obdSpd.mg2RPM : 0;
+  self.drivePowerMeter.coolantC = obdLive ? obdSpd.coolantTempC : 0.0;
+  self.drivePowerMeter.hvKW = liveHVkw;
+  self.drivePowerMeter.fuelLiters = obdSpd.fuelRemainingLiters;
+  self.drivePowerMeter.avgKmL = [self effectiveFuelKmPerL];
+  self.drivePowerMeter.rangeKm = [self estimatedRangeKmForFuelLiters:obdSpd.fuelRemainingLiters];
+  self.drivePowerMeter.obdLive = obdLive;
+  if(fabs(smoothedPowerRatio - renderedPowerRatio) >= 0.008 || (self.ticks % 2 == 0)){
    renderedPowerRatio = smoothedPowerRatio;
    [self.drivePowerMeter setNeedsDisplay];
+  }
+ }
+ if(self.driveCar&&!self.driveCar.hidden){
+  [self.driveCar updateEnergyWithSpeed:(self.driveMode&&!self.calmDrive&&(valid||obdLive)?kmh:0)
+                             engineRPM:obdLive?smoothRPM:0
+                             hvCurrent:obdLive?obdSpd.hvPackCurrent:0.0
+                                 hvSOC:obdLive?obdSpd.hybridBatterySOC:60.0
+                             isBraking:instantBraking
+                                    dt:meterDt];
+ }
+ if(self.driveSpeedoDial&&!self.driveSpeedoDial.hidden){
+  BOOL evNow = (!obdLive || smoothRPM < 100);
+  CGFloat fFrac = obdLive && obdSpd.hasLiveFuelLevel ? (CGFloat)(obdSpd.fuelLevelPercent / 100.0) : 0.55;
+  if(fabs(self.driveSpeedoDial.powerRatio - (CGFloat)smoothedPowerRatio) >= 0.015 ||
+     self.driveSpeedoDial.evActive != evNow ||
+     fabs(self.driveSpeedoDial.fuelRatio - fFrac) >= 0.03){
+   self.driveSpeedoDial.powerRatio = (CGFloat)smoothedPowerRatio;
+   self.driveSpeedoDial.evActive = evNow;
+   self.driveSpeedoDial.fuelRatio = fFrac;
+   self.driveSpeedoDial.hasFuel = (obdLive && obdSpd.hasLiveFuelLevel);
+   [self.driveSpeedoDial setNeedsDisplay];
   }
  }
  if(self.drive3DGrid&&!self.drive3DGrid.hidden){
