@@ -197,21 +197,35 @@ static UIImage *TRDAutoVectorIcon(NSInteger kind, CGFloat ptSize, UIColor *tint)
     fov.lineWidth = MAX(1.2, s * 0.085);
     [fov stroke];
   } else if (kind == 3) {
-    // Automotive Car Door icon (angled window frame + handle)
+    // Automotive Front Car Door silhouette (angled A-pillar, mirror nub, inner window cutout, flush car handle)
+    CGFloat lw = MAX(1.2, s * 0.085);
     UIBezierPath *door = [UIBezierPath bezierPath];
-    [door moveToPoint:CGPointMake(s * 0.22, s * 0.80)];
-    [door addLineToPoint:CGPointMake(s * 0.22, s * 0.46)];
-    [door addLineToPoint:CGPointMake(s * 0.42, s * 0.20)];
-    [door addLineToPoint:CGPointMake(s * 0.80, s * 0.20)];
-    [door addLineToPoint:CGPointMake(s * 0.80, s * 0.80)];
+    [door moveToPoint:CGPointMake(s * 0.20, s * 0.84)];
+    [door addLineToPoint:CGPointMake(s * 0.14, s * 0.60)];
+    [door addLineToPoint:CGPointMake(s * 0.18, s * 0.44)];
+    [door addLineToPoint:CGPointMake(s * 0.44, s * 0.16)];
+    [door addLineToPoint:CGPointMake(s * 0.84, s * 0.16)];
+    [door addLineToPoint:CGPointMake(s * 0.84, s * 0.84)];
     [door closePath];
-    door.lineWidth = MAX(1.3, s * 0.095);
+    door.lineWidth = lw;
     [door stroke];
-    CGContextMoveToPoint(ctx, s * 0.24, s * 0.47);
-    CGContextAddLineToPoint(ctx, s * 0.78, s * 0.47);
-    CGContextStrokePath(ctx);
-    CGContextMoveToPoint(ctx, s * 0.60, s * 0.58);
-    CGContextAddLineToPoint(ctx, s * 0.72, s * 0.58);
+
+    // Window pane cutout (angled auto glass)
+    UIBezierPath *win = [UIBezierPath bezierPath];
+    [win moveToPoint:CGPointMake(s * 0.27, s * 0.44)];
+    [win addLineToPoint:CGPointMake(s * 0.47, s * 0.24)];
+    [win addLineToPoint:CGPointMake(s * 0.76, s * 0.24)];
+    [win addLineToPoint:CGPointMake(s * 0.76, s * 0.44)];
+    [win closePath];
+    win.lineWidth = MAX(1.0, s * 0.068);
+    [win stroke];
+
+    // Wing mirror nub on A-pillar + flush car door handle
+    UIBezierPath *mirror = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(s * 0.07, s * 0.38, s * 0.12, s * 0.09) cornerRadius:s * 0.03];
+    [mirror fill];
+    CGContextSetLineWidth(ctx, MAX(1.5, s * 0.105));
+    CGContextMoveToPoint(ctx, s * 0.56, s * 0.56);
+    CGContextAddLineToPoint(ctx, s * 0.74, s * 0.56);
     CGContextStrokePath(ctx);
   } else if (kind == 4) {
     // Minimalist Fuel Pump glyph
@@ -3656,8 +3670,8 @@ static NSUInteger gTRDUpdateTicks=0;
     self.carStatus.layer.borderWidth = 1.0;
     self.carStatus.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
     self.carStatus.backgroundColor = [UIColor colorWithRed:.03 green:.06 blue:.09 alpha:.95];
-    if (self.carStatus.text.length == 0) {
-      self.carStatus.text = @"🛡️ กำลังอ่านสถานะ OBD2 & ประตู (CAN 0x620)...";
+    if (self.carStatus.attributedText.length == 0 && self.carStatus.text.length == 0) {
+      self.carStatus.text = @"กำลังอ่านสถานะ OBD2 & ประตู (CAN 0x620)...";
     }
 
     // 3. RIGHT POD (Width: 268, X: 738, Y: 48, Height: 590)
@@ -7561,10 +7575,14 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   topBar.layer.cornerRadius = 18;
   [card addSubview:topBar];
 
-  UILabel *tLbl = [[UILabel alloc] initWithFrame:CGRectMake(24, 12, w - 80, 32)];
-  tLbl.font = [UIFont boldSystemFontOfSize:22];
+  UIImageView *hIcon = [[UIImageView alloc] initWithFrame:CGRectMake(24, 16, 24, 24)];
+  hIcon.image = TRDAutoVectorIcon(3, 24.0, [UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1]);
+  [card addSubview:hIcon];
+
+  UILabel *tLbl = [[UILabel alloc] initWithFrame:CGRectMake(54, 12, w - 110, 32)];
+  tLbl.font = [UIFont boldSystemFontOfSize:21];
   tLbl.textColor = [UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1];
-  tLbl.text = @"🚪 สถานะประตู 5 บาน & ตัวถัง (5-DOOR STATUS)";
+  tLbl.text = @"สถานะประตู 5 บาน & ตัวถัง (5-DOOR STATUS)";
   [card addSubview:tLbl];
 
   UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -7585,11 +7603,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     obd.trunkOpen
   };
   NSArray *doorTitles = @[
-    @"🚪 ประตูหน้าซ้าย (FL • ผู้โดยสาร)",
-    @"🚪 ประตูหน้าขวา (FR • คนขับ RHD)",
-    @"🚪 ประตูหลังซ้าย (RL)",
-    @"🚪 ประตูหลังขวา (RR)",
-    @"🚙 ฝาท้ายสัมภาระ (TRUNK / HATCH)"
+    @"ประตูหน้าซ้าย (FL • ผู้โดยสาร)",
+    @"ประตูหน้าขวา (FR • คนขับ RHD)",
+    @"ประตูหลังซ้าย (RL)",
+    @"ประตูหลังขวา (RR)",
+    @"ฝาท้ายสัมภาระ (TRUNK / HATCH)"
   ];
   
   for(int i=0; i<5; i++){
@@ -7603,7 +7621,14 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
       ? (isOpen ? [UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:0.9].CGColor : [UIColor colorWithRed:0.1 green:0.8 blue:0.4 alpha:0.5].CGColor)
       : [UIColor colorWithWhite:0.28 alpha:0.8].CGColor;
     
-    UILabel *dLbl = [[UILabel alloc] initWithFrame:CGRectMake(16, 8, 360, 30)];
+    UIColor *rowIconTint = doorsLive
+      ? (isOpen ? [UIColor colorWithRed:1.0 green:0.35 blue:0.35 alpha:1] : [UIColor colorWithRed:0.22 green:0.94 blue:0.55 alpha:1])
+      : [UIColor colorWithRed:0.45 green:0.82 blue:0.96 alpha:0.9];
+    UIImageView *rowIcon = [[UIImageView alloc] initWithFrame:CGRectMake(14, 13, 20, 20)];
+    rowIcon.image = TRDAutoVectorIcon(3, 20.0, rowIconTint);
+    [doorRow addSubview:rowIcon];
+
+    UILabel *dLbl = [[UILabel alloc] initWithFrame:CGRectMake(42, 8, 340, 30)];
     dLbl.font = [UIFont boldSystemFontOfSize:17];
     dLbl.textColor = [UIColor whiteColor];
     dLbl.text = doorTitles[i];
@@ -7771,8 +7796,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     [self showFeatureExplanation:@"⏱️ ระบบวัดระยะทาง TRIP & A➔B" body:@"• วัดระยะทางจริงตามดาวเทียม GPS แบบเรียลไทม์\n• Smart Auto-Pause: เมื่อรถจอดนิ่ง (ความเร็ว < 2 km/h) ระบบจะหยุดพักการนับอัตโนมัติ เพื่อป้องกันระยะทางคลาดเคลื่อนขณะติดไฟแดง\n• แตะที่ตัวเลขระยะทาง 0.00 km เพื่อรีเซ็ตค่าทริปได้ทันทีใน 1 วินาที พร้อมคำนวณค่าน้ำมันและความเร็วเฉลี่ยอัตโนมัติ"];
   }]];
 
-  [m addAction:[TRDSettingAction actionWithTitle:@"🚪 ประตู 5 บาน & เข็มขัดนิรภัยรอบคัน" style:0 handler:^(TRDSettingAction *a){
-    [self showFeatureExplanation:@"🚪 ระบบตรวจจับประตู 5 บาน & เข็มขัด" body:@"• ตรวจสอบสถานะประตูทั้ง 5 บาน: หน้าซ้าย (FL), หน้าขวา (FR), หลังซ้าย (RL), หลังขวา (RR) และฝาท้าย (Trunk)\n• แถบสีเขียว = ปิดสนิทปลอดภัย\n• แถบสีแดง = ประตูเปิดอยู่หรือปิดไม่สนิท มีการแจ้งเตือนทันที\n• พร้อมระบบตรวจสอบการล็อคเข็มขัดนิรภัยเพื่อความปลอดภัยสูงสุด"];
+  [m addAction:[TRDSettingAction actionWithTitle:@"🚘 ประตู 5 บาน & เข็มขัดนิรภัยรอบคัน" style:0 handler:^(TRDSettingAction *a){
+    [self showFeatureExplanation:@"🚘 ระบบตรวจจับประตู 5 บาน & เข็มขัด" body:@"• ตรวจสอบสถานะประตูทั้ง 5 บาน: หน้าซ้าย (FL), หน้าขวา (FR), หลังซ้าย (RL), หลังขวา (RR) และฝาท้าย (Trunk)\n• แถบสีเขียว = ปิดสนิทปลอดภัย\n• แถบสีแดง = ประตูเปิดอยู่หรือปิดไม่สนิท มีการแจ้งเตือนทันที\n• พร้อมระบบตรวจสอบการล็อคเข็มขัดนิรภัยเพื่อความปลอดภัยสูงสุด"];
   }]];
 
   [m addAction:[TRDSettingAction actionWithTitle:@"⛽ ราคาน้ำมันสดจากปั๊ม ปตท./บางจาก ออนไลน์" style:0 handler:^(TRDSettingAction *a){
@@ -8315,9 +8340,10 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   }
   static NSString *sLastCarStatusKey = nil;
   NSString *fullKey = [NSString stringWithFormat:@"%ld_%@", (long)styleTag, csText];
-  if(![sLastCarStatusKey isEqualToString:fullKey]){
+  BOOL missingVectors = (!self.carStatus.attributedText || [self.carStatus.attributedText.string rangeOfString:@"\uFFFC"].location == NSNotFound);
+  if(![sLastCarStatusKey isEqualToString:fullKey] || missingVectors){
    sLastCarStatusKey = fullKey;
-   if(self.driveMode && !doorAlert){
+   if(!doorAlert){
     NSMutableAttributedString *att = [[NSMutableAttributedString alloc] init];
     UIFont *f = self.carStatus.font ?: [UIFont boldSystemFontOfSize:13.0];
     void (^addIcon)(NSInteger, UIColor *) = ^(NSInteger kind, UIColor *c){
@@ -8331,13 +8357,13 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     addIcon(1, obdC);
     [att appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"OBD2 %@  •  ", obd.isConnected ? @"LIVE" : @"SCAN"] attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:obdC}]];
     addIcon(3, [UIColor colorWithRed:0.25 green:0.95 blue:0.58 alpha:1]);
-    [att appendAttributedString:[[NSAttributedString alloc] initWithString:@"ปิดครบ  •  " attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor whiteColor]}]];
+    [att appendAttributedString:[[NSAttributedString alloc] initWithString:(self.driveMode ? @"ปิดครบ  •  " : @"ประตู 5 บาน  •  ") attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor whiteColor]}]];
     addIcon(4, [UIColor colorWithRed:0.35 green:0.90 blue:1.0 alpha:1]);
     [att appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%.1fL (~%.0f กม.)  •  ", obd.fuelRemainingLiters, estRangeKm] attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor whiteColor]}]];
     addIcon(5, [UIColor colorWithRed:0.55 green:0.92 blue:1.0 alpha:1]);
     [att appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%.0f°C%@", obd.coolantTempC, lightTag] attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor whiteColor]}]];
     self.carStatus.attributedText = att;
-   }else if(doorAlert){
+   }else{
     NSMutableAttributedString *att = [[NSMutableAttributedString alloc] init];
     UIFont *f = self.carStatus.font ?: [UIFont boldSystemFontOfSize:13.0];
     NSTextAttachment *ta = [[NSTextAttachment alloc] init];
@@ -8346,8 +8372,6 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     [att appendAttributedString:[NSAttributedString attributedStringWithAttachment:ta]];
     [att appendAttributedString:[[NSAttributedString alloc] initWithString:[@" " stringByAppendingString:csText] attributes:@{NSFontAttributeName:f, NSForegroundColorAttributeName:[UIColor colorWithRed:1.0 green:0.88 blue:0.88 alpha:1.0]}]];
     self.carStatus.attributedText = att;
-   }else{
-    self.carStatus.text = csText;
    }
   }
   if(self.carStatus.tag != styleTag){
