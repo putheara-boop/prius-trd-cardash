@@ -644,52 +644,65 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (data && !error) {
-            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-            id listRaw = json[@"OilList"];
-            NSArray *items = nil;
-            if ([listRaw isKindOfClass:[NSString class]]) {
-                NSData *ld = [(NSString *)listRaw dataUsingEncoding:NSUTF8StringEncoding];
-                items = [NSJSONSerialization JSONObjectWithData:ld options:0 error:nil];
-            } else if ([listRaw isKindOfClass:[NSArray class]]) {
-                items = (NSArray *)listRaw;
-            }
-            if ([items isKindOfClass:[NSArray class]] && items.count > 0) {
-                double g95 = 0, g91 = 0, e20 = 0, p95 = 0;
-                for (NSDictionary *it in items) {
-                    if (![it isKindOfClass:[NSDictionary class]]) continue;
-                    NSString *nm = [it[@"OilName"] isKindOfClass:[NSString class]] ? it[@"OilName"] : @"";
-                    double pr = [it[@"PriceToday"] doubleValue];
-                    if (pr < 10.0) continue;
-                    if ([nm containsString:@"E20"]) e20 = pr;
-                    else if ([nm containsString:@"91"] && [nm containsString:@"โซฮอล์"]) g91 = pr;
-                    else if ([nm containsString:@"95"] && [nm containsString:@"โซฮอล์"]) g95 = pr;
-                    else if (([nm containsString:@"พรีเมียม"] || [nm containsString:@"Premium"]) && ([nm containsString:@"98"] || [nm containsString:@"95"])) p95 = pr;
+            @try {
+                id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+                NSDictionary *json = nil;
+                if ([parsed isKindOfClass:[NSDictionary class]]) {
+                    json = (NSDictionary *)parsed;
+                } else if ([parsed isKindOfClass:[NSArray class]] && [(NSArray *)parsed count] > 0) {
+                    id first = [(NSArray *)parsed firstObject];
+                    if ([first isKindOfClass:[NSDictionary class]]) json = (NSDictionary *)first;
                 }
-                NSString *dateStr = [json[@"OilDateNow"] isKindOfClass:[NSString class]] ? json[@"OilDateNow"] : @"วันนี้";
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    BOOL manualLock = !force && [[NSUserDefaults standardUserDefaults] boolForKey:@"TRDManualFuelPriceOverride"];
-                    NSMutableDictionary *updated = [@{
-                        @(0): @(g95 > 10.0 ? g95 : 38.14),
-                        @(1): @(g91 > 10.0 ? g91 : 37.77),
-                        @(2): @(e20 > 10.0 ? e20 : 30.10),
-                        @(3): @(p95 > 10.0 ? p95 : 48.55)
-                    } mutableCopy];
-                    if (manualLock) {
-                        updated[@(self.selectedFuelTypeIndex)] = @(self.fuelPricePerLiter);
+                if (!json) return;
+                id listRaw = json[@"OilList"];
+                NSArray *items = nil;
+                if ([listRaw isKindOfClass:[NSString class]]) {
+                    NSData *ld = [(NSString *)listRaw dataUsingEncoding:NSUTF8StringEncoding];
+                    id parsedList = [NSJSONSerialization JSONObjectWithData:ld options:0 error:nil];
+                    if ([parsedList isKindOfClass:[NSArray class]]) items = (NSArray *)parsedList;
+                } else if ([listRaw isKindOfClass:[NSArray class]]) {
+                    items = (NSArray *)listRaw;
+                }
+                if ([items isKindOfClass:[NSArray class]] && items.count > 0) {
+                    double g95 = 0, g91 = 0, e20 = 0, p95 = 0;
+                    for (NSDictionary *it in items) {
+                        if (![it isKindOfClass:[NSDictionary class]]) continue;
+                        NSString *nm = [it[@"OilName"] isKindOfClass:[NSString class]] ? it[@"OilName"] : @"";
+                        double pr = [it[@"PriceToday"] doubleValue];
+                        if (pr < 10.0) continue;
+                        if ([nm containsString:@"E20"]) e20 = pr;
+                        else if ([nm containsString:@"91"] && [nm containsString:@"โซฮอล์"]) g91 = pr;
+                        else if ([nm containsString:@"95"] && [nm containsString:@"โซฮอล์"]) g95 = pr;
+                        else if (([nm containsString:@"พรีเมียม"] || [nm containsString:@"Premium"]) && ([nm containsString:@"98"] || [nm containsString:@"95"])) p95 = pr;
                     }
-                    self.cachedPrices = [updated copy];
-                    self.isLiveOilPriceActive = YES;
-                    if (!manualLock) {
-                        self.oilPriceSource = @"บางจาก / คาลเท็กซ์ (BCP·Caltex)";
-                        self.oilPriceDate = dateStr;
-                        NSNumber *curP = self.cachedPrices[@(self.selectedFuelTypeIndex)];
-                        if (curP) {
-                            [self applyFuelPriceInternal:[curP doubleValue] isManual:NO];
+                    NSString *dateStr = [json[@"OilDateNow"] isKindOfClass:[NSString class]] ? json[@"OilDateNow"] : @"วันนี้";
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        BOOL manualLock = !force && [[NSUserDefaults standardUserDefaults] boolForKey:@"TRDManualFuelPriceOverride"];
+                        NSMutableDictionary *updated = [@{
+                            @(0): @(g95 > 10.0 ? g95 : 38.14),
+                            @(1): @(g91 > 10.0 ? g91 : 37.77),
+                            @(2): @(e20 > 10.0 ? e20 : 30.10),
+                            @(3): @(p95 > 10.0 ? p95 : 48.55)
+                        } mutableCopy];
+                        if (manualLock) {
+                            updated[@(self.selectedFuelTypeIndex)] = @(self.fuelPricePerLiter);
                         }
-                    }
-                    [self obdLog:@"LIVE_OIL_BCP (%@) -> G95=%.2f G91=%.2f E20=%.2f P95=%.2f (manual=%d)",
-                     dateStr, [updated[@(0)] doubleValue], [updated[@(1)] doubleValue], [updated[@(2)] doubleValue], [updated[@(3)] doubleValue], manualLock ? 1 : 0];
-                });
+                        self.cachedPrices = [updated copy];
+                        self.isLiveOilPriceActive = YES;
+                        if (!manualLock) {
+                            self.oilPriceSource = @"บางจาก / คาลเท็กซ์ (BCP·Caltex)";
+                            self.oilPriceDate = dateStr;
+                            NSNumber *curP = self.cachedPrices[@(self.selectedFuelTypeIndex)];
+                            if (curP) {
+                                [self applyFuelPriceInternal:[curP doubleValue] isManual:NO];
+                            }
+                        }
+                        [self obdLog:@"LIVE_OIL_BCP (%@) -> G95=%.2f G91=%.2f E20=%.2f P95=%.2f (manual=%d)",
+                         dateStr, [updated[@(0)] doubleValue], [updated[@(1)] doubleValue], [updated[@(2)] doubleValue], [updated[@(3)] doubleValue], manualLock ? 1 : 0];
+                    });
+                }
+            } @catch (NSException *ex) {
+                [self obdLog:@"LIVE_OIL_BCP parse exception: %@", ex.reason ?: @"unknown"];
             }
         }
     }] resume];
