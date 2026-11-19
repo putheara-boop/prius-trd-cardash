@@ -6166,15 +6166,18 @@ static NSUInteger gTRDUpdateTicks=0;
       [box addSubview:l3];
     }
 
-    // All-time total bar
+    // All-time total bar (enriched with daily average km & Baht/km efficiency — zero plist schema change)
     NSString *allKml = (allFuel > 0.005 && allKm > 0.05) ? [NSString stringWithFormat:@"%.1f km/L", allKm/allFuel] : @"--.- km/L";
+    NSString *allBpk = (allKm > 0.1 && allCost > 0.01) ? [NSString stringWithFormat:@"%.2f ฿/กม.", allCost/allKm] : @"-- ฿/กม.";
+    double avgDayKm = (allDays > 0) ? (allKm / (double)allDays) : 0.0;
     UILabel *allBar=[[UILabel alloc]initWithFrame:CGRectMake(20,172,cardW-40,28)];
     allBar.backgroundColor=[UIColor colorWithRed:0.04 green:0.08 blue:0.12 alpha:1.0];
     allBar.layer.cornerRadius=8; allBar.clipsToBounds=YES;
-    allBar.font=[UIFont boldSystemFontOfSize:13];
+    allBar.font=[UIFont boldSystemFontOfSize:12.5];
+    allBar.adjustsFontSizeToFitWidth=YES; allBar.minimumScaleFactor=0.75;
     allBar.textAlignment=NSTextAlignmentCenter;
     allBar.textColor=[UIColor colorWithRed:0.45 green:0.90 blue:1.0 alpha:1.0];
-    allBar.text=[NSString stringWithFormat:@"🏆 สะสมทั้งหมด (%ld วัน): %.1f km  •  ใช้น้ำมัน %.2f L  •  ฿ %.2f  •  เฉลี่ย %@", (long)allDays, allKm, allFuel, allCost, allKml];
+    allBar.text=[NSString stringWithFormat:@"🏆 สะสม %ld วัน: %.1f km (เฉลี่ย %.1f km/วัน) • %.2f L • ฿%.1f • %@ • %@", (long)allDays, allKm, avgDayKm, allFuel, allCost, allKml, allBpk];
     [card addSubview:allBar];
 
     // Table header
@@ -6226,13 +6229,14 @@ static NSUInteger gTRDUpdateTicks=0;
       }
       [dailyScroll addSubview:row];
 
+      NSString *dBpk = (dKm > 0.1 && dC > 0.01) ? [NSString stringWithFormat:@" (%.1f฿/กม.)", dC/dKm] : @"";
       NSArray *vals = @[
         dayText,
         [NSString stringWithFormat:@"%ld", (long)dT],
         [NSString stringWithFormat:@"%.2f km", dKm],
         [NSString stringWithFormat:@"%.2f L", dF],
         [NSString stringWithFormat:@"%@ km/L", dKml],
-        [NSString stringWithFormat:@"฿ %.2f", dC]
+        [NSString stringWithFormat:@"฿%.1f%@", dC, dBpk]
       ];
       for(int c=0; c<6; c++){
         UILabel *rl=[[UILabel alloc]initWithFrame:CGRectMake([colX[c] doubleValue]-6, 8, [colW[c] doubleValue], 24)];
@@ -8179,8 +8183,54 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
 -(void)openFuelPriceSettings{
  TRDOBDClient *obd=[TRDOBDClient sharedClient];
- NSString *msg=[NSString stringWithFormat:@"น้ำมัน: %@ (%.2f ฿/L)\nที่มา: %@ · %@",obd.selectedFuelTypeName?:@"แก๊สโซฮอล์ 95",obd.fuelPricePerLiter,obd.oilPriceSource?:@"ปตท.",obd.oilPriceDate?:@"วันนี้"];
- TRDSettingsMenu *m=[self settingsMenu:@"⛽ ราคาน้ำมันสดจากปั๊ม (LIVE PUMP PRICE)" message:msg];
+ NSString *msg=[NSString stringWithFormat:@"น้ำมัน: %@ (%.2f ฿/L)\nที่มา: %@ · %@",obd.selectedFuelTypeName?:@"แก๊สโซฮอล์ 95",obd.fuelPricePerLiter,obd.oilPriceSource?:@"บางจาก / คาลเท็กซ์",obd.oilPriceDate?:@"วันนี้"];
+ TRDSettingsMenu *m=[self settingsMenu:@"⛽ ราคาน้ำมันสด (บางจาก / คาลเท็กซ์)" message:msg];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"⌨️ พิมพ์ราคาน้ำมันเอง (ปัจจุบัน %.2f ฿/L)",obd.fuelPricePerLiter] style:0 handler:^(TRDSettingAction *a){
+  UIAlertController *ac=[UIAlertController alertControllerWithTitle:@"กำหนดราคาน้ำมัน (฿/ลิตร)" message:@"ใส่ราคาหน้าปั๊มที่เติม เช่น 30.10 หรือ 38.14" preferredStyle:UIAlertControllerStyleAlert];
+  [ac addTextFieldWithConfigurationHandler:^(UITextField *tf){
+   tf.keyboardType=UIKeyboardTypeDecimalPad;
+   tf.placeholder=@"เช่น 30.10";
+   tf.text=[NSString stringWithFormat:@"%.2f",obd.fuelPricePerLiter];
+  }];
+  [ac addAction:[UIAlertAction actionWithTitle:@"ยกเลิก" style:UIAlertActionStyleCancel handler:nil]];
+  [ac addAction:[UIAlertAction actionWithTitle:@"บันทึก" style:UIAlertActionStyleDefault handler:^(UIAlertAction *ok){
+   NSString *txt=[ac.textFields.firstObject.text stringByReplacingOccurrencesOfString:@"," withString:@"."];
+   double val=[txt doubleValue];
+   if(val>=10.0 && val<=120.0){
+    [obd setCustomFuelPrice:(CGFloat)val];
+    [self syncActiveFuelRateToTripA];
+   }
+   [self openFuelPriceSettings];
+  }]];
+  [self presentViewController:ac animated:YES completion:nil];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➕ เพิ่มราคา +0.10 ฿  →  %.2f ฿/L",obd.fuelPricePerLiter+0.10] style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:obd.fuelPricePerLiter+0.10];
+  [self syncActiveFuelRateToTripA];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➖ ลดราคา -0.10 ฿  →  %.2f ฿/L",obd.fuelPricePerLiter-0.10] style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:obd.fuelPricePerLiter-0.10];
+  [self syncActiveFuelRateToTripA];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➕ เพิ่มราคา +0.50 ฿  →  %.2f ฿/L",obd.fuelPricePerLiter+0.50] style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:obd.fuelPricePerLiter+0.50];
+  [self syncActiveFuelRateToTripA];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➖ ลดราคา -0.50 ฿  →  %.2f ฿/L",obd.fuelPricePerLiter-0.50] style:0 handler:^(TRDSettingAction *a){
+  [obd setCustomFuelPrice:obd.fuelPricePerLiter-0.50];
+  [self syncActiveFuelRateToTripA];
+  [self openFuelPriceSettings];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔄 ดึงราคาสดออนไลน์ (บางจาก / คาลเท็กซ์)" style:0 handler:^(TRDSettingAction *a){
+  [obd fetchLiveOilPricesForce:YES];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   [self syncActiveFuelRateToTripA];
+   [self openFuelPriceSettings];
+  });
+ }]];
  NSArray *names=@[@"แก๊สโซฮอล์ 95",@"แก๊สโซฮอล์ 91",@"แก๊สโซฮอล์ E20",@"พรีเมียม 95"];
  for(int i=0;i<4;i++){
   NSNumber *p=obd.cachedPrices[@(i)];
@@ -8193,23 +8243,6 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
    [self openFuelPriceSettings];
   }]];
  }
- [m addAction:[TRDSettingAction actionWithTitle:@"🔄 ดึงราคาล่าสุดจากปั๊ม ปตท. ออนไลน์" style:0 handler:^(TRDSettingAction *a){
-  [obd fetchLiveOilPrices];
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
-   [self syncActiveFuelRateToTripA];
-   [self openFuelPriceSettings];
-  });
- }]];
- [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➕ ปรับราคาเอง +0.50 ฿ (%.2f ฿)",obd.fuelPricePerLiter+0.5] style:0 handler:^(TRDSettingAction *a){
-  [obd setCustomFuelPrice:obd.fuelPricePerLiter+0.5];
-  [self syncActiveFuelRateToTripA];
-  [self openFuelPriceSettings];
- }]];
- [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"➖ ปรับราคาเอง -0.50 ฿ (%.2f ฿)",obd.fuelPricePerLiter-0.5] style:0 handler:^(TRDSettingAction *a){
-  [obd setCustomFuelPrice:obd.fuelPricePerLiter-0.5];
-  [self syncActiveFuelRateToTripA];
-  [self openFuelPriceSettings];
- }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🚨 ทดสอบแจ้งเตือนน้ำมันใกล้หมด + ค้นหาปั๊ม (Demo)" style:0 handler:^(TRDSettingAction *a){
   [self.settingsSheet dismiss];
   [self testLowFuelWarning];
@@ -8570,6 +8603,55 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  }
  [self applyGearToUI:obd.currentGear];
  [self updateDrive12VPill];
+
+ // 1. Lightweight Door-Ajar Moving Safety Alert (chimes via car BT/AUX or iPad speaker ONLY when in D/R or >=5 km/h)
+ {
+  BOOL anyDoorOpen = obd.doorSensorsLive && (obd.doorFrontLeftOpen || obd.doorFrontRightOpen || obd.doorRearLeftOpen || obd.doorRearRightOpen || obd.trunkOpen);
+  double spdNow = obd.isConnected ? obd.currentSpeedKmh : ((self.fix && self.fix.speed >= 0) ? self.fix.speed * 3.6 : 0.0);
+  BOOL inDriveOrMoving = (spdNow >= 5.0) || [obd.currentGear isEqualToString:@"D"] || [obd.currentGear isEqualToString:@"R"];
+  static NSTimeInterval sLastDoorChimeAt = 0;
+  NSTimeInterval nowUpD = [NSProcessInfo processInfo].systemUptime;
+  if(anyDoorOpen && inDriveOrMoving && (nowUpD - sLastDoorChimeAt) >= 6.0){
+   sLastDoorChimeAt = nowUpD;
+   AudioServicesPlaySystemSound(1052);
+  }
+ }
+
+ // 2. Lightweight Coffee-Break Attention Reminder (2h continuous driving, 0% extra CPU)
+ {
+  static double sNextBreakSec = 7200.0;
+  double tripSec = self.trip ? self.trip.seconds : 0.0;
+  double spdNowB = obd.isConnected ? obd.currentSpeedKmh : ((self.fix && self.fix.speed >= 0) ? self.fix.speed * 3.6 : 0.0);
+  if(tripSec < 60.0){
+   sNextBreakSec = 7200.0;
+  } else if(tripSec >= sNextBreakSec && spdNowB >= 10.0){
+   NSInteger hrs = (NSInteger)(sNextBreakSec / 3600.0);
+   sNextBreakSec += 7200.0;
+   AudioServicesPlaySystemSound(1008);
+   UILabel *toast = (UILabel *)[self.view viewWithTag:945];
+   if(!toast){
+    toast = [[UILabel alloc]initWithFrame:CGRectMake((self.view.bounds.size.width - 420.0) * 0.5, 58.0, 420.0, 36.0)];
+    toast.tag = 945;
+    toast.backgroundColor = [UIColor colorWithRed:0.12 green:0.08 blue:0.02 alpha:0.94];
+    toast.layer.cornerRadius = 18.0;
+    toast.clipsToBounds = YES;
+    toast.layer.borderWidth = 1.4;
+    toast.layer.borderColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.20 alpha:0.90].CGColor;
+    toast.textColor = [UIColor colorWithRed:1.0 green:0.92 blue:0.65 alpha:1.0];
+    toast.font = [UIFont boldSystemFontOfSize:13.5];
+    toast.textAlignment = NSTextAlignmentCenter;
+    [self.view addSubview:toast];
+   }
+   toast.text = [NSString stringWithFormat:@"☕ ขับต่อเนื่องครบ %ld ชม. แล้ว — แนะนำแวะพักสายตา", (long)hrs];
+   toast.hidden = NO;
+   toast.alpha = 1.0;
+   [self.view bringSubviewToFront:toast];
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(12.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    UIView *t = [self.view viewWithTag:945];
+    if(t) t.hidden = YES;
+   });
+  }
+ }
 
  // Update Top-Bar Connectivity Status Pill (Wi-Fi/Hotspot + Bluetooth/Audio Output) + Auto-refresh live oil prices when online
  UIButton *connPill = (UIButton *)[self.view viewWithTag:910];

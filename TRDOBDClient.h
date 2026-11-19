@@ -97,6 +97,7 @@ extern NSString * const TRDOBDGearChangedNotification;
 - (void)setCustomFuelPrice:(CGFloat)price;
 - (void)selectFuelTypeIndex:(NSInteger)index;
 - (void)fetchLiveOilPrices;
+- (void)fetchLiveOilPricesForce:(BOOL)force;
 - (void)resetTripFuel;
 - (void)toggleTestBrakeWarning;
 - (void)simulateHybridBatterySOC:(CGFloat)soc;
