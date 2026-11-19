@@ -2,6 +2,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <AudioToolbox/AudioToolbox.h>
+#import <Speech/Speech.h>
 #import "TRDAutoplayModel.h"
 #import "TRDDriveStatus.h"
 #import "TRDOBDClient.m"
@@ -2050,7 +2051,15 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 
 
 @property (nonatomic, strong) UILabel *topClockLabel;
-@property (nonatomic, strong) UIButton *obdStatusPill, *dayNightPill, *thaiVoicePill, *settingsPill, *helpPill;
+@property (nonatomic, strong) UIButton *obdStatusPill, *dayNightPill, *thaiVoicePill, *settingsPill, *helpPill, *voicePill;
+@property (nonatomic, strong) UILabel *voiceBanner;
+@property (nonatomic, strong) AVAudioEngine *voiceEngine;
+@property (nonatomic, strong) SFSpeechRecognizer *speechRecognizer;
+@property (nonatomic, strong) SFSpeechAudioBufferRecognitionRequest *speechRequest;
+@property (nonatomic, strong) SFSpeechRecognitionTask *speechTask;
+@property (nonatomic, copy) NSString *voiceLastTranscript;
+@property (nonatomic, assign) BOOL voiceListening;
+@property (nonatomic, assign) NSUInteger voiceSessionGen;
 @property (nonatomic, strong) UIView *readyPill, *gearBadge;
 @property (nonatomic, strong) NSMutableArray *gearButtons, *driveModePills;
 @property (nonatomic, strong) TRD14BlockGraphView *blockGraphView;
@@ -2871,6 +2880,17 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   [self.helpPill addTarget:self action:@selector(openFeatureHelpMenu) forControlEvents:UIControlEventTouchUpInside];
   [self.view addSubview:self.helpPill];
 
+  self.voicePill = [UIButton buttonWithType:UIButtonTypeCustom];
+  self.voicePill.backgroundColor = [UIColor colorWithRed:0.18 green:0.04 blue:0.08 alpha:0.95];
+  self.voicePill.layer.cornerRadius = 10;
+  self.voicePill.layer.borderWidth = 1.2;
+  self.voicePill.layer.borderColor = [UIColor colorWithRed:1.0 green:0.25 blue:0.35 alpha:0.85].CGColor;
+  [self.voicePill setTitle:@"🎙️" forState:UIControlStateNormal];
+  [self.voicePill setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+  self.voicePill.titleLabel.font = [UIFont boldSystemFontOfSize:15.0];
+  [self.voicePill addTarget:self action:@selector(toggleVoiceCommand) forControlEvents:UIControlEventTouchUpInside];
+  [self.view addSubview:self.voicePill];
+
   self.homeCarLightBeams = [[TRDCarLightBeamsView alloc] initWithFrame:CGRectZero];
   self.homeCarLightBeams.hidden = YES;
   [self.view addSubview:self.homeCarLightBeams];
@@ -3616,6 +3636,12 @@ static NSUInteger gTRDUpdateTicks=0;
     self.settingsPill.layer.cornerRadius = 10;
     [self.settingsPill setTitle:@"⚙️ SETTINGS" forState:UIControlStateNormal];
 
+    curRx -= 48;
+    self.voicePill.hidden = NO;
+    self.voicePill.frame = CGRectMake(curRx, barTop, 42, pillH);
+    self.voicePill.layer.cornerRadius = 10;
+    [self.view bringSubviewToFront:self.voicePill];
+
     curRx -= 118;
     self.thaiVoicePill.hidden = NO;
     self.thaiVoicePill.frame = CGRectMake(curRx, barTop, 110, pillH);
@@ -3753,9 +3779,9 @@ static NSUInteger gTRDUpdateTicks=0;
     self.thaiVoicePill.frame = CGRectMake(curRx, barY - 5, 118, pillH);
     [self updateDrive12VPill];
 
-    curRx -= 156;
+    curRx -= 136;
     self.obdStatusPill.hidden = NO;
-    self.obdStatusPill.frame = CGRectMake(curRx, barY - 5, 148, pillH);
+    self.obdStatusPill.frame = CGRectMake(curRx, barY - 5, 130, pillH);
     BOOL obdLiveNow = [TRDOBDClient sharedClient].isConnected;
     UIColor *obdTint = obdLiveNow ? [UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.78 blue:0.30 alpha:1.0];
     [self.obdStatusPill setImage:TRDAutoVectorIcon(1, 16.0, obdTint) forState:UIControlStateNormal];
@@ -3763,14 +3789,19 @@ static NSUInteger gTRDUpdateTicks=0;
     [self.obdStatusPill setTitle:(obdLiveNow ? @"OBD2 LIVE" : @"OBD2 SCAN") forState:UIControlStateNormal];
     [self.obdStatusPill setTitleColor:obdTint forState:UIControlStateNormal];
 
-    curRx -= 112;
+    curRx -= 100;
     self.dayNightPill.hidden = NO;
-    self.dayNightPill.frame = CGRectMake(curRx, barY - 5, 104, pillH);
+    self.dayNightPill.frame = CGRectMake(curRx, barY - 5, 94, pillH);
     [self.dayNightPill setTitle:self.nightMode?@"🌙 กลางคืน":@"☀️ กลางวัน" forState:UIControlStateNormal];
 
-    curRx -= 86;
+    curRx -= 72;
     self.helpPill.hidden = NO;
-    self.helpPill.frame = CGRectMake(curRx, barY - 5, 78, pillH);
+    self.helpPill.frame = CGRectMake(curRx, barY - 5, 66, pillH);
+
+    curRx -= 48;
+    self.voicePill.hidden = NO;
+    self.voicePill.frame = CGRectMake(curRx, barY - 5, 42, pillH);
+    [self.view bringSubviewToFront:self.voicePill];
 
     // Balanced 3-Column Layout: Left (264px), Center (432px), Right (272px)
     CGFloat leftX = 18, leftW = 264;
@@ -4355,9 +4386,15 @@ static NSUInteger gTRDUpdateTicks=0;
     self.helpPill.frame = CGRectMake(curRx, barY + 4, 74, pillH);
     self.helpPill.layer.cornerRadius = 10;
 
+    curRx -= 48;
+    self.voicePill.hidden = NO;
+    self.voicePill.frame = CGRectMake(curRx, barY + 4, 42, pillH);
+    self.voicePill.layer.cornerRadius = 10;
+    [self.view bringSubviewToFront:self.voicePill];
+
     // Remove THAI VOICE pill on Home Mode; show Live Wi-Fi/Hotspot + Bluetooth/Speaker pill instead
     self.thaiVoicePill.hidden = YES;
-    curRx -= 212;
+    curRx -= 190;
     UIButton *connPillH = (UIButton *)[self.view viewWithTag:910];
     if (!connPillH) {
       connPillH = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -4373,7 +4410,7 @@ static NSUInteger gTRDUpdateTicks=0;
       [self.view addSubview:connPillH];
     }
     connPillH.hidden = NO;
-    connPillH.frame = CGRectMake(curRx, barY + 4, 206, pillH);
+    connPillH.frame = CGRectMake(curRx, barY + 4, 182, pillH);
     [self.view bringSubviewToFront:connPillH];
 
     curRx -= 64;
@@ -8179,6 +8216,296 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [ud synchronize];
  [self refreshDriveTripDisplay];
  [self refreshLiveOBDDashboard];
+}
+
+-(void)showVoiceToast:(NSString *)text color:(UIColor *)col autoHide:(NSTimeInterval)delay{
+ if(!self.voiceBanner){
+  CGFloat bw = MIN(520.0, self.view.bounds.size.width - 40.0);
+  self.voiceBanner = [[UILabel alloc]initWithFrame:CGRectMake((self.view.bounds.size.width - bw) * 0.5, 56.0, bw, 38.0)];
+  self.voiceBanner.backgroundColor = [UIColor colorWithRed:0.06 green:0.04 blue:0.09 alpha:0.95];
+  self.voiceBanner.layer.cornerRadius = 19.0;
+  self.voiceBanner.clipsToBounds = YES;
+  self.voiceBanner.layer.borderWidth = 1.4;
+  self.voiceBanner.font = [UIFont boldSystemFontOfSize:14.0];
+  self.voiceBanner.textAlignment = NSTextAlignmentCenter;
+  self.voiceBanner.adjustsFontSizeToFitWidth = YES;
+  self.voiceBanner.minimumScaleFactor = 0.78;
+  [self.view addSubview:self.voiceBanner];
+ }
+ CGFloat bw = MIN(520.0, self.view.bounds.size.width - 40.0);
+ self.voiceBanner.frame = CGRectMake((self.view.bounds.size.width - bw) * 0.5, 56.0, bw, 38.0);
+ self.voiceBanner.layer.borderColor = [(col ?: [UIColor colorWithRed:1.0 green:0.28 blue:0.36 alpha:0.92]) colorWithAlphaComponent:0.90].CGColor;
+ self.voiceBanner.textColor = col ?: [UIColor whiteColor];
+ self.voiceBanner.text = text ?: @"";
+ self.voiceBanner.hidden = NO;
+ [self.view bringSubviewToFront:self.voiceBanner];
+ NSUInteger gen = self.voiceSessionGen;
+ if(delay > 0){
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+   if(!self.voiceListening && self.voiceSessionGen == gen && self.voiceBanner){
+    self.voiceBanner.hidden = YES;
+   }
+  });
+ }
+}
+
+-(void)stopVoiceListeningAndExecute:(BOOL)shouldExecute{
+ NSString *heard = [self.voiceLastTranscript copy];
+ self.voiceListening = NO;
+ self.voiceSessionGen++;
+ if(self.voiceEngine){
+  @try {
+   if(self.voiceEngine.isRunning)[self.voiceEngine stop];
+   [self.voiceEngine.inputNode removeTapOnBus:0];
+  } @catch (NSException *ex) {}
+  self.voiceEngine = nil;
+ }
+ if(self.speechRequest){
+  @try { [self.speechRequest endAudio]; } @catch (NSException *ex) {}
+  self.speechRequest = nil;
+ }
+ if(self.speechTask){
+  @try { [self.speechTask cancel]; } @catch (NSException *ex) {}
+  self.speechTask = nil;
+ }
+ // Restore playback audio session cleanly so music/Bluetooth stereo never drops quality
+ @try {
+  AVAudioSession *sess = [AVAudioSession sharedInstance];
+  [sess setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
+  [sess setActive:YES error:nil];
+ } @catch (NSException *ex) {}
+ [self.voicePill setTitle:@"🎙️" forState:UIControlStateNormal];
+ self.voicePill.backgroundColor = [UIColor colorWithRed:0.18 green:0.04 blue:0.08 alpha:0.95];
+ self.voicePill.layer.borderColor = [UIColor colorWithRed:1.0 green:0.25 blue:0.35 alpha:0.85].CGColor;
+ if(shouldExecute && heard.length > 0){
+  [self executeVoiceCommand:heard];
+ } else if(shouldExecute){
+  [self showVoiceToast:@"🎙️ ไม่ได้ยินคำสั่ง ลองแตะไมค์แล้วพูดใหม่ครับ" color:[UIColor colorWithRed:1.0 green:0.78 blue:0.30 alpha:1.0] autoHide:2.8];
+ } else if(self.voiceBanner){
+  self.voiceBanner.hidden = YES;
+ }
+}
+
+-(void)executeVoiceCommand:(NSString *)raw{
+ NSString *t = [[raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] lowercaseString];
+ if(!t.length) return;
+ // 1. Camera
+ if([t containsString:@"กล้อง"] || [t containsString:@"camera"]){
+  [self showVoiceToast:@"✅ เปิดกล้อง H109" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.2];
+  [self openCamera];
+  return;
+ }
+ // 2. Map / Navigation
+ if([t containsString:@"แผนที่"] || [t containsString:@"นำทาง"] || [t containsString:@"map"]){
+  [self showVoiceToast:@"✅ เปิดแผนที่นำทาง" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.2];
+  if(!self.mapMode){
+   self.mapMode = YES; self.driveMode = NO; self.carplayMode = NO; self.carplayGridMode = NO; self.tripMode = NO;
+   [self.view setNeedsLayout];
+  }
+  return;
+ }
+ // 3. Drive Mode
+ if([t containsString:@"โหมดขับ"] || [t containsString:@"ไดรฟ์"] || [t containsString:@"drive"]){
+  [self showVoiceToast:@"✅ เข้าสู่ Drive Mode" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.2];
+  if(!self.driveMode)[self toggleDrive];
+  return;
+ }
+ // 4. Home / Dashboard
+ if([t containsString:@"หน้าแรก"] || [t containsString:@"หน้าหลัก"] || [t containsString:@"แดชบอร์ด"] || [t containsString:@"โฮม"] || [t containsString:@"home"]){
+  [self showVoiceToast:@"✅ กลับหน้าหลัก CarDash" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.2];
+  self.driveMode = NO; self.mapMode = NO; self.carplayMode = NO; self.carplayGridMode = NO; self.tripMode = NO;
+  [self.view setNeedsLayout];
+  return;
+ }
+ // 5. Night / Day Mode
+ if([t containsString:@"กลางคืน"] || [t containsString:@"night"]){
+  if(!self.nightMode)[self toggleNight];
+  [self showVoiceToast:@"✅ เปิดโหมดกลางคืน" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.2];
+  return;
+ }
+ if([t containsString:@"กลางวัน"] || [t containsString:@"day"]){
+  if(self.nightMode)[self toggleNight];
+  [self showVoiceToast:@"✅ เปิดโหมดกลางวัน" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.2];
+  return;
+ }
+ // 6. Fuel prices
+ if([t containsString:@"น้ำมัน"] || [t containsString:@"ราคา"]){
+  [self showVoiceToast:@"✅ เปิดราคาน้ำมันสด" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.2];
+  [self openFuelPriceSettings];
+  return;
+ }
+ // 7. Trip Summary
+ if([t containsString:@"สรุป"] || [t containsString:@"ทริป"] || [t containsString:@"รายวัน"]){
+  [self showVoiceToast:@"✅ เปิดสรุปทริปขับขี่" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.2];
+  [self showTripSummary];
+  return;
+ }
+ // 8. Playback controls
+ Boolean (*pMRCmd)(int, id) = dlsym(RTLD_DEFAULT, "MRMediaRemoteSendCommand");
+ if([t containsString:@"หยุดเพลง"] || [t containsString:@"พักเพลง"] || [t containsString:@"ปิดเพลง"] || [t containsString:@"pause"] || [t containsString:@"stop"]){
+  [self showVoiceToast:@"⏸ หยุดเล่นเพลง" color:[UIColor colorWithRed:0.25 green:0.92 blue:1.0 alpha:1.0] autoHide:2.2];
+  if(pMRCmd) pMRCmd(1, nil);
+  return;
+ }
+ if([t containsString:@"ถัดไป"] || [t containsString:@"ข้ามเพลง"] || [t containsString:@"เปลี่ยนเพลง"] || [t containsString:@"next"]){
+  [self showVoiceToast:@"⏭ เพลงถัดไป" color:[UIColor colorWithRed:0.25 green:0.92 blue:1.0 alpha:1.0] autoHide:2.2];
+  if(pMRCmd) pMRCmd(4, nil);
+  return;
+ }
+ if([t containsString:@"ก่อนหน้า"] || [t containsString:@"ย้อนเพลง"] || [t containsString:@"previous"]){
+  [self showVoiceToast:@"⏮ เพลงก่อนหน้า" color:[UIColor colorWithRed:0.25 green:0.92 blue:1.0 alpha:1.0] autoHide:2.2];
+  if(pMRCmd) pMRCmd(5, nil);
+  return;
+ }
+ // 9. Music play or Song/Artist search on YouTube
+ NSString *q = raw;
+ NSArray *fillers = @[@"เปิดเพลง",@"เล่นเพลง",@"ขอเพลง",@"ค้นหาเพลง",@"หาเพลง",@"เปิดยูทูบ",@"ในยูทูบ",@"ยูทูบ",@"youtube",@"ในคาร์แดช",@"คาร์แดช",@"ให้หน่อย",@"หน่อย",@"ครับ",@"ค่ะ",@"เปิด",@"เล่น"];
+ for(NSString *f in fillers){
+  q = [q stringByReplacingOccurrencesOfString:f withString:@"" options:NSCaseInsensitiveSearch range:NSMakeRange(0, q.length)];
+ }
+ q = [q stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+ if(!q.length && ([t containsString:@"เพลง"] || [t containsString:@"music"] || [t containsString:@"play"])){
+  [self showVoiceToast:@"▶️ เล่นเพลงต่อบน CarDash" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.2];
+  if(pMRCmd) pMRCmd(0, nil);
+  return;
+ }
+ if(q.length > 0){
+  [self showVoiceToast:[NSString stringWithFormat:@"🎵 ค้นหา YouTube: %@", q] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:3.0];
+  NSString *enc = [q stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]] ?: @"";
+  NSURL *ytApp = [NSURL URLWithString:[NSString stringWithFormat:@"youtube://www.youtube.com/results?search_query=%@", enc]];
+  NSURL *ytWeb = [NSURL URLWithString:[NSString stringWithFormat:@"https://m.youtube.com/results?search_query=%@", enc]];
+  UIApplication *app = [UIApplication sharedApplication];
+  if(ytApp && [app canOpenURL:ytApp]){
+   [app openURL:ytApp options:@{} completionHandler:nil];
+  } else if(ytWeb){
+   [app openURL:ytWeb options:@{} completionHandler:nil];
+  } else {
+   [self openYouTubeSource];
+  }
+ } else {
+  [self showVoiceToast:[NSString stringWithFormat:@"🎙️ ได้ยิน: %@", raw] color:[UIColor colorWithRed:1.0 green:0.85 blue:0.35 alpha:1.0] autoHide:2.8];
+ }
+}
+
+-(void)startVoiceListening{
+ if(self.voiceListening) return;
+ self.voiceListening = YES;
+ self.voiceLastTranscript = @"";
+ self.voiceSessionGen++;
+ NSUInteger gen = self.voiceSessionGen;
+
+ [self.voicePill setTitle:@"⏹" forState:UIControlStateNormal];
+ self.voicePill.backgroundColor = [UIColor colorWithRed:0.85 green:0.08 blue:0.16 alpha:0.98];
+ self.voicePill.layer.borderColor = [UIColor whiteColor].CGColor;
+ [self showVoiceToast:@"🎙️ กำลังฟัง... พูดคำสั่งได้เลย (เช่น เสก โลโซ / เปิดกล้อง / แผนที่)" color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:0];
+
+ @try {
+  AVAudioSession *sess = [AVAudioSession sharedInstance];
+  [sess setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:(AVAudioSessionCategoryOptionDefaultToSpeaker|AVAudioSessionCategoryOptionAllowBluetooth|AVAudioSessionCategoryOptionDuckOthers) error:nil];
+  [sess setMode:AVAudioSessionModeMeasurement error:nil];
+  [sess setActive:YES withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+
+  if(!self.speechRecognizer){
+   self.speechRecognizer = [[SFSpeechRecognizer alloc]initWithLocale:[NSLocale localeWithLocaleIdentifier:@"th-TH"]];
+  }
+  if(!self.speechRecognizer || !self.speechRecognizer.isAvailable){
+   [self stopVoiceListeningAndExecute:NO];
+   [self showVoiceToast:@"⚠️ สั่งเสียงต้องเชื่อมต่อเน็ต Hotspot ก่อนครับ" color:[UIColor colorWithRed:1.0 green:0.65 blue:0.20 alpha:1.0] autoHide:3.5];
+   return;
+  }
+
+  self.voiceEngine = [[AVAudioEngine alloc]init];
+  self.speechRequest = [[SFSpeechAudioBufferRecognitionRequest alloc]init];
+  self.speechRequest.shouldReportPartialResults = YES;
+
+  AVAudioInputNode *inputNode = self.voiceEngine.inputNode;
+  AVAudioFormat *fmt = [inputNode outputFormatForBus:0];
+  __weak Dashboard *weakSelf = self;
+  [inputNode installTapOnBus:0 bufferSize:1024 format:fmt block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when){
+   Dashboard *s = weakSelf;
+   if(s && s.speechRequest)[s.speechRequest appendAudioPCMBuffer:buffer];
+  }];
+
+  [self.voiceEngine prepare];
+  NSError *startErr = nil;
+  [self.voiceEngine startAndReturnError:&startErr];
+  if(startErr){
+   [self stopVoiceListeningAndExecute:NO];
+   [self showVoiceToast:@"⚠️ เปิดไมโครโฟนไม่สำเร็จ กรุณาเช็กสิทธิ์ไมค์ครับ" color:[UIColor colorWithRed:1.0 green:0.45 blue:0.35 alpha:1.0] autoHide:3.5];
+   return;
+  }
+
+  self.speechTask = [self.speechRecognizer recognitionTaskWithRequest:self.speechRequest resultHandler:^(SFSpeechRecognitionResult *result, NSError *error){
+   dispatch_async(dispatch_get_main_queue(), ^{
+    Dashboard *s = weakSelf;
+    if(!s || !s.voiceListening || s.voiceSessionGen != gen) return;
+    if(result){
+     NSString *txt = result.bestTranscription.formattedString;
+     if(txt.length > 0){
+      s.voiceLastTranscript = txt;
+      [s showVoiceToast:[NSString stringWithFormat:@"🎙️ %@", txt] color:[UIColor whiteColor] autoHide:0];
+      if(result.isFinal){
+       [s stopVoiceListeningAndExecute:YES];
+       return;
+      }
+      // Auto-execute after 1.3s pause once user finishes speaking
+      NSString *snap = [txt copy];
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+       Dashboard *s2 = weakSelf;
+       if(s2 && s2.voiceListening && s2.voiceSessionGen == gen && [s2.voiceLastTranscript isEqualToString:snap]){
+        [s2 stopVoiceListeningAndExecute:YES];
+       }
+      });
+     }
+    }
+    if(error){
+     [s stopVoiceListeningAndExecute:(s.voiceLastTranscript.length > 0)];
+    }
+   });
+  }];
+
+  // Hard cap at 5.5 seconds so mic never stays open
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+   Dashboard *s = weakSelf;
+   if(s && s.voiceListening && s.voiceSessionGen == gen){
+    [s stopVoiceListeningAndExecute:YES];
+   }
+  });
+ } @catch (NSException *ex) {
+  [self stopVoiceListeningAndExecute:NO];
+  [self showVoiceToast:@"⚠️ ระบบสั่งเสียงขัดข้องชั่วคราว" color:[UIColor colorWithRed:1.0 green:0.45 blue:0.35 alpha:1.0] autoHide:3.0];
+ }
+}
+
+-(void)toggleVoiceCommand{
+ if(self.voiceListening){
+  [self stopVoiceListeningAndExecute:(self.voiceLastTranscript.length > 0)];
+  return;
+ }
+ SFSpeechRecognizerAuthorizationStatus st = [SFSpeechRecognizer authorizationStatus];
+ if(st == SFSpeechRecognizerAuthorizationStatusAuthorized){
+  [[AVAudioSession sharedInstance] requestRecordPermission:^(BOOL granted){
+   dispatch_async(dispatch_get_main_queue(), ^{
+    if(granted)[self startVoiceListening];
+    else [self showVoiceToast:@"⚠️ กรุณาอนุญาตสิทธิ์ไมโครโฟนใน Settings ครับ" color:[UIColor colorWithRed:1.0 green:0.55 blue:0.25 alpha:1.0] autoHide:3.5];
+   });
+  }];
+ } else {
+  [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus newSt){
+   dispatch_async(dispatch_get_main_queue(), ^{
+    if(newSt == SFSpeechRecognizerAuthorizationStatusAuthorized){
+     [[AVAudioSession sharedInstance] requestRecordPermission:^(BOOL granted){
+      dispatch_async(dispatch_get_main_queue(), ^{
+       if(granted)[self startVoiceListening];
+       else [self showVoiceToast:@"⚠️ กรุณาอนุญาตสิทธิ์ไมโครโฟนใน Settings ครับ" color:[UIColor colorWithRed:1.0 green:0.55 blue:0.25 alpha:1.0] autoHide:3.5];
+      });
+     }];
+    } else {
+     [self showVoiceToast:@"⚠️ กรุณาอนุญาต Speech Recognition ใน Settings ครับ" color:[UIColor colorWithRed:1.0 green:0.55 blue:0.25 alpha:1.0] autoHide:3.5];
+    }
+   });
+  }];
+ }
 }
 
 -(void)openFuelPriceSettings{

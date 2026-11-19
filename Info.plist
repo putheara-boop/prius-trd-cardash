@@ -68,7 +68,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>25</string>
+	<string>26</string>
 	<key>MinimumOSVersion</key>
 	<string>9.0</string>
 	<key>NSAppTransportSecurity</key>
@@ -76,8 +76,16 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Track driving speed, distance, and accumulate GPS trip data for Prius TRD HUD.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Track driving speed, distance, and accumulate GPS trip data for Prius TRD HUD.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Automatically accumulate your GPS trip while moving, including while other apps are open. Totals stay saved until you reset.</string>
+	<string>Track driving speed, distance, and accumulate GPS trip data for Prius TRD HUD.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ใช้ไมโครโฟนสำหรับคำสั่งเสียงควบคุม CarDash</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>ใช้การแปลงเสียงเป็นข้อความภาษาไทยสำหรับคำสั่งเสียงใน CarDash</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
