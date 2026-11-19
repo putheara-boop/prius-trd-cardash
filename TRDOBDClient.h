@@ -73,6 +73,9 @@ extern NSString * const TRDOBDGearChangedNotification;
 @property (nonatomic, assign, readonly) BOOL tailLightsOn;            // Parking / Tail lights active
 @property (nonatomic, assign, readonly) BOOL headlightsOn;            // Low-beam or High-beam headlights active
 @property (nonatomic, assign, readonly) BOOL highBeamOn;              // High-beam active
+@property (nonatomic, assign, readonly) BOOL turnLeftOn;              // Left turn signal active
+@property (nonatomic, assign, readonly) BOOL turnRightOn;             // Right turn signal active
+@property (nonatomic, assign, readonly) BOOL hazardOn;                // Hazard lights active (both left & right)
 @property (nonatomic, copy, readonly) NSString *lightStateLabel;      // Short lighting state label
 @property (nonatomic, assign, readonly) BOOL autoDoorLockEnabled;    // Auto-lock at >= 20 km/h via Body ECU 750
 @property (nonatomic, assign, readonly) BOOL autoDoorUnlockOnParkEnabled; // Auto-unlock when shifting to P

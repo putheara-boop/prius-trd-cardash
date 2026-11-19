@@ -147,6 +147,9 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 @property (nonatomic, assign, readwrite) BOOL tailLightsOn;
 @property (nonatomic, assign, readwrite) BOOL headlightsOn;
 @property (nonatomic, assign, readwrite) BOOL highBeamOn;
+@property (nonatomic, assign, readwrite) BOOL turnLeftOn;
+@property (nonatomic, assign, readwrite) BOOL turnRightOn;
+@property (nonatomic, assign, readwrite) BOOL hazardOn;
 @property (nonatomic, copy, readwrite) NSString *lightStateLabel;
 @property (nonatomic, copy) NSString *lastLoggedCAN622Hex;
 @property (nonatomic, assign) NSUInteger can622Misses;
@@ -1477,11 +1480,20 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
          len > 1 ? raw[1] : 0, len > 2 ? raw[2] : 0, len > 3 ? raw[3] : 0, len > 4 ? raw[4] : 0];
     }
 
-    // Toyota ZVW30 BO_ 1570 (0x622) LIGHT_STALK: raw[3] bits 28..30 -> 0x10 Park, 0x20 Low Beam, 0x40 High Beam
+    // Toyota ZVW30 BO_ 1570 (0x622) LIGHT_STALK: raw[3] bits -> 0x10 Park, 0x20 Low Beam, 0x40 High Beam, 0x04/0x08 Turn signals
     if (len >= 4) {
         BOOL tail = (raw[3] & 0x10) != 0;
         BOOL low  = (raw[3] & 0x20) != 0;
         BOOL high = (raw[3] & 0x40) != 0;
+        BOOL tLeft  = (raw[3] & 0x04) != 0;
+        BOOL tRight = (raw[3] & 0x08) != 0;
+        BOOL tHaz   = (tLeft && tRight);
+        if (self.turnLeftOn != tLeft || self.turnRightOn != tRight || self.hazardOn != tHaz) {
+            self.turnLeftOn = tLeft;
+            self.turnRightOn = tRight;
+            self.hazardOn = tHaz;
+            [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+        }
         [self updateLightingWithTail:tail low:low high:high source:@"CAN 0x622"];
     }
     return YES;

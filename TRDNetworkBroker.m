@@ -71,6 +71,7 @@ static NSString *CurrentAddress(void){
 @property (nonatomic, assign) BOOL scanInFlight;
 @property (nonatomic, strong) NSDate *scanStartedAt;
 @property (nonatomic, strong) NSTimer *timer;
+@property (nonatomic, strong) NSTimer *watchdogTimer;
 @property (nonatomic, strong) NSDate *deadline,*attemptDeadline,*retryAt,*stableSince;
 @property (nonatomic, assign) NSUInteger attempt;
 @property (nonatomic, assign) BOOL callbackDone;
@@ -91,6 +92,8 @@ static NSString *CurrentAddress(void){
 -(void)scanReturned:(NSArray *)results error:(int)error;
 -(void)failed:(NSString *)error;
 -(void)returnMedia;
+-(void)watchdogTick;
+-(void)applyEQPresetFromPlist;
 -(BOOL)isCurrentOnTarget;
 -(BOOL)addressReady;
 @end
@@ -145,6 +148,10 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  if(devices&&CFArrayGetCount(devices))_device=CFRetain(CFArrayGetValueAtIndex(devices,0));
  if(devices)CFRelease(devices);
  sActiveDevice=_device;
+ if(_device!=NULL){
+  self.watchdogTimer=[NSTimer scheduledTimerWithTimeInterval:6.0 target:self selector:@selector(watchdogTick) userInfo:nil repeats:YES];
+  self.watchdogTimer.tolerance=1.0;
+ }
  return _device!=NULL;
 }
 
@@ -302,13 +309,9 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  self.forceInternetSwitch=force;
  
  BOOL didDisassociate=NO;
- // Proactively tear down previous Wi-Fi when switching to camera, OR when leaving camera Wi-Fi explicitly (e.g. R -> D)
- if([mode isEqual:@"camera"]&&!currentIsCamera&&current.length){
-  if(Disassociate&&_device)Disassociate(_device);
-  if(CancelAssociation&&_device)CancelAssociation(_device);
-  didDisassociate=YES;
-  [self writePhase:@"disassociating" error:nil];
- }else if([mode isEqual:@"internet"]&&currentIsCamera&&(force||current.length)){
+ // For camera mode: let WiFiDeviceClientAssociateAsync hand off directly to H109 on attempt 1 (faster than manual Disassociate + stall).
+ // For internet mode leaving camera Wi-Fi (e.g. R -> D): proactively tear down camera Wi-Fi so hotspot joins immediately.
+ if([mode isEqual:@"internet"]&&currentIsCamera&&(force||current.length)){
   if(Disassociate&&_device)Disassociate(_device);
   if(CancelAssociation&&_device)CancelAssociation(_device);
   didDisassociate=YES;
@@ -322,7 +325,7 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  self.stableSince=nil;
  self.retryAt=didDisassociate?[NSDate dateWithTimeIntervalSinceNow:0.10]:nil;
  
- self.deadline=[NSDate dateWithTimeIntervalSinceNow:[mode isEqual:@"camera"]?12.0:(force?14.0:12.0)];
+ self.deadline=[NSDate dateWithTimeIntervalSinceNow:[mode isEqual:@"camera"]?10.0:(force?18.0:14.0)];
  self.timer=[NSTimer scheduledTimerWithTimeInterval:0.08 target:self selector:@selector(tick) userInfo:nil repeats:YES];
  self.timer.tolerance=0.02;
  if(!didDisassociate){
@@ -420,7 +423,7 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
   return;
  }
  
- self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:[self.mode isEqual:@"camera"]?4.0:6.0];
+ self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:[self.mode isEqual:@"camera"]?2.5:6.0];
  [self writePhase:@"joining" error:nil];
  
  int result=Associate(_device,_network,AssociationReturned,NULL);
@@ -477,7 +480,7 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
    [self failed:@"Could not join network. Check hotspot availability."];
    return;
   }
-  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.5];
+  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:[self.mode isEqual:@"camera"]?0.15:0.5];
  }else if(onTarget&&[self.attemptDeadline timeIntervalSinceNow]<=0){
   self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:4.0];
  }
@@ -488,6 +491,45 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  self.timer=nil;
  [self writePhase:@"error" error:error];
 }
+
+-(void)watchdogTick{@autoreleasepool{
+ if(self.timer)return;
+ if([self.mode isEqual:@"camera"])return;
+ // Parked/screen-off battery guard: never scan or wake Wi-Fi when display is off
+ NSDictionary *pwr=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/sb-power-state.plist"];
+ if(pwr && pwr[@"screenIsOn"] && ![pwr[@"screenIsOn"] boolValue])return;
+ NSString *current=CurrentSSID();
+ NSString *addr=CurrentAddress();
+ NSString *camPrefix=self.cameraPrefix.length?self.cameraPrefix:@"192.168.169.";
+ BOOL currentIsCamera=([current localizedCaseInsensitiveContainsString:@"H109"]||[current localizedCaseInsensitiveContainsString:@"H108"]||[addr hasPrefix:camPrefix]);
+ BOOL hasValidInternet=(current.length && !currentIsCamera && addr.length && ![addr hasPrefix:@"169.254."] && ![addr isEqual:@"0.0.0.0"]);
+ if(hasValidInternet){
+  if(!self.mode.length)self.mode=@"internet";
+  self.lastInternetSSID=current;
+  return;
+ }
+ // Active/driving in internet mode (or unattached while awake): auto-hunt hotspot so YouTube/audioNINJA stay online
+ [self request:@"internet" force:YES];
+}}
+
+-(void)applyEQPresetFromPlist{@autoreleasepool{
+ NSDictionary *src=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/sound-source.plist"];
+ NSString *preset=src[@"preset"];
+ if(![preset isKindOfClass:[NSString class]]||!preset.length)return;
+ NSString *clean=[preset hasPrefix:@"TRD "]?[preset substringFromIndex:4]:preset;
+ NSArray *allowed=@[@"Rock",@"Dance",@"Pop",@"Jazz",@"Classical",@"Flat"];
+ if(![allowed containsObject:clean])return;
+ NSString *target=[clean copy];
+ dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH,0),^{
+  char *args[]={(char *)"/bin/sh",(char *)"/usr/local/bin/trd-eqe",(char *)target.UTF8String,NULL};
+  char *envp[]={(char *)"PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",(char *)"HOME=/var/root",NULL};
+  pid_t child=0;
+  if(posix_spawn(&child,args[0],NULL,NULL,args,envp)==0 && child>0){
+   pid_t(*wait)(pid_t,int *,int)=dlsym(RTLD_DEFAULT,"waitpid");
+   if(wait)wait(child,NULL,0);
+  }
+ });
+}}
 
 -(void)returnMedia{
  NSDictionary *saved=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/last-media.plist"];
@@ -528,10 +570,11 @@ int main(int argc,char **argv){@autoreleasepool{
  TRDCarWatch *carWatch=[TRDCarWatch new];
  broker=[TRDNetworkBroker new];
  if(![broker start])return 1;
- int cam=0,net=0,forceNet=0;
+ int cam=0,net=0,forceNet=0,eqApply=0;
  notify_register_dispatch("com.codex.trd.network.camera",&cam,dispatch_get_main_queue(),^(int t){[broker request:@"camera" force:YES];});
  notify_register_dispatch("com.codex.trd.network.internet",&net,dispatch_get_main_queue(),^(int t){[broker request:@"internet" force:NO];});
  notify_register_dispatch("com.codex.trd.network.internet.force",&forceNet,dispatch_get_main_queue(),^(int t){[broker request:@"internet" force:YES];});
+ notify_register_dispatch("com.codex.trd.eqe.apply",&eqApply,dispatch_get_main_queue(),^(int t){[broker applyEQPresetFromPlist];});
  CFRunLoopRun();
  (void)carWatch;
  return 0;

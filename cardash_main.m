@@ -510,55 +510,64 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   }
   return self;
 }
-- (void)drawChevronsFrom:(CGPoint)p1 to:(CGPoint)p2 color:(UIColor *)col phase:(CGFloat)ph count:(NSInteger)cnt ctx:(CGContextRef)ctx {
+- (void)drawFlowSegmentFrom:(CGPoint)p1 to:(CGPoint)p2 color:(UIColor *)col active:(BOOL)active ctx:(CGContextRef)ctx {
   CGFloat dx = p2.x - p1.x, dy = p2.y - p1.y;
   CGFloat len = hypot(dx, dy);
   if (len < 6.0) return;
   CGFloat ux = dx / len, uy = dy / len;
   CGFloat px = -uy, py = ux;
-  CGContextSetStrokeColorWithColor(ctx, [col colorWithAlphaComponent:0.28].CGColor);
-  CGContextSetLineWidth(ctx, 3.0);
-  CGContextSetLineCap(ctx, kCGLineCapRound);
-  CGContextMoveToPoint(ctx, p1.x, p1.y);
-  CGContextAddLineToPoint(ctx, p2.x, p2.y);
-  CGContextStrokePath(ctx);
 
-  CGContextSetLineWidth(ctx, 2.2);
-  for (NSInteger i = 0; i < cnt; i++) {
-    CGFloat t = fmod(((CGFloat)i / (CGFloat)cnt) + ph, 1.0);
-    if (t < 0.0) t += 1.0;
-    CGFloat alpha = sin(t * M_PI) * 0.95;
-    if (alpha <= 0.08) continue;
-    CGFloat cx = p1.x + dx * t;
-    CGFloat cy = p1.y + dy * t;
-    CGFloat head = 4.5, wing = 3.8;
-    CGContextSetStrokeColorWithColor(ctx, [col colorWithAlphaComponent:alpha].CGColor);
-    CGContextMoveToPoint(ctx, cx - ux * head + px * wing, cy - uy * head + py * wing);
-    CGContextAddLineToPoint(ctx, cx + ux * 1.5, cy + uy * 1.5);
-    CGContextAddLineToPoint(ctx, cx - ux * head - px * wing, cy - uy * head - py * wing);
+  // Base static flowchart conduit track
+  CGContextSetLineCap(ctx, kCGLineCapRound);
+  if (active) {
+    // Soft outer glow + crisp glowing core line (clean static flowchart style, no flying arrows)
+    CGContextSetStrokeColorWithColor(ctx, [col colorWithAlphaComponent:0.28].CGColor);
+    CGContextSetLineWidth(ctx, 5.5);
+    CGContextMoveToPoint(ctx, p1.x, p1.y);
+    CGContextAddLineToPoint(ctx, p2.x, p2.y);
+    CGContextStrokePath(ctx);
+
+    CGContextSetStrokeColorWithColor(ctx, [col colorWithAlphaComponent:0.95].CGColor);
+    CGContextSetLineWidth(ctx, 2.2);
+    CGContextMoveToPoint(ctx, p1.x, p1.y);
+    CGContextAddLineToPoint(ctx, p2.x, p2.y);
+    CGContextStrokePath(ctx);
+
+    // Single crisp centered directional indicator on active flowchart segment
+    CGFloat mx = (p1.x + p2.x) * 0.5;
+    CGFloat my = (p1.y + p2.y) * 0.5;
+    CGFloat head = 4.2, wing = 3.2;
+    CGContextSetFillColorWithColor(ctx, col.CGColor);
+    CGContextMoveToPoint(ctx, mx + ux * head, my + uy * head);
+    CGContextAddLineToPoint(ctx, mx - ux * (head * 0.7) + px * wing, my - uy * (head * 0.7) + py * wing);
+    CGContextAddLineToPoint(ctx, mx - ux * (head * 0.7) - px * wing, my - uy * (head * 0.7) - py * wing);
+    CGContextClosePath(ctx);
+    CGContextFillPath(ctx);
+  } else {
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.35 green:0.55 blue:0.70 alpha:0.28].CGColor);
+    CGContextSetLineWidth(ctx, 1.8);
+    CGContextMoveToPoint(ctx, p1.x, p1.y);
+    CGContextAddLineToPoint(ctx, p2.x, p2.y);
     CGContextStrokePath(ctx);
   }
 }
 - (void)drawSpinningRimAt:(CGPoint)c r:(CGFloat)r angle:(CGFloat)ang glow:(UIColor *)glow ctx:(CGContextRef)ctx {
-  if (glow) {
-    CGContextSetStrokeColorWithColor(ctx, [glow colorWithAlphaComponent:0.75].CGColor);
-    CGContextSetLineWidth(ctx, 2.0);
-    CGContextAddArc(ctx, c.x, c.y, r + 1.5, 0, M_PI * 2.0, 0);
+  // Clean alloy rim rotation only when moving (no blue circle ring or blue center dot)
+  (void)glow;
+  if (self.kmh <= 1.0) return;
+  CGContextSaveGState(ctx);
+  CGContextAddArc(ctx, c.x, c.y, r * 0.86, 0, M_PI * 2.0, 0);
+  CGContextClip(ctx);
+  CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:0.88 alpha:0.52].CGColor);
+  CGContextSetLineWidth(ctx, 1.5);
+  CGContextSetLineCap(ctx, kCGLineCapRound);
+  for (int k = 0; k < 5; k++) {
+    CGFloat a = ang + (M_PI * 2.0 * k / 5.0);
+    CGContextMoveToPoint(ctx, c.x + cos(a) * (r * 0.22), c.y + sin(a) * (r * 0.22));
+    CGContextAddLineToPoint(ctx, c.x + cos(a) * (r * 0.82), c.y + sin(a) * (r * 0.82));
     CGContextStrokePath(ctx);
   }
-  if (self.kmh > 1.0) {
-    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:0.96 alpha:0.65].CGColor);
-    CGContextSetLineWidth(ctx, 1.6);
-    CGContextSetLineCap(ctx, kCGLineCapRound);
-    for (int k = 0; k < 5; k++) {
-      CGFloat a = ang + (M_PI * 2.0 * k / 5.0);
-      CGContextMoveToPoint(ctx, c.x + cos(a) * (r * 0.28), c.y + sin(a) * (r * 0.28));
-      CGContextAddLineToPoint(ctx, c.x + cos(a) * (r * 0.84), c.y + sin(a) * (r * 0.84));
-      CGContextStrokePath(ctx);
-    }
-  }
-  CGContextSetFillColorWithColor(ctx, [UIColor colorWithRed:0.15 green:0.90 blue:1.0 alpha:0.9].CGColor);
-  CGContextFillEllipseInRect(ctx, CGRectMake(c.x - 2.5, c.y - 2.5, 5.0, 5.0));
+  CGContextRestoreGState(ctx);
 }
 - (void)drawRect:(CGRect)rect {
   CGContextRef ctx = UIGraphicsGetCurrentContext();
@@ -566,60 +575,78 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   CGFloat h = self.bounds.size.height;
   if (w <= 0 || h <= 0) return;
 
-  // Aligned precisely to TRDRealPrius.png wheel center caps inside aspect-fit bounds
+  // Aligned precisely to TRDRealPrius.png wheel centers (used only for moving alloy spoke rotation)
   CGPoint fHub = CGPointMake(w * 0.195, h * 0.658);
   CGPoint rHub = CGPointMake(w * 0.776, h * 0.658);
   CGFloat wheelR = MIN(w, h) * 0.135;
 
-  CGPoint icePt = CGPointMake(w * 0.255, h * 0.495);
-  CGPoint mgPt  = CGPointMake(w * 0.220, h * 0.605);
-  CGPoint busJoin = CGPointMake(w * 0.340, h * 0.535);
-  CGRect batR   = CGRectMake(w * 0.675, h * 0.460, w * 0.145, h * 0.115);
-  CGPoint batPt = CGPointMake(CGRectGetMinX(batR), CGRectGetMidY(batR));
+  // Balanced body-aligned Flowchart layout (zero overlap with windows, door handles, or wheels):
+  // Engine in front hood -> Central PCU below door handles -> HV Battery in rear quarter (fuel door zone)
+  CGRect iceR = CGRectMake(w * 0.145, h * 0.455, 24, 15);
+  CGPoint iceOut = CGPointMake(CGRectGetMaxX(iceR) + 2, CGRectGetMidY(iceR) + 2);
+
+  CGRect pcuR = CGRectMake(w * 0.445, h * 0.565, 24, 15);
+  CGPoint pcuLeft  = CGPointMake(CGRectGetMinX(pcuR) - 2, CGRectGetMidY(pcuR));
+  CGPoint pcuRight = CGPointMake(CGRectGetMaxX(pcuR) + 2, CGRectGetMidY(pcuR));
+
+  CGRect batR = CGRectMake(w * 0.700, h * 0.455, w * 0.125, h * 0.105);
+  CGPoint batIn = CGPointMake(CGRectGetMinX(batR) - 2, CGRectGetMidY(batR) + 2);
 
   BOOL iceActive = (self.engineRPM > 100);
   BOOL regen = self.isBraking || (self.hvCurrent < -0.9 && self.engineRPM < 1350);
   BOOL hvDischarging = (self.hvCurrent > 0.8) || (!iceActive && !regen && self.kmh > 1.5);
   BOOL hvCharging = (self.hvCurrent < -0.5);
 
-  // 1. Sleek Prius 2026 Powertrain Connecting Bus Rails (always softly visible so diagram reads unified)
-  UIColor *idleBus = [UIColor colorWithRed:0.30 green:0.65 blue:0.85 alpha:0.26];
-  CGContextSetLineWidth(ctx, 2.0);
-  CGContextSetLineCap(ctx, kCGLineCapRound);
-  CGContextSetStrokeColorWithColor(ctx, idleBus.CGColor);
-  CGContextMoveToPoint(ctx, icePt.x, icePt.y);
-  CGContextAddLineToPoint(ctx, busJoin.x, busJoin.y);
-  CGContextAddLineToPoint(ctx, batPt.x, batPt.y);
-  CGContextMoveToPoint(ctx, busJoin.x, busJoin.y);
-  CGContextAddLineToPoint(ctx, mgPt.x, mgPt.y);
-  CGContextStrokePath(ctx);
+  UIColor *iceCol = [UIColor colorWithRed:1.0 green:0.74 blue:0.18 alpha:1.0];
+  UIColor *evCol  = [UIColor colorWithRed:0.15 green:0.92 blue:1.0 alpha:1.0];
+  UIColor *chgCol = [UIColor colorWithRed:0.22 green:0.98 blue:0.54 alpha:1.0];
 
-  // 2. Minimalist Glowing Engine Core (ICE) — clean metallic block silhouette (no boxy text label)
-  CGRect iceR = CGRectMake(icePt.x - 14, icePt.y - 9, 28, 18);
+  // 1. Clean Flowchart Conduits (Front Hood Engine <-> Lower-Door Central PCU <-> Rear Fuel-Zone HV Battery)
+  [self drawFlowSegmentFrom:iceOut to:pcuLeft color:iceCol active:iceActive ctx:ctx];
+  if (regen || hvCharging) {
+    [self drawFlowSegmentFrom:pcuRight to:batIn color:chgCol active:YES ctx:ctx];
+  } else if (hvDischarging) {
+    [self drawFlowSegmentFrom:batIn to:pcuRight color:evCol active:YES ctx:ctx];
+  } else {
+    [self drawFlowSegmentFrom:pcuRight to:batIn color:evCol active:NO ctx:ctx];
+  }
+
+  // 2. Engine Core Block (ICE) — clear of front wheel arch
   UIBezierPath *iceBox = [UIBezierPath bezierPathWithRoundedRect:iceR cornerRadius:4.0];
-  [[UIColor colorWithRed:iceActive ? 0.95 : 0.16 green:iceActive ? 0.52 : 0.22 blue:iceActive ? 0.10 : 0.28 alpha:iceActive ? 0.80 : 0.55] setFill];
+  [[UIColor colorWithRed:iceActive ? 0.92 : 0.08 green:iceActive ? 0.48 : 0.12 blue:iceActive ? 0.08 : 0.16 alpha:iceActive ? 0.88 : 0.78] setFill];
   [iceBox fill];
-  [[UIColor colorWithRed:iceActive ? 1.0 : 0.45 green:iceActive ? 0.78 : 0.55 blue:iceActive ? 0.25 : 0.65 alpha:iceActive ? 0.95 : 0.55] setStroke];
+  [[UIColor colorWithRed:iceActive ? 1.0 : 0.42 green:iceActive ? 0.78 : 0.56 blue:iceActive ? 0.25 : 0.68 alpha:iceActive ? 0.95 : 0.65] setStroke];
   iceBox.lineWidth = 1.3;
   [iceBox stroke];
-  // 3 minimalist cylinder ribs inside engine core
   for (int c = 0; c < 3; c++) {
     CGFloat rx = iceR.origin.x + 5.5 + c * 6.5;
-    [[UIColor colorWithWhite:1.0 alpha:iceActive ? 0.85 : 0.30] setFill];
+    [[UIColor colorWithWhite:1.0 alpha:iceActive ? 0.88 : 0.35] setFill];
     UIRectFill(CGRectMake(rx, iceR.origin.y + 4.0, 3.5, iceR.size.height - 8.0));
   }
 
-  // 3. Sleek Isometric Prius 2026 HV Battery Stack in trunk (tilted 3D cells matching Gen-5 cluster)
-  CGContextSaveGState(ctx);
-  CGAffineTransform skew = CGAffineTransformMake(1.0, 0.0, -0.22, 1.0, batR.origin.x * 0.22, 0.0);
-  CGContextConcatCTM(ctx, skew);
+  // 3. Central Inverter / PCU Divider Node (separates front powertrain from rear HV pack)
+  UIColor *pcuCol = regen ? chgCol : (iceActive ? iceCol : (hvDischarging ? evCol : [UIColor colorWithRed:0.35 green:0.78 blue:0.95 alpha:0.85]));
+  UIBezierPath *pcuBox = [UIBezierPath bezierPathWithRoundedRect:pcuR cornerRadius:3.5];
+  [[UIColor colorWithRed:0.03 green:0.08 blue:0.13 alpha:0.92] setFill];
+  [pcuBox fill];
+  [[pcuCol colorWithAlphaComponent:0.90] setStroke];
+  pcuBox.lineWidth = 1.3;
+  [pcuBox stroke];
+  // Minimalist lightning/inverter bar inside central divider node
+  CGContextSetStrokeColorWithColor(ctx, pcuCol.CGColor);
+  CGContextSetLineWidth(ctx, 1.5);
+  CGContextMoveToPoint(ctx, CGRectGetMidX(pcuR) - 4.0, CGRectGetMidY(pcuR));
+  CGContextAddLineToPoint(ctx, CGRectGetMidX(pcuR) + 4.0, CGRectGetMidY(pcuR));
+  CGContextStrokePath(ctx);
+
+  // 4. HV Battery Stack — cleanly inside rear cabin floor, clear of rear wheel
   UIBezierPath *batBox = [UIBezierPath bezierPathWithRoundedRect:batR cornerRadius:3.5];
   [[UIColor colorWithRed:0.02 green:0.07 blue:0.12 alpha:0.90] setFill];
   [batBox fill];
   UIColor *batCol = (self.hvSOC > 0 && self.hvSOC < 40.0)
     ? [UIColor colorWithRed:1.0 green:0.65 blue:0.15 alpha:0.95]
-    : (hvCharging ? [UIColor colorWithRed:0.20 green:0.98 blue:0.55 alpha:0.95] : [UIColor colorWithRed:0.15 green:0.75 blue:1.0 alpha:0.95]);
-  [[batCol colorWithAlphaComponent:0.85] setStroke];
+    : (hvCharging ? chgCol : [UIColor colorWithRed:0.15 green:0.78 blue:1.0 alpha:0.95]);
+  [[batCol colorWithAlphaComponent:0.88] setStroke];
   batBox.lineWidth = 1.3;
   [batBox stroke];
   NSInteger bars = 6;
@@ -631,29 +658,10 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
     [(b < lit ? batCol : [UIColor colorWithWhite:0.25 alpha:0.45]) setFill];
     [[UIBezierPath bezierPathWithRoundedRect:cell cornerRadius:1.0] fill];
   }
-  CGContextRestoreGState(ctx);
 
-  // 4. Prius 2026 Live X-Ray Energy Flow Chevrons along the bus rails
-  UIColor *iceCol = [UIColor colorWithRed:1.0 green:0.78 blue:0.18 alpha:1.0];
-  UIColor *evCol  = [UIColor colorWithRed:0.15 green:0.92 blue:1.0 alpha:1.0];
-  UIColor *chgCol = [UIColor colorWithRed:0.22 green:0.98 blue:0.54 alpha:1.0];
-  CGFloat ph = fmod(self.flowPhase, 1.0);
-  if (iceActive) {
-    [self drawChevronsFrom:icePt to:mgPt color:iceCol phase:ph count:3 ctx:ctx];
-    if (hvCharging) {
-      [self drawChevronsFrom:busJoin to:batPt color:chgCol phase:ph count:4 ctx:ctx];
-    }
-  }
-  if (regen) {
-    [self drawChevronsFrom:mgPt to:batPt color:chgCol phase:ph count:4 ctx:ctx];
-  } else if (hvDischarging) {
-    [self drawChevronsFrom:batPt to:mgPt color:evCol phase:ph count:4 ctx:ctx];
-  }
-
-  // 5. Spinning Wheel Spokes + Subtle Axle Telemetry Glow centered on caps
-  UIColor *wheelGlow = regen ? chgCol : (hvDischarging ? evCol : (iceActive ? iceCol : nil));
-  [self drawSpinningRimAt:fHub r:wheelR angle:self.wheelAngle glow:wheelGlow ctx:ctx];
-  [self drawSpinningRimAt:rHub r:wheelR angle:self.wheelAngle glow:wheelGlow ctx:ctx];
+  // 5. Clean Alloy Rim Rotation (only while moving; zero blue circle/dot overlays)
+  [self drawSpinningRimAt:fHub r:wheelR angle:self.wheelAngle glow:nil ctx:ctx];
+  [self drawSpinningRimAt:rHub r:wheelR angle:self.wheelAngle glow:nil ctx:ctx];
 }
 @end
 
@@ -834,6 +842,10 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 @property (nonatomic, assign) CGFloat fuelRatio;
 @property (nonatomic, assign) BOOL hasFuel;
 @property (nonatomic, assign) BOOL evActive;
+@property (nonatomic, assign) BOOL turnLeftOn;
+@property (nonatomic, assign) BOOL turnRightOn;
+@property (nonatomic, assign) BOOL hazardOn;
+@property (nonatomic, assign) BOOL turnBlinkPhase;
 @property (nonatomic, copy) NSString *gear;
 @property (nonatomic, strong) UILabel *speedLabel;
 @property (nonatomic, strong) UIView *gearBadge;
@@ -969,6 +981,52 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
     // Matte obsidian inner disc glow for high contrast in daylight
     CGContextSetFillColorWithColor(ctx, [UIColor colorWithRed:0.015 green:0.025 blue:0.04 alpha:0.85].CGColor);
     CGContextFillEllipseInRect(ctx, CGRectMake(center.x - radius + 5, center.y - radius + 5, (radius - 5) * 2, (radius - 5) * 2));
+
+    // Top Turn Signal Arrows (◀ / ▶) & Hazard Indicator above the speedo ring
+    BOOL leftLit = (self.turnLeftOn || self.hazardOn) && self.turnBlinkPhase;
+    BOOL rightLit = (self.turnRightOn || self.hazardOn) && self.turnBlinkPhase;
+    BOOL hazLit = self.hazardOn && self.turnBlinkPhase;
+    UIColor *turnIdle = [UIColor colorWithRed:0.20 green:0.42 blue:0.30 alpha:0.26];
+    UIColor *turnGlow = [UIColor colorWithRed:0.15 green:0.98 blue:0.45 alpha:1.0];
+
+    // Left Turn Arrow ◀ (top-left above speedo)
+    CGPoint lPt = CGPointMake(18.0, 14.0);
+    CGContextSetFillColorWithColor(ctx, (leftLit ? turnGlow : turnIdle).CGColor);
+    CGContextMoveToPoint(ctx, lPt.x - 8.0, lPt.y);
+    CGContextAddLineToPoint(ctx, lPt.x + 2.0, lPt.y - 6.5);
+    CGContextAddLineToPoint(ctx, lPt.x + 2.0, lPt.y - 2.6);
+    CGContextAddLineToPoint(ctx, lPt.x + 9.0, lPt.y - 2.6);
+    CGContextAddLineToPoint(ctx, lPt.x + 9.0, lPt.y + 2.6);
+    CGContextAddLineToPoint(ctx, lPt.x + 2.0, lPt.y + 2.6);
+    CGContextAddLineToPoint(ctx, lPt.x + 2.0, lPt.y + 6.5);
+    CGContextClosePath(ctx);
+    CGContextFillPath(ctx);
+
+    // Right Turn Arrow ▶ (top-right, cleanly left of the red 90 speed-limit badge)
+    CGPoint rPt = CGPointMake(w - 52.0, 14.0);
+    CGContextSetFillColorWithColor(ctx, (rightLit ? turnGlow : turnIdle).CGColor);
+    CGContextMoveToPoint(ctx, rPt.x + 8.0, rPt.y);
+    CGContextAddLineToPoint(ctx, rPt.x - 2.0, rPt.y - 6.5);
+    CGContextAddLineToPoint(ctx, rPt.x - 2.0, rPt.y - 2.6);
+    CGContextAddLineToPoint(ctx, rPt.x - 9.0, rPt.y - 2.6);
+    CGContextAddLineToPoint(ctx, rPt.x - 9.0, rPt.y + 2.6);
+    CGContextAddLineToPoint(ctx, rPt.x - 2.0, rPt.y + 2.6);
+    CGContextAddLineToPoint(ctx, rPt.x - 2.0, rPt.y + 6.5);
+    CGContextClosePath(ctx);
+    CGContextFillPath(ctx);
+
+    // Hazard Warning Double-Triangle at top-center (lights crimson when hazard active)
+    if (self.hazardOn) {
+      CGPoint hPt = CGPointMake(center.x, 11.0);
+      UIColor *hCol = hazLit ? [UIColor colorWithRed:1.0 green:0.20 blue:0.20 alpha:1.0] : [UIColor colorWithRed:0.65 green:0.15 blue:0.15 alpha:0.35];
+      CGContextSetStrokeColorWithColor(ctx, hCol.CGColor);
+      CGContextSetLineWidth(ctx, 1.6);
+      CGContextMoveToPoint(ctx, hPt.x, hPt.y - 6.0);
+      CGContextAddLineToPoint(ctx, hPt.x + 7.5, hPt.y + 5.5);
+      CGContextAddLineToPoint(ctx, hPt.x - 7.5, hPt.y + 5.5);
+      CGContextClosePath(ctx);
+      CGContextStrokePath(ctx);
+    }
 
     // Faint CHG / ECO / PWR halo background tracks
     CGContextSetLineWidth(ctx, 4.5);
@@ -1264,6 +1322,40 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
     UIColor *vc = (i == 2) ? dotCol : [UIColor whiteColor];
     [vals[i] drawInRect:CGRectMake(x0, 166, colW - 2, 22)
          withAttributes:@{NSFontAttributeName:[UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightBold], NSForegroundColorAttributeName:vc}];
+  }
+
+  // 4. Ultra-lightweight Regen Efficiency & EV/ICE Torque Split Bar (pure 2D CoreGraphics, zero extra timers)
+  if (card.size.height >= 224.0) {
+    CGFloat barY = 196.0;
+    CGFloat barW = card.size.width - 24.0;
+    BOOL isRegenNow = (self.hvKW < -0.2);
+    NSInteger regenPct = isRegenNow ? (NSInteger)MIN(100, MAX(5, fabs(self.hvKW) * 5.0)) : 0;
+    NSInteger evShare = (self.engineRPM > 150) ? (self.hvKW > 1.0 ? 45 : 20) : 100;
+    NSInteger iceShare = 100 - evShare;
+    NSString *splitLabel = isRegenNow
+      ? [NSString stringWithFormat:@"REGEN EFF. %ld%%  •  RECOVERING", (long)regenPct]
+      : [NSString stringWithFormat:@"TORQUE SPLIT  EV %ld%% / ICE %ld%%", (long)evShare, (long)iceShare];
+    [splitLabel drawInRect:CGRectMake(cx, barY, barW, 13)
+            withAttributes:@{NSFontAttributeName:[UIFont boldSystemFontOfSize:9.0],
+                             NSForegroundColorAttributeName:isRegenNow ? [UIColor colorWithRed:0.22 green:0.98 blue:0.55 alpha:1.0] : [UIColor colorWithWhite:0.62 alpha:1.0]}];
+
+    CGRect trackR = CGRectMake(cx, barY + 15.0, barW, 6.0);
+    [[UIColor colorWithWhite:0.14 alpha:1.0] setFill];
+    [[UIBezierPath bezierPathWithRoundedRect:trackR cornerRadius:3.0] fill];
+
+    if (isRegenNow) {
+      CGFloat rw = MAX(8.0, barW * (regenPct / 100.0));
+      [[UIColor colorWithRed:0.20 green:0.96 blue:0.55 alpha:1.0] setFill];
+      [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(cx, barY + 15.0, rw, 6.0) cornerRadius:3.0] fill];
+    } else {
+      CGFloat ew = barW * (evShare / 100.0);
+      [[UIColor colorWithRed:0.15 green:0.88 blue:1.0 alpha:0.95] setFill];
+      [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(cx, barY + 15.0, ew, 6.0) cornerRadius:3.0] fill];
+      if (iceShare > 0) {
+        [[UIColor colorWithRed:1.0 green:0.68 blue:0.18 alpha:0.95] setFill];
+        [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(cx + ew + 2.0, barY + 15.0, MAX(4.0, barW - ew - 2.0), 6.0) cornerRadius:3.0] fill];
+      }
+    }
   }
 }
 @end
@@ -3036,6 +3128,7 @@ static NSUInteger gTRDUpdateTicks=0;
 -(void)viewWillDisappear:(BOOL)animated{[super viewWillDisappear:animated];[self hideWelcome];[self.audioBars stop];[self.driveCar stop];[self.timer invalidate];self.timer=nil;[self saveTrip];[UIApplication sharedApplication].idleTimerDisabled=NO;}
 
 -(void)hideAllHomeWidgets:(BOOL)hide {
+  if (hide) { UIView *cp910 = [self.view viewWithTag:910]; if (cp910) cp910.hidden = YES; }
   self.homeSpeedoDial.hidden = hide;
   self.homeAiEcoCard.hidden = hide;
   self.homeThermalsCard.hidden = hide;
@@ -3413,17 +3506,36 @@ static NSUInteger gTRDUpdateTicks=0;
     // Top Bar
     CGFloat barY = 12;
     self.heading.hidden = NO;
-    self.heading.frame = CGRectMake(18, barY, 390, 24);
-    self.heading.font = [UIFont boldSystemFontOfSize:16.5];
+    self.heading.frame = CGRectMake(18, barY, 190, 24);
+    self.heading.font = [UIFont boldSystemFontOfSize:15.5];
     self.heading.textColor = [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:1];
-    self.heading.text = @"PRIUS TRD SPORTIVO • DRIVE COCKPIT";
+    self.heading.text = @"PRIUS TRD • DRIVE";
 
     self.owner.hidden = YES;
 
-    // Center Clock in Header
+    // Live Connectivity Pill (Wi-Fi/Hotspot + Bluetooth/Speaker Audio Output)
+    UIButton *connPill = (UIButton *)[self.view viewWithTag:910];
+    if (!connPill) {
+      connPill = [UIButton buttonWithType:UIButtonTypeCustom];
+      connPill.tag = 910;
+      connPill.titleLabel.font = [UIFont boldSystemFontOfSize:11.5];
+      connPill.titleLabel.adjustsFontSizeToFitWidth = YES;
+      connPill.titleLabel.minimumScaleFactor = 0.78;
+      connPill.contentEdgeInsets = UIEdgeInsetsMake(0, 8, 0, 8);
+      connPill.layer.cornerRadius = 10;
+      connPill.layer.borderWidth = 1.0;
+      connPill.backgroundColor = [UIColor colorWithRed:0.04 green:0.08 blue:0.13 alpha:0.95];
+      [connPill addTarget:self action:@selector(audioOutputSettings) forControlEvents:UIControlEventTouchUpInside];
+      [self.view addSubview:connPill];
+    }
+    connPill.hidden = NO;
+    connPill.frame = CGRectMake(212, barY - 5, 216, 34);
+    [self.view bringSubviewToFront:connPill];
+
+    // Center Clock in Header (Balanced)
     self.clock.hidden = NO;
-    self.clock.frame = CGRectMake(416, barY, 86, 26);
-    self.clock.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:22] ?: [UIFont boldSystemFontOfSize:22];
+    self.clock.frame = CGRectMake(434, barY, 78, 24);
+    self.clock.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:20] ?: [UIFont boldSystemFontOfSize:20];
     self.clock.textColor = [UIColor whiteColor];
     self.clock.textAlignment = NSTextAlignmentCenter;
     self.date.hidden = YES;
@@ -3702,13 +3814,13 @@ static NSUInteger gTRDUpdateTicks=0;
     self.driveClockCard.frame = CGRectMake(rightX + 10, topY + 10, rightW - 20, 96);
     UILabel *cBig = (UILabel *)[self.driveClockCard viewWithTag:801];
     if (!cBig) {
-      cBig = [[UILabel alloc] initWithFrame:CGRectMake(8, 6, rightW - 36, 56)];
+      cBig = [[UILabel alloc] initWithFrame:CGRectMake(8, 12, rightW - 36, 46)];
       cBig.tag = 801;
-      cBig.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:54] ?: [UIFont boldSystemFontOfSize:54];
+      cBig.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:42] ?: [UIFont boldSystemFontOfSize:42];
       cBig.textColor = [UIColor whiteColor];
       cBig.textAlignment = NSTextAlignmentCenter;
       [self.driveClockCard addSubview:cBig];
-      UILabel *cSub = [[UILabel alloc] initWithFrame:CGRectMake(8, 64, rightW - 36, 24)];
+      UILabel *cSub = [[UILabel alloc] initWithFrame:CGRectMake(8, 62, rightW - 36, 24)];
       cSub.tag = 802;
       cSub.font = [UIFont boldSystemFontOfSize:13.5];
       cSub.textColor = [UIColor colorWithRed:0.55 green:0.92 blue:1.0 alpha:1];
@@ -3716,10 +3828,11 @@ static NSUInteger gTRDUpdateTicks=0;
       cSub.text = @"❄️ ห้องโดยสาร 24.0°C • ปกติ";
       [self.driveClockCard addSubview:cSub];
     }
-    cBig.frame = CGRectMake(8, 6, rightW - 36, 56);
+    cBig.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:42] ?: [UIFont boldSystemFontOfSize:42];
+    cBig.frame = CGRectMake(8, 12, rightW - 36, 46);
     cBig.text = [self.clockFormat stringFromDate:[NSDate date]];
     UILabel *cSub = (UILabel *)[self.driveClockCard viewWithTag:802];
-    if (cSub) cSub.frame = CGRectMake(8, 64, rightW - 36, 24);
+    if (cSub) cSub.frame = CGRectMake(8, 62, rightW - 36, 24);
 
     // Right Card 2: Hybrid Traction Battery
     self.driveBatteryCard.hidden = NO;
@@ -4026,41 +4139,54 @@ static NSUInteger gTRDUpdateTicks=0;
     CGFloat curRx = w - 16;
     CGFloat pillH = 32;
 
-    curRx -= 118;
+    curRx -= 108;
     self.settingsPill.hidden = NO;
-    self.settingsPill.frame = CGRectMake(curRx, barY + 4, 118, pillH);
+    self.settingsPill.frame = CGRectMake(curRx, barY + 4, 108, pillH);
     self.settingsPill.layer.cornerRadius = 10;
     [self.settingsPill setTitle:@"⚙️ SETTINGS" forState:UIControlStateNormal];
 
-    curRx -= 88;
+    curRx -= 80;
     self.helpPill.hidden = NO;
-    self.helpPill.frame = CGRectMake(curRx, barY + 4, 82, pillH);
+    self.helpPill.frame = CGRectMake(curRx, barY + 4, 74, pillH);
     self.helpPill.layer.cornerRadius = 10;
 
-    curRx -= 106;
-    self.thaiVoicePill.hidden = NO;
-    self.thaiVoicePill.frame = CGRectMake(curRx, barY + 4, 98, pillH);
-    self.thaiVoicePill.layer.cornerRadius = 10;
-    self.thaiVoicePill.layer.borderColor = [UIColor colorWithWhite:.22 alpha:1].CGColor;
-    [self.thaiVoicePill setTitleColor:[UIColor colorWithRed:0 green:.85 blue:1 alpha:1] forState:UIControlStateNormal];
-    [self.thaiVoicePill setTitle:@"🔊 THAI VOICE" forState:UIControlStateNormal];
+    // Remove THAI VOICE pill on Home Mode; show Live Wi-Fi/Hotspot + Bluetooth/Speaker pill instead
+    self.thaiVoicePill.hidden = YES;
+    curRx -= 212;
+    UIButton *connPillH = (UIButton *)[self.view viewWithTag:910];
+    if (!connPillH) {
+      connPillH = [UIButton buttonWithType:UIButtonTypeCustom];
+      connPillH.tag = 910;
+      connPillH.titleLabel.font = [UIFont boldSystemFontOfSize:11.5];
+      connPillH.titleLabel.adjustsFontSizeToFitWidth = YES;
+      connPillH.titleLabel.minimumScaleFactor = 0.78;
+      connPillH.contentEdgeInsets = UIEdgeInsetsMake(0, 8, 0, 8);
+      connPillH.layer.cornerRadius = 10;
+      connPillH.layer.borderWidth = 1.0;
+      connPillH.backgroundColor = [UIColor colorWithRed:0.04 green:0.08 blue:0.13 alpha:0.95];
+      [connPillH addTarget:self action:@selector(audioOutputSettings) forControlEvents:UIControlEventTouchUpInside];
+      [self.view addSubview:connPillH];
+    }
+    connPillH.hidden = NO;
+    connPillH.frame = CGRectMake(curRx, barY + 4, 206, pillH);
+    [self.view bringSubviewToFront:connPillH];
 
-    curRx -= 70;
+    curRx -= 64;
     self.topClockLabel.hidden = NO;
-    self.topClockLabel.frame = CGRectMake(curRx, barY + 4, 64, pillH);
-    self.topClockLabel.font = [UIFont monospacedDigitSystemFontOfSize:14.0 weight:UIFontWeightBold];
+    self.topClockLabel.frame = CGRectMake(curRx, barY + 4, 58, pillH);
+    self.topClockLabel.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightBold];
     self.topClockLabel.layer.cornerRadius = 10;
     self.topClockLabel.text = [self.clockFormat stringFromDate:[NSDate date]];
 
-    curRx -= 104;
+    curRx -= 90;
     self.dayNightPill.hidden = NO;
-    self.dayNightPill.frame = CGRectMake(curRx, barY + 4, 96, pillH);
+    self.dayNightPill.frame = CGRectMake(curRx, barY + 4, 84, pillH);
     self.dayNightPill.layer.cornerRadius = 10;
     [self.dayNightPill setTitle:self.nightMode?@"🌙 NIGHT":@"☀️ DAY" forState:UIControlStateNormal];
 
-    curRx -= 154;
+    curRx -= 142;
     self.obdStatusPill.hidden = NO;
-    self.obdStatusPill.frame = CGRectMake(curRx, barY + 4, 146, pillH);
+    self.obdStatusPill.frame = CGRectMake(curRx, barY + 4, 136, pillH);
     self.obdStatusPill.layer.cornerRadius = 10;
 
     UIColor *outerGlassBg = [UIColor colorWithRed:0.032 green:0.050 blue:0.080 alpha:0.96];
@@ -4867,10 +4993,12 @@ static NSUInteger gTRDUpdateTicks=0;
  NSMutableDictionary *src=[NSMutableDictionary dictionaryWithContentsOfFile:srcPath]?:[NSMutableDictionary dictionary];
  src[@"preset"]=clean;
  [src writeToFile:srcPath atomically:YES];
+ notify_post("com.codex.trd.eqe.apply");
  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
   pid_t pid=0;
-  const char *argv[]={"/usr/local/bin/trd-eqe",[clean UTF8String],NULL};
-  if(posix_spawn(&pid,argv[0],NULL,NULL,(char *const *)argv,NULL)==0 && pid>0){
+  char *argv[]={(char *)"/bin/sh",(char *)"/usr/local/bin/trd-eqe",(char *)[clean UTF8String],NULL};
+  char *envp[]={(char *)"PATH=/usr/local/bin:/usr/bin:/bin",(char *)"HOME=/var/mobile",NULL};
+  if(posix_spawn(&pid,argv[0],NULL,NULL,argv,envp)==0 && pid>0){
    int status=0;waitpid(pid,&status,0);
   }
  });
@@ -8237,6 +8365,49 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  }
  [self applyGearToUI:obd.currentGear];
  [self updateDrive12VPill];
+
+ // Sync Turn Signals & Hazard Indicators onto Drive Speedo Dial
+ if(self.driveSpeedoDial){
+  BOOL blinkOn = (((long)([NSProcessInfo processInfo].systemUptime * 2.0)) % 2) == 0;
+  BOOL turnDirty = (self.driveSpeedoDial.turnLeftOn != obd.turnLeftOn ||
+                    self.driveSpeedoDial.turnRightOn != obd.turnRightOn ||
+                    self.driveSpeedoDial.hazardOn != obd.hazardOn ||
+                    ((obd.turnLeftOn || obd.turnRightOn || obd.hazardOn) && self.driveSpeedoDial.turnBlinkPhase != blinkOn));
+  if(turnDirty){
+   self.driveSpeedoDial.turnLeftOn = obd.turnLeftOn;
+   self.driveSpeedoDial.turnRightOn = obd.turnRightOn;
+   self.driveSpeedoDial.hazardOn = obd.hazardOn;
+   self.driveSpeedoDial.turnBlinkPhase = blinkOn;
+   [self.driveSpeedoDial setNeedsDisplay];
+  }
+ }
+
+ // Update Top-Bar Connectivity Status Pill (Wi-Fi/Hotspot + Bluetooth/Audio Output) + Auto-refresh live oil prices when online
+ UIButton *connPill = (UIButton *)[self.view viewWithTag:910];
+ if(connPill){
+  NSString *wifi = (self.statusWiFi.length && ![self.statusWiFi isEqualToString:@"NO NETWORK"]) ? self.statusWiFi : nil;
+  BOOL isCamWifi = (wifi && ([wifi localizedCaseInsensitiveContainsString:@"H109"] || [wifi localizedCaseInsensitiveContainsString:@"H108"]));
+  NSString *wifiShort = wifi ? (wifi.length > 10 ? [wifi substringToIndex:10] : wifi) : @"NO WIFI";
+  NSString *audioShort = self.audioOutputShort.length ? self.audioOutputShort : @"SPEAKER";
+  NSString *btPrefix = ([audioShort isEqualToString:@"CAR BT"] || [audioShort isEqualToString:@"BLUETOOTH"]) ? @"🎧" : @"🔊";
+  NSString *connTitle = [NSString stringWithFormat:@"📶 %@ • %@ %@", wifiShort, btPrefix, audioShort];
+  if(![[connPill titleForState:UIControlStateNormal] isEqualToString:connTitle]){
+   [connPill setTitle:connTitle forState:UIControlStateNormal];
+   UIColor *tint = !wifi
+    ? [UIColor colorWithRed:1.0 green:0.55 blue:0.30 alpha:1.0]
+    : (isCamWifi ? [UIColor colorWithRed:0.25 green:0.90 blue:1.0 alpha:1.0]
+                 : [UIColor colorWithRed:0.28 green:0.98 blue:0.60 alpha:1.0]);
+   [connPill setTitleColor:tint forState:UIControlStateNormal];
+   connPill.layer.borderColor = [tint colorWithAlphaComponent:0.45].CGColor;
+  }
+  // Auto-refresh live PTT/BCP oil price every 6 hours whenever online
+  static NSTimeInterval sLastOilFetchAt = 0;
+  NSTimeInterval nowUp = [NSProcessInfo processInfo].systemUptime;
+  if(wifi && !isCamWifi && (sLastOilFetchAt == 0 || (nowUp - sLastOilFetchAt) > 21600.0)){
+   sLastOilFetchAt = nowUp;
+   [obd fetchLiveOilPrices];
+  }
+ }
 
  // Top OBD status pill
  if(self.obdStatusPill){
