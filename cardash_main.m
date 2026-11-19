@@ -8386,6 +8386,19 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  UIButton *connPill = (UIButton *)[self.view viewWithTag:910];
  if(connPill){
   NSString *wifi = (self.statusWiFi.length && ![self.statusWiFi isEqualToString:@"NO NETWORK"]) ? self.statusWiFi : nil;
+  if(!wifi){
+   static NSString *sBrokerSSID = nil;
+   static NSTimeInterval sBrokerReadAt = 0;
+   NSTimeInterval nowUpR = [NSProcessInfo processInfo].systemUptime;
+   if(sBrokerReadAt == 0 || (nowUpR - sBrokerReadAt) >= 2.0){
+    sBrokerReadAt = nowUpR;
+    NSDictionary *nst = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-state.plist"];
+    NSString *act = [nst[@"actualSSID"] isKindOfClass:[NSString class]] ? nst[@"actualSSID"] : nil;
+    NSString *adr = [nst[@"address"] isKindOfClass:[NSString class]] ? nst[@"address"] : nil;
+    sBrokerSSID = (act.length && adr.length) ? act : nil;
+   }
+   wifi = sBrokerSSID;
+  }
   BOOL isCamWifi = (wifi && ([wifi localizedCaseInsensitiveContainsString:@"H109"] || [wifi localizedCaseInsensitiveContainsString:@"H108"]));
   NSString *wifiShort = wifi ? (wifi.length > 10 ? [wifi substringToIndex:10] : wifi) : @"NO WIFI";
   NSString *audioShort = self.audioOutputShort.length ? self.audioOutputShort : @"SPEAKER";
