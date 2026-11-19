@@ -95,9 +95,20 @@
  if(![@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash"]containsObject:bundle])return;
  notify_post("com.codex.trd.network.internet.force");
  if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}
- if(![bundle isEqualToString:@"com.himais0giiiin.ytnine"])notify_post("com.codex.trd.youtube.pause");
- Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
- if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
+ BOOL openingNinja=[bundle isEqualToString:@"com.legacymusic.app"];
+ BOOL openingYouTube=[bundle isEqualToString:@"com.himais0giiiin.ytnine"];
+ // Keep current audioNINJA song playing smoothly while browsing/searching in audioNINJA;
+ // only pause the OTHER player when switching between different audio apps.
+ if(openingNinja && [self isYouTubeMediaActive]){
+  notify_post("com.codex.trd.youtube.pause");
+ }else if(openingYouTube && ![self isYouTubeMediaActive]){
+  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+  if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
+ }else if(!openingNinja && !openingYouTube){
+  notify_post("com.codex.trd.youtube.pause");
+  Boolean (*pauseCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
+  if(!pauseCmd||!pauseCmd(1,nil))[self send:@"libactivator.ipod.pause-playback"];
+ }
  [self prepareForExternalAppLaunch];
  if([bundle isEqualToString:@"com.legacymusic.app"]){
   BOOL wantSearch=[target isEqualToString:@"search"];

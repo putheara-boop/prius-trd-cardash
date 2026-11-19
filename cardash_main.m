@@ -262,6 +262,113 @@ static NSString *TRDFuelShortCode(NSInteger idx) {
     default: return @"GSH95";
   }
 }
+
+@interface TRDMarqueeLabel : UILabel
+@property (nonatomic, strong) UILabel *innerLabel;
+@property (nonatomic, copy) NSString *lastAnimKey;
+- (void)refreshMarquee;
+@end
+
+@implementation TRDMarqueeLabel
+- (instancetype)initWithFrame:(CGRect)frame {
+  if ((self = [super initWithFrame:frame])) {
+    self.clipsToBounds = YES;
+    self.innerLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.innerLabel.backgroundColor = [UIColor clearColor];
+    self.innerLabel.numberOfLines = 1;
+    self.innerLabel.lineBreakMode = NSLineBreakByClipping;
+    [self addSubview:self.innerLabel];
+  }
+  return self;
+}
+- (void)drawTextInRect:(CGRect)rect {
+  // Rendered via GPU-animated innerLabel to avoid double-drawing
+}
+- (void)setText:(NSString *)text {
+  [super setText:text];
+  self.innerLabel.text = text;
+  [self refreshMarquee];
+}
+- (void)setFont:(UIFont *)font {
+  [super setFont:font];
+  self.innerLabel.font = font;
+  [self refreshMarquee];
+}
+- (void)setTextColor:(UIColor *)textColor {
+  [super setTextColor:textColor];
+  self.innerLabel.textColor = textColor;
+}
+- (void)setTextAlignment:(NSTextAlignment)textAlignment {
+  [super setTextAlignment:textAlignment];
+  self.innerLabel.textAlignment = textAlignment;
+}
+- (void)setHidden:(BOOL)hidden {
+  BOOL wasHidden = self.hidden;
+  [super setHidden:hidden];
+  if (wasHidden && !hidden) {
+    self.lastAnimKey = nil;
+    [self refreshMarquee];
+  } else if (hidden) {
+    [self.innerLabel.layer removeAnimationForKey:@"trdMarquee"];
+    self.lastAnimKey = nil;
+  }
+}
+- (void)layoutSubviews {
+  [super layoutSubviews];
+  [self refreshMarquee];
+}
+- (void)didMoveToWindow {
+  [super didMoveToWindow];
+  if (self.window) {
+    self.lastAnimKey = nil;
+    [self refreshMarquee];
+  }
+}
+- (void)refreshMarquee {
+  CGFloat boxW = self.bounds.size.width;
+  CGFloat boxH = self.bounds.size.height;
+  if (boxW <= 4.0 || boxH <= 4.0 || self.hidden) return;
+  NSString *txt = self.text ?: @"";
+  UIFont *f = self.font ?: [UIFont boldSystemFontOfSize:17.0];
+  CGSize sz = [txt sizeWithAttributes:@{NSFontAttributeName: f}];
+  CGFloat textW = ceil(sz.width) + 2.0;
+  NSString *key = [NSString stringWithFormat:@"%@_%.0f_%.1f", txt, boxW, f.pointSize];
+  if ([self.lastAnimKey isEqualToString:key] &&
+      (textW <= boxW || [self.innerLabel.layer animationForKey:@"trdMarquee"] != nil)) {
+    return;
+  }
+  self.lastAnimKey = key;
+  [self.innerLabel.layer removeAnimationForKey:@"trdMarquee"];
+  if (textW <= boxW) {
+    self.innerLabel.frame = CGRectMake(0, 0, boxW, boxH);
+    return;
+  }
+  self.innerLabel.frame = CGRectMake(0, 0, textW, boxH);
+  CGFloat travel = textW - boxW + 16.0;
+  CFTimeInterval scrollSec = MAX(2.8, MIN(12.0, travel / 38.0));
+  CFTimeInterval pauseSec = 1.4;
+  CFTimeInterval total = pauseSec + scrollSec + pauseSec + 1.2;
+  CAKeyframeAnimation *anim = [CAKeyframeAnimation animationWithKeyPath:@"transform.translation.x"];
+  anim.values = @[@(0.0), @(0.0), @(-travel), @(-travel), @(0.0)];
+  anim.keyTimes = @[
+    @(0.0),
+    @(pauseSec / total),
+    @((pauseSec + scrollSec) / total),
+    @((pauseSec + scrollSec + pauseSec) / total),
+    @(1.0)
+  ];
+  anim.duration = total;
+  anim.repeatCount = HUGE_VALF;
+  anim.removedOnCompletion = NO;
+  anim.timingFunctions = @[
+    [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear],
+    [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut],
+    [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear],
+    [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut]
+  ];
+  [self.innerLabel.layer addAnimation:anim forKey:@"trdMarquee"];
+}
+@end
 @interface TRDDoorDiagramView : UIControl
 @property (nonatomic, assign) BOOL doorsLive;
 @property (nonatomic, assign) BOOL flOpen;
@@ -2964,7 +3071,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  self.trackTime=[self label:10 color:[UIColor colorWithWhite:.65 alpha:1]];self.trackTime.textAlignment=NSTextAlignmentRight;self.trackTime.adjustsFontSizeToFitWidth=YES;self.trackTime.text=@"--:-- / --:--";self.trackProgress=[[UIProgressView alloc]initWithProgressViewStyle:UIProgressViewStyleDefault];self.trackProgress.progressTintColor=blue;self.trackProgress.trackTintColor=[UIColor colorWithWhite:.18 alpha:1];self.trackProgress.userInteractionEnabled=NO;[self.view addSubview:self.trackProgress];
  self.artist=[self label:12 color:[UIColor lightGrayColor]];self.artist.adjustsFontSizeToFitWidth=YES;
  self.carStatus=[self label:13 color:[UIColor lightGrayColor]];self.carStatus.textAlignment=NSTextAlignmentCenter;self.carStatus.text=@"CAR DISCONNECTED";self.carStatus.font=[UIFont boldSystemFontOfSize:13];self.carStatus.userInteractionEnabled=YES;[self.carStatus addGestureRecognizer:[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(carStatusTapped)]];
- self.song=[self label:18 color:[UIColor colorWithRed:1 green:.78 blue:.42 alpha:1]];self.song.textAlignment=NSTextAlignmentLeft;self.song.adjustsFontSizeToFitWidth=YES;
+ TRDMarqueeLabel *mqSong=[[TRDMarqueeLabel alloc]initWithFrame:CGRectZero];mqSong.font=[UIFont boldSystemFontOfSize:18];mqSong.textColor=[UIColor colorWithRed:1 green:.78 blue:.42 alpha:1];mqSong.textAlignment=NSTextAlignmentLeft;mqSong.backgroundColor=[UIColor clearColor];self.song=mqSong;[self.view addSubview:self.song];
  self.hint=[self label:15 color:[UIColor grayColor]];self.hint.textAlignment=NSTextAlignmentCenter;self.hint.text=@"Tap anywhere to return";self.hint.hidden=YES;
  self.clockHud=[[UIView alloc]init];self.clockHud.backgroundColor=[UIColor colorWithRed:.05 green:.05 blue:.06 alpha:.94];self.clockHud.layer.cornerRadius=8;self.clockHud.layer.borderWidth=1;self.clockHud.layer.borderColor=[blue colorWithAlphaComponent:.38].CGColor;self.clockHud.userInteractionEnabled=NO;self.clockHud.hidden=YES;[self.view addSubview:self.clockHud];UIView *hudAccent=[[UIView alloc]initWithFrame:CGRectMake(0,16,4,76)];hudAccent.tag=401;hudAccent.backgroundColor=blue;[self.clockHud addSubview:hudAccent];UILabel *hudSpeed=[[UILabel alloc]initWithFrame:CGRectMake(16,8,168,70)];hudSpeed.tag=402;hudSpeed.font=[UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:72]?:[UIFont boldSystemFontOfSize:72];hudSpeed.textColor=[UIColor whiteColor];hudSpeed.textAlignment=NSTextAlignmentCenter;hudSpeed.adjustsFontSizeToFitWidth=YES;hudSpeed.text=@"--";[self.clockHud addSubview:hudSpeed];UILabel *hudUnit=[[UILabel alloc]initWithFrame:CGRectMake(16,76,168,22)];hudUnit.tag=403;hudUnit.font=[UIFont boldSystemFontOfSize:13];hudUnit.textColor=blue;hudUnit.textAlignment=NSTextAlignmentCenter;hudUnit.text=@"km/h  •  GPS HUD";[self.clockHud addSubview:hudUnit];UIView *hudDiv=[[UIView alloc]initWithFrame:CGRectMake(196,18,1,72)];hudDiv.tag=404;hudDiv.backgroundColor=[UIColor colorWithWhite:.18 alpha:1];[self.clockHud addSubview:hudDiv];UILabel *hudGps=[[UILabel alloc]initWithFrame:CGRectMake(214,16,230,22)];hudGps.tag=405;hudGps.font=[UIFont boldSystemFontOfSize:13];hudGps.textColor=[UIColor colorWithWhite:.76 alpha:1];hudGps.adjustsFontSizeToFitWidth=YES;hudGps.text=@"WAITING FOR GPS";[self.clockHud addSubview:hudGps];UILabel *hudAcc=[[UILabel alloc]initWithFrame:CGRectMake(214,43,230,20)];hudAcc.tag=406;hudAcc.font=[UIFont systemFontOfSize:12];hudAcc.textColor=[UIColor colorWithWhite:.55 alpha:1];hudAcc.adjustsFontSizeToFitWidth=YES;hudAcc.text=@"SIGNAL  •  SEARCHING SATELLITES";[self.clockHud addSubview:hudAcc];UILabel *hudTrip=[[UILabel alloc]initWithFrame:CGRectMake(214,68,230,22)];hudTrip.tag=407;hudTrip.font=[UIFont boldSystemFontOfSize:12];hudTrip.textColor=blue;hudTrip.adjustsFontSizeToFitWidth=YES;hudTrip.text=@"TRIP  AUTO  •  WAITING FOR MOVEMENT";[self.clockHud addSubview:hudTrip];
  self.clockFormat=[NSDateFormatter new];self.clockFormat.locale=[[NSLocale alloc]initWithLocaleIdentifier:@"en_US_POSIX"];self.clockFormat.dateFormat=@"HH:mm";self.dateFormat=[NSDateFormatter new];self.dateFormat.locale=[[NSLocale alloc]initWithLocaleIdentifier:@"en_US_POSIX"];self.dateFormat.dateFormat=@"EEEE, d MMMM yyyy";
