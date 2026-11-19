@@ -682,33 +682,44 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   CGFloat h = self.bounds.size.height;
   if (w <= 0 || h <= 0) return;
 
-  // Aligned precisely to TRDRealPrius.png wheel centers (used only for moving alloy spoke rotation)
-  CGPoint fHub = CGPointMake(w * 0.195, h * 0.658);
-  CGPoint rHub = CGPointMake(w * 0.776, h * 0.658);
-  CGFloat wheelR = MIN(w, h) * 0.135;
+  // Compute exact AspectFit rect of TRDRealPrius.png (1440x497) inside self.bounds
+  CGFloat imgAspect = 1440.0 / 497.0;
+  CGFloat boxAspect = w / h;
+  CGRect imgR;
+  if (boxAspect > imgAspect) {
+    CGFloat fitH = h;
+    CGFloat fitW = fitH * imgAspect;
+    imgR = CGRectMake((w - fitW) * 0.5, 0, fitW, fitH);
+  } else {
+    CGFloat fitW = w;
+    CGFloat fitH = fitW / imgAspect;
+    imgR = CGRectMake(0, (h - fitH) * 0.5, fitW, fitH);
+  }
 
-  // Balanced body-aligned Flowchart layout (zero overlap with windows, door handles, or wheels):
-  // Engine in front hood -> Central PCU below door handles -> HV Battery in rear quarter (fuel door zone)
-  CGRect iceR = CGRectMake(w * 0.145, h * 0.455, 24, 15);
+  // Exact body-aligned positions (ZERO overlap with front or rear wheels):
+  // Engine seated directly on front hood -> Central PCU below door handles -> HV Battery beside rear taillight
+  CGRect iceR = CGRectMake(imgR.origin.x + imgR.size.width * 0.135, imgR.origin.y + imgR.size.height * 0.375, 24, 15);
   CGPoint iceOut = CGPointMake(CGRectGetMaxX(iceR) + 2, CGRectGetMidY(iceR) + 2);
 
-  CGRect pcuR = CGRectMake(w * 0.445, h * 0.565, 24, 15);
+  CGRect pcuR = CGRectMake(imgR.origin.x + imgR.size.width * 0.445, imgR.origin.y + imgR.size.height * 0.560, 24, 15);
   CGPoint pcuLeft  = CGPointMake(CGRectGetMinX(pcuR) - 2, CGRectGetMidY(pcuR));
   CGPoint pcuRight = CGPointMake(CGRectGetMaxX(pcuR) + 2, CGRectGetMidY(pcuR));
 
-  CGRect batR = CGRectMake(w * 0.700, h * 0.455, w * 0.125, h * 0.105);
+  CGFloat batW = MAX(32.0, imgR.size.width * 0.120);
+  CGFloat batH = MAX(14.0, imgR.size.height * 0.165);
+  CGRect batR = CGRectMake(imgR.origin.x + imgR.size.width * 0.750, imgR.origin.y + imgR.size.height * 0.245, batW, batH);
   CGPoint batIn = CGPointMake(CGRectGetMinX(batR) - 2, CGRectGetMidY(batR) + 2);
 
   BOOL iceActive = (self.engineRPM > 100);
   BOOL regen = self.isBraking || (self.hvCurrent < -0.9 && self.engineRPM < 1350);
   BOOL hvDischarging = (self.hvCurrent > 0.8) || (!iceActive && !regen && self.kmh > 1.5);
-  BOOL hvCharging = (self.hvCurrent < -0.5);
+  BOOL hvCharging = (self.hvCurrent < -0.5) || (iceActive && self.hvSOC > 0 && self.hvSOC < 42.0);
 
   UIColor *iceCol = [UIColor colorWithRed:1.0 green:0.74 blue:0.18 alpha:1.0];
   UIColor *evCol  = [UIColor colorWithRed:0.15 green:0.92 blue:1.0 alpha:1.0];
   UIColor *chgCol = [UIColor colorWithRed:0.22 green:0.98 blue:0.54 alpha:1.0];
 
-  // 1. Clean Flowchart Conduits (Front Hood Engine <-> Lower-Door Central PCU <-> Rear Fuel-Zone HV Battery)
+  // 1. Clean Flowchart Conduits (Front Hood Engine <-> Lower-Door Central PCU <-> Rear Taillight HV Battery)
   [self drawFlowSegmentFrom:iceOut to:pcuLeft color:iceCol active:iceActive ctx:ctx];
   if (regen || hvCharging) {
     [self drawFlowSegmentFrom:pcuRight to:batIn color:chgCol active:YES ctx:ctx];
@@ -718,7 +729,7 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
     [self drawFlowSegmentFrom:pcuRight to:batIn color:evCol active:NO ctx:ctx];
   }
 
-  // 2. Engine Core Block (ICE) — clear of front wheel arch
+  // 2. Engine Core Block (ICE) — squarely on front hood, completely clear of front wheel
   UIBezierPath *iceBox = [UIBezierPath bezierPathWithRoundedRect:iceR cornerRadius:4.0];
   [[UIColor colorWithRed:iceActive ? 0.92 : 0.08 green:iceActive ? 0.48 : 0.12 blue:iceActive ? 0.08 : 0.16 alpha:iceActive ? 0.88 : 0.78] setFill];
   [iceBox fill];
@@ -726,12 +737,12 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   iceBox.lineWidth = 1.3;
   [iceBox stroke];
   for (int c = 0; c < 3; c++) {
-    CGFloat rx = iceR.origin.x + 5.5 + c * 6.5;
+    CGFloat rx = iceR.origin.x + 4.5 + c * 6.0;
     [[UIColor colorWithWhite:1.0 alpha:iceActive ? 0.88 : 0.35] setFill];
-    UIRectFill(CGRectMake(rx, iceR.origin.y + 4.0, 3.5, iceR.size.height - 8.0));
+    UIRectFill(CGRectMake(rx, iceR.origin.y + 3.5, 3.0, iceR.size.height - 7.0));
   }
 
-  // 3. Central Inverter / PCU Divider Node (separates front powertrain from rear HV pack)
+  // 3. Central Inverter / PCU Divider Node — cleanly below door handles
   UIColor *pcuCol = regen ? chgCol : (iceActive ? iceCol : (hvDischarging ? evCol : [UIColor colorWithRed:0.35 green:0.78 blue:0.95 alpha:0.85]));
   UIBezierPath *pcuBox = [UIBezierPath bezierPathWithRoundedRect:pcuR cornerRadius:3.5];
   [[UIColor colorWithRed:0.03 green:0.08 blue:0.13 alpha:0.92] setFill];
@@ -739,18 +750,17 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   [[pcuCol colorWithAlphaComponent:0.90] setStroke];
   pcuBox.lineWidth = 1.3;
   [pcuBox stroke];
-  // Minimalist lightning/inverter bar inside central divider node
   CGContextSetStrokeColorWithColor(ctx, pcuCol.CGColor);
   CGContextSetLineWidth(ctx, 1.5);
   CGContextMoveToPoint(ctx, CGRectGetMidX(pcuR) - 4.0, CGRectGetMidY(pcuR));
   CGContextAddLineToPoint(ctx, CGRectGetMidX(pcuR) + 4.0, CGRectGetMidY(pcuR));
   CGContextStrokePath(ctx);
 
-  // 4. HV Battery Stack — cleanly inside rear cabin floor, clear of rear wheel
+  // 4. HV Battery Stack — cleanly beside rear taillight, completely clear above rear wheel
   UIBezierPath *batBox = [UIBezierPath bezierPathWithRoundedRect:batR cornerRadius:3.5];
   [[UIColor colorWithRed:0.02 green:0.07 blue:0.12 alpha:0.90] setFill];
   [batBox fill];
-  UIColor *batCol = (self.hvSOC > 0 && self.hvSOC < 40.0)
+  UIColor *batCol = (self.hvSOC > 0 && self.hvSOC < 42.0)
     ? [UIColor colorWithRed:1.0 green:0.65 blue:0.15 alpha:0.95]
     : (hvCharging ? chgCol : [UIColor colorWithRed:0.15 green:0.78 blue:1.0 alpha:0.95]);
   [[batCol colorWithAlphaComponent:0.88] setStroke];
@@ -759,21 +769,18 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
   NSInteger bars = 6;
   double dispSOC = (self.hvSOC > 0.5) ? self.hvSOC : 62.0;
   NSInteger lit = (NSInteger)ceil(MAX(15.0, MIN(100.0, dispSOC)) / (100.0 / bars));
-  CGFloat bw = (batR.size.width - 8.0) / bars;
+  CGFloat bw = (batR.size.width - 7.0) / bars;
   for (NSInteger b = 0; b < bars; b++) {
-    CGRect cell = CGRectMake(batR.origin.x + 4.0 + b * bw + 0.8, batR.origin.y + 3.5, MAX(2.0, bw - 1.6), batR.size.height - 7.0);
+    CGRect cell = CGRectMake(batR.origin.x + 3.5 + b * bw + 0.6, batR.origin.y + 3.0, MAX(2.0, bw - 1.2), batR.size.height - 6.0);
     [(b < lit ? batCol : [UIColor colorWithWhite:0.25 alpha:0.45]) setFill];
     [[UIBezierPath bezierPathWithRoundedRect:cell cornerRadius:1.0] fill];
   }
-
-  // 5. Clean Alloy Rim Rotation (only while moving; zero blue circle/dot overlays)
-  [self drawSpinningRimAt:fHub r:wheelR angle:self.wheelAngle glow:nil ctx:ctx];
-  [self drawSpinningRimAt:rHub r:wheelR angle:self.wheelAngle glow:nil ctx:ctx];
 }
 @end
 
 @interface DrivePrius:UIView
 @property UIImageView *body;
+@property UIImageView *frontRimView,*rearRimView;
 @property TRDCarLightBeamsView *lightBeams;
 @property TRDEnergyFlowXRayView *xrayOverlay;
 @property PriusWheel *front,*rear;
@@ -785,15 +792,78 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
 -(void)stop;
 @end
 @implementation DrivePrius
--(instancetype)init{if((self=[super init])){self.userInteractionEnabled=NO;self.clipsToBounds=NO;self.body=[[UIImageView alloc]initWithImage:[UIImage imageNamed:@"TRDRealPrius.png"]];self.body.contentMode=UIViewContentModeScaleAspectFit;self.body.alpha=0.68;[self addSubview:self.body];self.xrayOverlay=[[TRDEnergyFlowXRayView alloc]initWithFrame:CGRectZero];[self addSubview:self.xrayOverlay];self.lightBeams=[[TRDCarLightBeamsView alloc]initWithFrame:CGRectZero];self.lightBeams.hidden=YES;[self addSubview:self.lightBeams];}return self;}
--(void)layoutSubviews{[super layoutSubviews];self.body.frame=self.bounds;self.xrayOverlay.frame=self.bounds;self.lightBeams.frame=self.bounds;[self.lightBeams setNeedsDisplay];[self.xrayOverlay setNeedsDisplay];}
+static UIImage *TRDCropRealWheelFromPrius(UIImage *carImg, CGFloat normX, CGFloat normY, CGFloat normR) {
+  if (!carImg || !carImg.CGImage) return nil;
+  CGImageRef cg = carImg.CGImage;
+  CGFloat iw = (CGFloat)CGImageGetWidth(cg);
+  CGFloat ih = (CGFloat)CGImageGetHeight(cg);
+  CGFloat cx = normX * iw;
+  CGFloat cy = normY * ih;
+  CGFloat r = normR * ih;
+  CGRect crop = CGRectMake(MAX(0, cx - r), MAX(0, cy - r), r * 2.0, r * 2.0);
+  CGImageRef sub = CGImageCreateWithImageInRect(cg, crop);
+  if (!sub) return nil;
+  UIImage *out = [UIImage imageWithCGImage:sub scale:carImg.scale orientation:UIImageOrientationUp];
+  CGImageRelease(sub);
+  return out;
+}
+-(instancetype)init{
+  if((self=[super init])){
+    self.userInteractionEnabled=NO;
+    self.clipsToBounds=NO;
+    UIImage *carImg=[UIImage imageNamed:@"TRDRealPrius.png"];
+    self.body=[[UIImageView alloc]initWithImage:carImg];
+    self.body.contentMode=UIViewContentModeScaleAspectFit;
+    self.body.alpha=0.72;
+    [self addSubview:self.body];
+    // Crop the exact real gunmetal TRD alloy wheels directly from TRDRealPrius.png (measured red TRD cap centers)
+    self.frontRimView=[[UIImageView alloc]initWithImage:TRDCropRealWheelFromPrius(carImg, 0.1683, 0.7559, 0.173)];
+    self.frontRimView.contentMode=UIViewContentModeScaleAspectFill;
+    self.frontRimView.clipsToBounds=YES;
+    [self.body addSubview:self.frontRimView];
+    self.rearRimView=[[UIImageView alloc]initWithImage:TRDCropRealWheelFromPrius(carImg, 0.7937, 0.7554, 0.173)];
+    self.rearRimView.contentMode=UIViewContentModeScaleAspectFill;
+    self.rearRimView.clipsToBounds=YES;
+    [self.body addSubview:self.rearRimView];
+    self.xrayOverlay=[[TRDEnergyFlowXRayView alloc]initWithFrame:CGRectZero];
+    [self addSubview:self.xrayOverlay];
+    self.lightBeams=[[TRDCarLightBeamsView alloc]initWithFrame:CGRectZero];
+    self.lightBeams.hidden=YES;
+    [self addSubview:self.lightBeams];
+  }
+  return self;
+}
+-(void)layoutSubviews{
+  [super layoutSubviews];
+  self.body.frame=self.bounds;
+  self.xrayOverlay.frame=self.bounds;
+  self.lightBeams.frame=self.bounds;
+  CGFloat w=self.bounds.size.width, h=self.bounds.size.height;
+  if(w>4 && h>4){
+    CGFloat imgAspect=1440.0/497.0;
+    CGRect imgR=((w/h)>imgAspect)
+      ? CGRectMake((w-h*imgAspect)*0.5, 0, h*imgAspect, h)
+      : CGRectMake(0, (h-w/imgAspect)*0.5, w, w/imgAspect);
+    CGFloat rimDia=imgR.size.height*(0.173*2.0);
+    self.frontRimView.transform=CGAffineTransformIdentity;
+    self.frontRimView.frame=CGRectMake(imgR.origin.x+imgR.size.width*0.1683-rimDia*0.5, imgR.origin.y+imgR.size.height*0.7559-rimDia*0.5, rimDia, rimDia);
+    self.frontRimView.layer.cornerRadius=rimDia*0.5;
+    self.frontRimView.transform=CGAffineTransformMakeRotation(-self.angle);
+    self.rearRimView.transform=CGAffineTransformIdentity;
+    self.rearRimView.frame=CGRectMake(imgR.origin.x+imgR.size.width*0.7937-rimDia*0.5, imgR.origin.y+imgR.size.height*0.7554-rimDia*0.5, rimDia, rimDia);
+    self.rearRimView.layer.cornerRadius=rimDia*0.5;
+    self.rearRimView.transform=CGAffineTransformMakeRotation(-self.angle);
+  }
+  [self.lightBeams setNeedsDisplay];
+  [self.xrayOverlay setNeedsDisplay];
+}
 -(void)setSpeed:(CGFloat)speed{
  self.kmh=MAX(0,speed);
  self.xrayOverlay.kmh=self.kmh;
  if(self.kmh>1.0&&!self.wheelTimer&&!self.hidden&&[UIApplication sharedApplication].applicationState==UIApplicationStateActive){
   self.lastTick=CACurrentMediaTime();
-  self.wheelTimer=[NSTimer scheduledTimerWithTimeInterval:0.10 target:self selector:@selector(spin) userInfo:nil repeats:YES];
-  self.wheelTimer.tolerance=0.025;
+  self.wheelTimer=[NSTimer scheduledTimerWithTimeInterval:0.05 target:self selector:@selector(spin) userInfo:nil repeats:YES];
+  self.wheelTimer.tolerance=0.012;
  }else if(self.kmh<=1.0&&self.wheelTimer){
   [self.wheelTimer invalidate];
   self.wheelTimer=nil;
@@ -805,24 +875,21 @@ static NSString *TRDOpenDoorsSummary(BOOL live, BOOL fl, BOOL fr, BOOL rl, BOOL 
  self.xrayOverlay.hvCurrent=hvCurrent;
  self.xrayOverlay.hvSOC=hvSOC;
  self.xrayOverlay.isBraking=isBraking;
- BOOL flowActive=(speed>1.0||rpm>100||fabs(hvCurrent)>0.6||isBraking);
- if(flowActive&&!self.wheelTimer){
-  self.xrayOverlay.flowPhase=fmod(self.xrayOverlay.flowPhase+MAX(0.06,MIN(0.35,dt*1.15)),1.0);
- }
  [self.xrayOverlay setNeedsDisplay];
 }
 -(void)startRotation{}
 -(void)spin{
  if(self.hidden||[UIApplication sharedApplication].applicationState!=UIApplicationStateActive){[self stop];return;}
  CFTimeInterval now=CACurrentMediaTime();
- double dt=MAX(0.02,MIN(0.25,now-self.lastTick));
+ double dt=MAX(0.016,MIN(0.20,now-self.lastTick));
  self.lastTick=now;
  if(self.kmh>1.0){
-  self.angle=fmod(self.angle+(self.kmh*0.18*dt),M_PI*2.0);
+  // Realistic forward wheel angular velocity (Prius 17" wheel radius ~0.315m: v(m/s)/r = kmh * 0.88 rad/s)
+  self.angle=fmod(self.angle+(self.kmh*0.32*dt),M_PI*2.0);
+  CGAffineTransform rot=CGAffineTransformMakeRotation(-self.angle);
+  self.frontRimView.transform=rot;
+  self.rearRimView.transform=rot;
  }
- self.xrayOverlay.wheelAngle=self.angle;
- self.xrayOverlay.flowPhase=fmod(self.xrayOverlay.flowPhase+dt*(self.kmh>1.0?1.35:0.85),1.0);
- [self.xrayOverlay setNeedsDisplay];
 }
 -(void)stop{self.kmh=0;self.xrayOverlay.kmh=0;[self.wheelTimer invalidate];self.wheelTimer=nil;[self.xrayOverlay setNeedsDisplay];}
 @end
@@ -8934,7 +9001,19 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  Dashboard *v=(Dashboard *)self.window.rootViewController;
  [v ensureActiveRunLoopHealth];
  if(![url.host isEqualToString:@"explain"]&&![url.host isEqualToString:@"capture"])[v hideFeatureExplanation];
- if([url.host isEqualToString:@"home"])[v homePage];
+ if([url.host isEqualToString:@"home"]){
+  BOOL wasDrive=v.driveMode;
+  TRDOBDClient *obdRet=[TRDOBDClient sharedClient];
+  double spdNow=(obdRet.isConnected && obdRet.obdInitialized)?MAX(0.0,obdRet.currentSpeedKmh):((v.fix && v.fix.speed>=0)?(v.fix.speed*3.6):0.0);
+  BOOL movingNow=(spdNow>=3.0);
+  [v homePage];
+  if((movingNow || wasDrive) && ![url.path isEqualToString:@"/force"]){
+   v.driveMode=YES;
+   v.autoDriveSuppressed=NO;
+   [v.driveButton setTitle:@"‹ DASHBOARD" forState:UIControlStateNormal];
+   [v.view setNeedsLayout];
+  }
+ }
  if([url.host isEqualToString:@"carplay"])[v requestMapURL:YES];
  if([url.host isEqualToString:@"grid"])[v toggleCarPlayGrid];
  if([url.host isEqualToString:@"trip"])[v openTrip];

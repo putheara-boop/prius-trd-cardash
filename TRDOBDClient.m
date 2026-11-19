@@ -157,6 +157,9 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 @property (nonatomic, copy) NSString *lastLoggedCAN57FHex;
 @property (nonatomic, assign) NSUInteger can57FMisses;
 @property (nonatomic, strong) NSDate *lastCAN57FAt;
+@property (nonatomic, copy) NSString *lastLoggedCAN614Hex;
+@property (nonatomic, assign) NSUInteger can614Misses;
+@property (nonatomic, strong) NSDate *lastCAN614At;
 @end
 
 @implementation TRDOBDClient
@@ -1155,6 +1158,10 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             self.can57FMisses++;
             [self obdLog:@"CAN 0x57F snapshot empty (%lu/3)%@", (unsigned long)self.can57FMisses,
              self.can57FMisses >= 3 ? @"; pausing 0x57F light monitor" : @""];
+        } else if ([self.canMonitorTargetID isEqualToString:@"614"]) {
+            self.can614Misses++;
+            [self obdLog:@"CAN 0x614 snapshot empty (%lu/4)%@", (unsigned long)self.can614Misses,
+             self.can614Misses >= 4 ? @"; pausing 0x614 turn monitor" : @""];
         }
     }
 }
@@ -1295,16 +1302,17 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             self.activePollSchedule = nil;
             BOOL anyDoorOpen = self.doorSensorsLive && (self.doorFrontLeftOpen || self.doorFrontRightOpen || self.doorRearLeftOpen || self.doorRearRightOpen || self.trunkOpen);
             NSInteger doorStride = (self.currentSpeedKmh < 5.0 || anyDoorOpen) ? 4 : 8;
-            // Prioritize CAN 0x127 reverse/gear (~1s cycle); interleave 0x620 doors and 0x622/0x57F headlights cleanly.
+            // Prioritize CAN 0x127 reverse/gear (~1s cycle); interleave 0x614 turn signals, 0x620 doors, and 0x622 headlights cleanly.
+            BOOL canPoll614 = (self.lastCAN614At != nil || self.can614Misses < 4);
             BOOL canPoll622 = (self.lastCAN622At != nil || self.can622Misses < 6);
             BOOL canPoll57F = (self.lastCAN57FAt != nil || self.can57FMisses < 3);
             NSString *nextTarget = @"127";
             if (self.fastCycleCount % doorStride == 0 && (self.lastCAN620At != nil || self.can620Misses < 4)) {
                 nextTarget = @"620";
+            } else if (self.fastCycleCount % 2 == 1 && canPoll614) {
+                nextTarget = @"614";
             } else if (self.fastCycleCount % 4 == 2) {
-                if (canPoll622 && canPoll57F) {
-                    nextTarget = (((self.fastCycleCount / 4) % 2) == 0) ? @"622" : @"57F";
-                } else if (canPoll622) {
+                if (canPoll622) {
                     nextTarget = @"622";
                 } else if (canPoll57F) {
                     nextTarget = @"57F";
@@ -1499,6 +1507,36 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     return YES;
 }
 
+- (BOOL)parseCAN614Line:(NSString *)line {
+    uint8_t raw[8];
+    NSUInteger len = 0;
+    if (![self parseVariableCANFrameLine:line expectedPrefix:@"614" outBytes:raw outLen:&len]) return NO;
+    self.can614Misses = 0;
+    self.lastCAN614At = [NSDate date];
+
+    if (!self.lastLoggedCAN614Hex || ![self.lastLoggedCAN614Hex isEqualToString:line]) {
+        self.lastLoggedCAN614Hex = line;
+        [self obdLog:@"CAN_614 (len=%lu) -> raw=%@ b0=0x%02X b1=0x%02X b2=0x%02X b3=0x%02X b4=0x%02X",
+         (unsigned long)len, line,
+         len > 0 ? raw[0] : 0, len > 1 ? raw[1] : 0, len > 2 ? raw[2] : 0, len > 3 ? raw[3] : 0, len > 4 ? raw[4] : 0];
+    }
+
+    // Toyota ZVW30 BO_ 1556 (0x614) TURN_SIGNALS: raw[3] 0x20=Left, 0x10=Right, 0x30=Hazard (also support b1/b2 bitmask variants)
+    if (len >= 4) {
+        BOOL tLeft  = ((raw[3] & 0x20) != 0) || ((raw[3] & 0x40) != 0 && (raw[3] & 0x10) == 0);
+        BOOL tRight = ((raw[3] & 0x10) != 0) || ((raw[3] & 0x80) != 0 && (raw[3] & 0x20) == 0);
+        BOOL tHaz   = (tLeft && tRight);
+        if (self.turnLeftOn != tLeft || self.turnRightOn != tRight || self.hazardOn != tHaz) {
+            self.turnLeftOn = tLeft;
+            self.turnRightOn = tRight;
+            self.hazardOn = tHaz;
+            [self obdLog:@"TURN (CAN 0x614) -> L=%d R=%d HAZ=%d", tLeft ? 1 : 0, tRight ? 1 : 0, tHaz ? 1 : 0];
+            [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+        }
+    }
+    return YES;
+}
+
 - (BOOL)parseCAN57FLine:(NSString *)line {
     uint8_t raw[8];
     NSUInteger len = 0;
@@ -1545,6 +1583,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             NSString *candidate = [[parts[i] stringByReplacingOccurrencesOfString:@" " withString:@""] uppercaseString];
             BOOL matched = NO;
             if ([targetID isEqualToString:@"620"]) matched = [self parseCAN620Line:candidate];
+            else if ([targetID isEqualToString:@"614"]) matched = [self parseCAN614Line:candidate];
             else if ([targetID isEqualToString:@"622"]) matched = [self parseCAN622Line:candidate];
             else if ([targetID isEqualToString:@"57F"]) matched = [self parseCAN57FLine:candidate];
             else matched = [self parseCAN127Line:candidate];
