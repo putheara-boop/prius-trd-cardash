@@ -1156,52 +1156,6 @@ static UIImage *TRDCropRealWheelFromPrius(UIImage *carImg, CGFloat normX, CGFloa
     CGContextSetFillColorWithColor(ctx, [UIColor colorWithRed:0.015 green:0.025 blue:0.04 alpha:0.85].CGColor);
     CGContextFillEllipseInRect(ctx, CGRectMake(center.x - radius + 5, center.y - radius + 5, (radius - 5) * 2, (radius - 5) * 2));
 
-    // Top Turn Signal Arrows (◀ / ▶) & Hazard Indicator above the speedo ring
-    BOOL leftLit = (self.turnLeftOn || self.hazardOn) && self.turnBlinkPhase;
-    BOOL rightLit = (self.turnRightOn || self.hazardOn) && self.turnBlinkPhase;
-    BOOL hazLit = self.hazardOn && self.turnBlinkPhase;
-    UIColor *turnIdle = [UIColor colorWithRed:0.20 green:0.42 blue:0.30 alpha:0.26];
-    UIColor *turnGlow = [UIColor colorWithRed:0.15 green:0.98 blue:0.45 alpha:1.0];
-
-    // Left Turn Arrow ◀ (top-left above speedo)
-    CGPoint lPt = CGPointMake(18.0, 14.0);
-    CGContextSetFillColorWithColor(ctx, (leftLit ? turnGlow : turnIdle).CGColor);
-    CGContextMoveToPoint(ctx, lPt.x - 8.0, lPt.y);
-    CGContextAddLineToPoint(ctx, lPt.x + 2.0, lPt.y - 6.5);
-    CGContextAddLineToPoint(ctx, lPt.x + 2.0, lPt.y - 2.6);
-    CGContextAddLineToPoint(ctx, lPt.x + 9.0, lPt.y - 2.6);
-    CGContextAddLineToPoint(ctx, lPt.x + 9.0, lPt.y + 2.6);
-    CGContextAddLineToPoint(ctx, lPt.x + 2.0, lPt.y + 2.6);
-    CGContextAddLineToPoint(ctx, lPt.x + 2.0, lPt.y + 6.5);
-    CGContextClosePath(ctx);
-    CGContextFillPath(ctx);
-
-    // Right Turn Arrow ▶ (top-right, cleanly left of the red 90 speed-limit badge)
-    CGPoint rPt = CGPointMake(w - 52.0, 14.0);
-    CGContextSetFillColorWithColor(ctx, (rightLit ? turnGlow : turnIdle).CGColor);
-    CGContextMoveToPoint(ctx, rPt.x + 8.0, rPt.y);
-    CGContextAddLineToPoint(ctx, rPt.x - 2.0, rPt.y - 6.5);
-    CGContextAddLineToPoint(ctx, rPt.x - 2.0, rPt.y - 2.6);
-    CGContextAddLineToPoint(ctx, rPt.x - 9.0, rPt.y - 2.6);
-    CGContextAddLineToPoint(ctx, rPt.x - 9.0, rPt.y + 2.6);
-    CGContextAddLineToPoint(ctx, rPt.x - 2.0, rPt.y + 2.6);
-    CGContextAddLineToPoint(ctx, rPt.x - 2.0, rPt.y + 6.5);
-    CGContextClosePath(ctx);
-    CGContextFillPath(ctx);
-
-    // Hazard Warning Double-Triangle at top-center (lights crimson when hazard active)
-    if (self.hazardOn) {
-      CGPoint hPt = CGPointMake(center.x, 11.0);
-      UIColor *hCol = hazLit ? [UIColor colorWithRed:1.0 green:0.20 blue:0.20 alpha:1.0] : [UIColor colorWithRed:0.65 green:0.15 blue:0.15 alpha:0.35];
-      CGContextSetStrokeColorWithColor(ctx, hCol.CGColor);
-      CGContextSetLineWidth(ctx, 1.6);
-      CGContextMoveToPoint(ctx, hPt.x, hPt.y - 6.0);
-      CGContextAddLineToPoint(ctx, hPt.x + 7.5, hPt.y + 5.5);
-      CGContextAddLineToPoint(ctx, hPt.x - 7.5, hPt.y + 5.5);
-      CGContextClosePath(ctx);
-      CGContextStrokePath(ctx);
-    }
-
     // Faint CHG / ECO / PWR halo background tracks
     CGContextSetLineWidth(ctx, 4.5);
     CGContextSetLineCap(ctx, kCGLineCapRound);
@@ -8539,22 +8493,6 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  }
  [self applyGearToUI:obd.currentGear];
  [self updateDrive12VPill];
-
- // Sync Turn Signals & Hazard Indicators onto Drive Speedo Dial
- if(self.driveSpeedoDial){
-  BOOL blinkOn = (((long)([NSProcessInfo processInfo].systemUptime * 2.0)) % 2) == 0;
-  BOOL turnDirty = (self.driveSpeedoDial.turnLeftOn != obd.turnLeftOn ||
-                    self.driveSpeedoDial.turnRightOn != obd.turnRightOn ||
-                    self.driveSpeedoDial.hazardOn != obd.hazardOn ||
-                    ((obd.turnLeftOn || obd.turnRightOn || obd.hazardOn) && self.driveSpeedoDial.turnBlinkPhase != blinkOn));
-  if(turnDirty){
-   self.driveSpeedoDial.turnLeftOn = obd.turnLeftOn;
-   self.driveSpeedoDial.turnRightOn = obd.turnRightOn;
-   self.driveSpeedoDial.hazardOn = obd.hazardOn;
-   self.driveSpeedoDial.turnBlinkPhase = blinkOn;
-   [self.driveSpeedoDial setNeedsDisplay];
-  }
- }
 
  // Update Top-Bar Connectivity Status Pill (Wi-Fi/Hotspot + Bluetooth/Audio Output) + Auto-refresh live oil prices when online
  UIButton *connPill = (UIButton *)[self.view viewWithTag:910];

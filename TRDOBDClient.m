@@ -1302,15 +1302,12 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             self.activePollSchedule = nil;
             BOOL anyDoorOpen = self.doorSensorsLive && (self.doorFrontLeftOpen || self.doorFrontRightOpen || self.doorRearLeftOpen || self.doorRearRightOpen || self.trunkOpen);
             NSInteger doorStride = (self.currentSpeedKmh < 5.0 || anyDoorOpen) ? 4 : 8;
-            // Prioritize CAN 0x127 reverse/gear (~1s cycle); interleave 0x614 turn signals, 0x620 doors, and 0x622 headlights cleanly.
-            BOOL canPoll614 = (self.lastCAN614At != nil || self.can614Misses < 4);
+            // Prioritize CAN 0x127 reverse/gear (~1s cycle); interleave 0x620 doors and 0x622 headlights cleanly.
             BOOL canPoll622 = (self.lastCAN622At != nil || self.can622Misses < 6);
             BOOL canPoll57F = (self.lastCAN57FAt != nil || self.can57FMisses < 3);
             NSString *nextTarget = @"127";
             if (self.fastCycleCount % doorStride == 0 && (self.lastCAN620At != nil || self.can620Misses < 4)) {
                 nextTarget = @"620";
-            } else if (self.fastCycleCount % 2 == 1 && canPoll614) {
-                nextTarget = @"614";
             } else if (self.fastCycleCount % 4 == 2) {
                 if (canPoll622) {
                     nextTarget = @"622";
