@@ -9574,15 +9574,22 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(![url.host isEqualToString:@"explain"]&&![url.host isEqualToString:@"capture"])[v hideFeatureExplanation];
  if([url.host isEqualToString:@"home"]){
   BOOL wasDrive=v.driveMode;
+  BOOL wasCarPlay=v.carplayMode;
   TRDOBDClient *obdRet=[TRDOBDClient sharedClient];
   double spdNow=(obdRet.isConnected && obdRet.obdInitialized)?MAX(0.0,obdRet.currentSpeedKmh):((v.fix && v.fix.speed>=0)?(v.fix.speed*3.6):0.0);
   BOOL movingNow=(spdNow>=3.0);
-  [v homePage];
-  if((movingNow || wasDrive) && ![url.path isEqualToString:@"/force"]){
-   v.driveMode=YES;
-   v.autoDriveSuppressed=NO;
-   [v.driveButton setTitle:@"‹ DASHBOARD" forState:UIControlStateNormal];
+  if(wasCarPlay && ![url.path isEqualToString:@"/force"]){
+   v.carplayMode=YES;
    [v.view setNeedsLayout];
+   [v refreshNowPlaying];
+  } else {
+   [v homePage];
+   if((movingNow || wasDrive) && ![url.path isEqualToString:@"/force"]){
+    v.driveMode=YES;
+    v.autoDriveSuppressed=NO;
+    [v.driveButton setTitle:@"‹ DASHBOARD" forState:UIControlStateNormal];
+    [v.view setNeedsLayout];
+   }
   }
  }
  if([url.host isEqualToString:@"carplay"])[v requestMapURL:YES];

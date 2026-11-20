@@ -270,7 +270,8 @@ static NSString *const kHUDHTML =
 "        document.getElementById('analogGearTxt').textContent = gear + ' • KM/H';\n"
 "        var hsiFrac = Math.min(1.0, Math.max(0.14, (spd / 130.0)));\n"
 "        document.getElementById('hsiArc').setAttribute('stroke-dashoffset', Math.round(565 * (1.0 - hsiFrac)));\n"
-"        document.getElementById('wifiTxt').innerText = d.trip || 'TRD LIVE';\n"
+"        var wBadge = d.weather ? (' • ' + d.weather) : '';\n"
+"        document.getElementById('wifiTxt').innerText = (d.trip || 'TRD LIVE') + wBadge;\n"
 "        document.getElementById('navArrow').innerText = d.navArrow || '↑';\n"
 "        document.getElementById('navDist').innerText = d.navDist || 'GPS LIVE';\n"
 "        document.getElementById('navSub').innerText = d.navSub || 'AUTO SYNC';\n"
@@ -351,11 +352,21 @@ static NSString *buildLiveHUDJSON(void) {
       tripStr = (km > 0.01) ? [NSString stringWithFormat:@"TRIP %.1f KM", km] : @"TRD LIVE";
     }
 
+    NSString *weatherStr = live[@"weather"] ?: @"";
+    if (weatherStr.length == 0) {
+      NSString *netStr = state[@"network"] ?: @"";
+      NSRange degR = [netStr rangeOfString:@"°C"];
+      if (degR.location != NSNotFound) {
+        NSArray *seg = [netStr componentsSeparatedByString:@" • "];
+        if (seg.count > 0) weatherStr = [seg lastObject];
+      }
+    }
     NSDictionary *payload = @{
       @"speed": @(spd),
       @"gear": gearStr,
       @"clock": clockStr,
       @"trip": tripStr,
+      @"weather": weatherStr ?: @"",
       @"navArrow": navArrow,
       @"navDist": navDist,
       @"navSub": navSub,
