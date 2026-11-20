@@ -8218,32 +8218,90 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [self refreshLiveOBDDashboard];
 }
 
--(void)showVoiceToast:(NSString *)text color:(UIColor *)col autoHide:(NSTimeInterval)delay{
- if(!self.voiceBanner){
-  CGFloat bw = MIN(520.0, self.view.bounds.size.width - 40.0);
-  self.voiceBanner = [[UILabel alloc]initWithFrame:CGRectMake((self.view.bounds.size.width - bw) * 0.5, 56.0, bw, 38.0)];
-  self.voiceBanner.backgroundColor = [UIColor colorWithRed:0.06 green:0.04 blue:0.09 alpha:0.95];
-  self.voiceBanner.layer.cornerRadius = 19.0;
-  self.voiceBanner.clipsToBounds = YES;
-  self.voiceBanner.layer.borderWidth = 1.4;
-  self.voiceBanner.font = [UIFont boldSystemFontOfSize:14.0];
-  self.voiceBanner.textAlignment = NSTextAlignmentCenter;
-  self.voiceBanner.adjustsFontSizeToFitWidth = YES;
-  self.voiceBanner.minimumScaleFactor = 0.78;
-  [self.view addSubview:self.voiceBanner];
+-(UIView *)ensureVoiceHudPopup{
+ UIView *host = [UIApplication sharedApplication].keyWindow ?: self.view;
+ UIView *hud = [host viewWithTag:955];
+ if(!hud){
+  CGFloat bw = MIN(560.0, host.bounds.size.width - 40.0);
+  hud = [[UIView alloc]initWithFrame:CGRectMake((host.bounds.size.width - bw) * 0.5, 52.0, bw, 52.0)];
+  hud.tag = 955;
+  hud.backgroundColor = [UIColor colorWithRed:0.04 green:0.05 blue:0.10 alpha:0.96];
+  hud.layer.cornerRadius = 26.0;
+  hud.layer.borderWidth = 1.8;
+  hud.layer.borderColor = [UIColor colorWithRed:0.15 green:0.90 blue:1.0 alpha:0.95].CGColor;
+  hud.layer.shadowColor = [UIColor blackColor].CGColor;
+  hud.layer.shadowOpacity = 0.75;
+  hud.layer.shadowRadius = 12.0;
+  hud.layer.shadowOffset = CGSizeMake(0, 4);
+  hud.layer.zPosition = 99999.0;
+  hud.userInteractionEnabled = NO;
+
+  // 7 live animated sound-wave frequency bars on the left
+  for(int i = 0; i < 7; i++){
+   UIView *bar = [[UIView alloc]initWithFrame:CGRectMake(20.0 + i * 7.5, 22.0, 4.5, 8.0)];
+   bar.tag = 960 + i;
+   bar.backgroundColor = (i % 2 == 0)
+    ? [UIColor colorWithRed:0.15 green:0.92 blue:1.0 alpha:1.0]
+    : [UIColor colorWithRed:1.0 green:0.28 blue:0.42 alpha:1.0];
+   bar.layer.cornerRadius = 2.25;
+   [hud addSubview:bar];
+  }
+
+  UILabel *lbl = [[UILabel alloc]initWithFrame:CGRectMake(82.0, 6.0, bw - 98.0, 40.0)];
+  lbl.tag = 956;
+  lbl.font = [UIFont boldSystemFontOfSize:15.5];
+  lbl.textColor = [UIColor whiteColor];
+  lbl.textAlignment = NSTextAlignmentLeft;
+  lbl.adjustsFontSizeToFitWidth = YES;
+  lbl.minimumScaleFactor = 0.72;
+  [hud addSubview:lbl];
+  self.voiceBanner = lbl;
+  [host addSubview:hud];
+ } else {
+  CGFloat bw = MIN(560.0, host.bounds.size.width - 40.0);
+  hud.frame = CGRectMake((host.bounds.size.width - bw) * 0.5, 52.0, bw, 52.0);
+  UILabel *lbl = (UILabel *)[hud viewWithTag:956];
+  if(lbl){ lbl.frame = CGRectMake(82.0, 6.0, bw - 98.0, 40.0); self.voiceBanner = lbl; }
  }
- CGFloat bw = MIN(520.0, self.view.bounds.size.width - 40.0);
- self.voiceBanner.frame = CGRectMake((self.view.bounds.size.width - bw) * 0.5, 56.0, bw, 38.0);
- self.voiceBanner.layer.borderColor = [(col ?: [UIColor colorWithRed:1.0 green:0.28 blue:0.36 alpha:0.92]) colorWithAlphaComponent:0.90].CGColor;
+ hud.layer.zPosition = 99999.0;
+ [host bringSubviewToFront:hud];
+ return hud;
+}
+
+-(void)updateVoiceWaveLevel:(float)level{
+ UIView *host = [UIApplication sharedApplication].keyWindow ?: self.view;
+ UIView *hud = [host viewWithTag:955];
+ if(!hud || hud.hidden) return;
+ float norm = MAX(0.12f, MIN(1.0f, level));
+ static const float weights[7] = {0.55f, 0.85f, 1.0f, 0.92f, 1.0f, 0.78f, 0.50f};
+ double t = [NSProcessInfo processInfo].systemUptime * 14.0;
+ for(int i = 0; i < 7; i++){
+  UIView *bar = [hud viewWithTag:960 + i];
+  if(!bar) continue;
+  float wave = 0.65f + 0.35f * (float)sin(t + i * 0.95);
+  CGFloat bh = MAX(6.0, MIN(34.0, 6.0 + 28.0 * norm * weights[i] * wave));
+  bar.frame = CGRectMake(20.0 + i * 7.5, 26.0 - bh * 0.5, 4.5, bh);
+ }
+}
+
+-(void)showVoiceToast:(NSString *)text color:(UIColor *)col autoHide:(NSTimeInterval)delay{
+ UIView *hud = [self ensureVoiceHudPopup];
+ hud.layer.borderColor = [(col ?: [UIColor colorWithRed:0.15 green:0.90 blue:1.0 alpha:0.95]) colorWithAlphaComponent:0.92].CGColor;
  self.voiceBanner.textColor = col ?: [UIColor whiteColor];
  self.voiceBanner.text = text ?: @"";
- self.voiceBanner.hidden = NO;
- [self.view bringSubviewToFront:self.voiceBanner];
+ hud.hidden = NO;
+ if(!self.voiceListening){
+  for(int i = 0; i < 7; i++){
+   UIView *bar = [hud viewWithTag:960 + i];
+   if(bar) bar.frame = CGRectMake(20.0 + i * 7.5, 22.0, 4.5, 8.0);
+  }
+ }
  NSUInteger gen = self.voiceSessionGen;
  if(delay > 0){
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-   if(!self.voiceListening && self.voiceSessionGen == gen && self.voiceBanner){
-    self.voiceBanner.hidden = YES;
+   if(!self.voiceListening && self.voiceSessionGen == gen){
+    UIView *h = [([UIApplication sharedApplication].keyWindow ?: self.view) viewWithTag:955];
+    if(h) h.hidden = YES;
    }
   });
  }
@@ -8268,11 +8326,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   @try { [self.speechTask cancel]; } @catch (NSException *ex) {}
   self.speechTask = nil;
  }
- // Restore playback audio session cleanly so music/Bluetooth stereo never drops quality
+ // Cleanly deactivate recording session and hand audio focus back to audioNINJA so background playback NEVER cuts at 8s!
  @try {
   AVAudioSession *sess = [AVAudioSession sharedInstance];
-  [sess setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
-  [sess setActive:YES error:nil];
+  [sess setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+  [sess setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
  } @catch (NSException *ex) {}
  [self.voicePill setTitle:@"🎙️" forState:UIControlStateNormal];
  self.voicePill.backgroundColor = [UIColor colorWithRed:0.18 green:0.04 blue:0.08 alpha:0.95];
@@ -8281,8 +8339,9 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   [self executeVoiceCommand:heard];
  } else if(shouldExecute){
   [self showVoiceToast:@"🎙️ ไม่ได้ยินคำสั่ง ลองแตะไมค์แล้วพูดใหม่ครับ" color:[UIColor colorWithRed:1.0 green:0.78 blue:0.30 alpha:1.0] autoHide:2.8];
- } else if(self.voiceBanner){
-  self.voiceBanner.hidden = YES;
+ } else {
+  UIView *h = [([UIApplication sharedApplication].keyWindow ?: self.view) viewWithTag:955];
+  if(h) h.hidden = YES;
  }
 }
 
@@ -8426,9 +8485,24 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
   AVAudioInputNode *inputNode = self.voiceEngine.inputNode;
   __weak Dashboard *weakSelf = self;
+  __block CFTimeInterval lastWaveDraw = 0;
   [inputNode installTapOnBus:0 bufferSize:1024 format:nil block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when){
    Dashboard *s = weakSelf;
    if(s && s.speechRequest)[s.speechRequest appendAudioPCMBuffer:buffer];
+   CFTimeInterval nowW = CACurrentMediaTime();
+   if(buffer && buffer.floatChannelData && buffer.frameLength > 0 && (nowW - lastWaveDraw) >= 0.06){
+    lastWaveDraw = nowW;
+    float *ch = buffer.floatChannelData[0];
+    uint32_t n = buffer.frameLength;
+    float sumSq = 0.0f;
+    for(uint32_t i = 0; i < n; i += 4){ float v = ch[i]; sumSq += v * v; }
+    float rms = sqrtf(sumSq / MAX(1.0f, (float)(n / 4)));
+    float lvl = MIN(1.0f, rms * 14.0f);
+    dispatch_async(dispatch_get_main_queue(), ^{
+     Dashboard *s2 = weakSelf;
+     if(s2 && s2.voiceListening)[s2 updateVoiceWaveLevel:lvl];
+    });
+   }
   }];
 
   [self.voiceEngine prepare];

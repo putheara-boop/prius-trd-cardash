@@ -20,6 +20,8 @@ static NSString *const VoiceSearchLog=@"/var/mobile/codex-car/voice-search-state
 @protocol TRDLTPlayerController <NSObject>
 +(instancetype)sharedController;
 -(void)playQueue:(NSArray *)tracks atIndex:(NSInteger)index;
+-(BOOL)isPlaying;
+-(double)currentTime;
 @end
 
 @interface TRDFloatingHome: UIButton <UIGestureRecognizerDelegate>
@@ -385,6 +387,29 @@ static BOOL Hook_ShouldAutorotate(id self, SEL _cmd) {
  return YES;
 }
 
+static void TRDWaitAndReturnToCarDash(id<TRDLTPlayerController> player, int triesLeft, UIBackgroundTaskIdentifier bgTask){
+ if(triesLeft <= 0){
+  if(bgTask != UIBackgroundTaskInvalid){
+   [[UIApplication sharedApplication] endBackgroundTask:bgTask];
+  }
+  return;
+ }
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.45*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+  BOOL playing = [player respondsToSelector:@selector(isPlaying)] && [player isPlaying];
+  double ct = [player respondsToSelector:@selector(currentTime)] ? [player currentTime] : 0.0;
+  if(playing && isfinite(ct) && ct >= 1.2){
+   if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
+    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"] options:@{} completionHandler:nil];
+   }
+   if(bgTask != UIBackgroundTaskInvalid){
+    [[UIApplication sharedApplication] endBackgroundTask:bgTask];
+   }
+  } else {
+   TRDWaitAndReturnToCarDash(player, triesLeft - 1, bgTask);
+  }
+ });
+}
+
 static void TRDHandleVoiceSearchIfPending(void){
  dispatch_async(dispatch_get_main_queue(),^{
   NSDictionary *req=[NSDictionary dictionaryWithContentsOfFile:VoiceSearchPlist];
@@ -401,9 +426,18 @@ static void TRDHandleVoiceSearchIfPending(void){
   [done writeToFile:VoiceSearchPlist atomically:YES];
   [@{@"status":@"searching",@"query":q,@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
 
+  __block UIBackgroundTaskIdentifier bgTask = UIBackgroundTaskInvalid;
+  bgTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
+   if(bgTask != UIBackgroundTaskInvalid){
+    [[UIApplication sharedApplication] endBackgroundTask:bgTask];
+    bgTask = UIBackgroundTaskInvalid;
+   }
+  }];
+
   Class ytCls=NSClassFromString(@"LTYouTubeClient");
   if(!ytCls || ![ytCls respondsToSelector:@selector(sharedClient)]){
    [@{@"status":@"no_yt_client",@"query":q,@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+   if(bgTask != UIBackgroundTaskInvalid){[[UIApplication sharedApplication] endBackgroundTask:bgTask]; bgTask = UIBackgroundTaskInvalid;}
    return;
   }
   id<TRDLTYouTubeClient> yt=[ytCls sharedClient];
@@ -416,17 +450,13 @@ static void TRDHandleVoiceSearchIfPending(void){
      if(player && [player respondsToSelector:@selector(playQueue:atIndex:)]){
       [player playQueue:tracks atIndex:0];
       [@{@"status":@"playing",@"query":q,@"count":@(tracks.count),@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
-      if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
-       dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.4*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
-        if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
-         [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"] options:@{} completionHandler:nil];
-        }
-       });
-      }
+      // Wait until AVPlayer is genuinely streaming (>=1.2s) before returning to CarDash so iOS keeps background audio alive!
+      TRDWaitAndReturnToCarDash(player, 26, bgTask);
       return;
      }
     }
     [@{@"status":@"not_found",@"query":q,@"error":error.localizedDescription?:@"empty",@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+    if(bgTask != UIBackgroundTaskInvalid){[[UIApplication sharedApplication] endBackgroundTask:bgTask]; bgTask = UIBackgroundTaskInvalid;}
    });
   }];
  });
