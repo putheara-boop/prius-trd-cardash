@@ -5054,6 +5054,67 @@ static NSUInteger gTRDUpdateTicks=0;
   [self refreshDriveTripDisplay];[self refreshMini];[self refreshBrakeStatus];
  }
  [self refreshLiveOBDDashboard];
+ if(self.ticks%2==0){
+  TRDOBDClient *hObd=[TRDOBDClient sharedClient];
+  double hSpd=(hObd.isConnected && hObd.obdInitialized)?MAX(0.0,hObd.currentSpeedKmh):((self.fix && self.fix.speed>=0)?(self.fix.speed*3.6):0.0);
+  NSString *hGear=hObd.currentGear.length?hObd.currentGear:(hSpd>=1.0?@"D":@"P");
+  double hSoc=(hObd.hybridBatterySOC>0.5)?hObd.hybridBatterySOC:72.0;
+  double hEct=(hObd.coolantTempC>1.0)?hObd.coolantTempC:86.0;
+  double hAux=(hObd.auxBatteryVoltage>5.0)?hObd.auxBatteryVoltage:13.8;
+  NSString *hMode=(hObd.engineRPM>350)?((hSpd>80.0)?@"HYBRID POWER":@"ENGINE DRIVE"):((hObd.hvPackCurrent<-2.0)?@"REGEN CHARGE":@"EV ELECTRIC");
+  NSString *hNavArrow=@"↑";
+  NSString *hNavDist=self.gpsStatus.text.length?self.gpsStatus.text:@"GPS LIVE";
+  NSString *hNavSub=@"AUTO SYNC • PRIUS TRD";
+  NSString *hNavStreet=@"พร้อมขับขี่ • ซิงก์พิกัดสดจาก iPad";
+  BOOL mapNavLive=NO;
+  if(self.mapWebView && self.mapWebView.request && !self.mapWebView.loading){
+   NSString *navJS=@"(function(){if(window.navActive){var st=(window.navSteps&&window.navSteps[window.currentStepIdx])||{};var m=st.maneuver||{};var mod=(m.modifier||m.type||'straight').toLowerCase();var d=(document.getElementById('nav-dist-next')||{}).innerText||'';var s=(document.getElementById('nav-street')||{}).innerText||'';var dt=(document.getElementById('dest-title')||{}).innerText||'';var sm=(document.getElementById('nav-summary')||{}).innerText||'';return '1|'+mod+'|'+d+'|'+s+'|'+dt+'|'+sm;}return '0|||||';})()";
+   NSString *res=[self.mapWebView stringByEvaluatingJavaScriptFromString:navJS];
+   NSArray *parts=[res componentsSeparatedByString:@"|"];
+   if(parts.count>=6 && [parts[0] isEqualToString:@"1"]){
+    mapNavLive=YES;
+    NSString *mod=parts[1];
+    if([mod containsString:@"uturn"])hNavArrow=@"⤵";
+    else if([mod containsString:@"slight left"])hNavArrow=@"↖";
+    else if([mod containsString:@"slight right"])hNavArrow=@"↗";
+    else if([mod containsString:@"left"])hNavArrow=@"↰";
+    else if([mod containsString:@"right"])hNavArrow=@"↱";
+    else if([mod containsString:@"arrive"])hNavArrow=@"🏁";
+    else hNavArrow=@"↑";
+    if([parts[2] length]>0)hNavDist=parts[2];
+    NSString *destTitle=parts[4];
+    NSString *sumTxt=parts[5];
+    if(destTitle.length>0)hNavSub=[NSString stringWithFormat:@"🏁 %@",destTitle];
+    else if(sumTxt.length>0)hNavSub=sumTxt;
+    if([parts[3] length]>0)hNavStreet=parts[3];
+    else if(sumTxt.length>0)hNavStreet=sumTxt;
+   }
+  }
+  if(!mapNavLive && self.fix && self.fix.course>=0 && self.fix.course<360){
+   static NSString *const dirs[8]={@"N",@"NE",@"E",@"SE",@"S",@"SW",@"W",@"NW"};
+   NSInteger dIdx=((NSInteger)floor((self.fix.course+22.5)/45.0))%8;
+   hNavSub=[NSString stringWithFormat:@"COMPASS %@ %.0f°",dirs[dIdx],self.fix.course];
+  }
+  NSString *hTrip=[NSString stringWithFormat:@"TRIP %.1f KM", self.trip ? (self.trip.meters/1000.0) : 0.0];
+  NSDictionary *hudLive=@{
+   @"speed":@(hSpd),
+   @"gear":hGear,
+   @"clock":self.clock.text?:@"",
+   @"trip":hTrip,
+   @"navActive":@(mapNavLive),
+   @"navArrow":hNavArrow,
+   @"navDist":hNavDist,
+   @"navSub":hNavSub,
+   @"navStreet":hNavStreet,
+   @"soc":@((NSInteger)llround(hSoc)),
+   @"ect":@((NSInteger)llround(hEct)),
+   @"aux12v":[NSString stringWithFormat:@"%.1f",hAux],
+   @"hybridMode":hMode,
+   @"song":self.song.text?:@"",
+   @"artist":self.artist.text?:@""
+  };
+  [hudLive writeToFile:@"/var/mobile/codex-car/hud-live.plist" atomically:YES];
+ }
 }
 -(void)refreshNowPlaying{
  if(self.radioPlayer){
