@@ -8370,18 +8370,24 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   return;
  }
  if(q.length > 0){
-  [self showVoiceToast:[NSString stringWithFormat:@"🎵 ค้นหา YouTube: %@", q] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:3.0];
-  NSString *enc = [q stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]] ?: @"";
-  NSURL *ytApp = [NSURL URLWithString:[NSString stringWithFormat:@"youtube://www.youtube.com/results?search_query=%@", enc]];
-  NSURL *ytWeb = [NSURL URLWithString:[NSString stringWithFormat:@"https://m.youtube.com/results?search_query=%@", enc]];
-  UIApplication *app = [UIApplication sharedApplication];
-  if(ytApp && [app canOpenURL:ytApp]){
-   [app openURL:ytApp options:@{} completionHandler:nil];
-  } else if(ytWeb){
-   [app openURL:ytWeb options:@{} completionHandler:nil];
-  } else {
-   [self openYouTubeSource];
-  }
+  [[TRDOBDClient sharedClient] obdLog:@"VOICE song search -> '%@' (raw='%@')", q, raw];
+  [self showVoiceToast:[NSString stringWithFormat:@"🎵 กำลังค้นหาและเล่น: %@", q] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:3.5];
+  NSString *vsPath = @"/var/mobile/codex-car/voice-search.plist";
+  NSDate *reqAt = [NSDate date];
+  [@{@"query":q, @"pending":@YES, @"at":reqAt} writeToFile:vsPath atomically:YES];
+  notify_post("com.codex.trd.music.voicesearch");
+  // If audioNINJA wasn't running in background yet, wake it after 1.1s so it picks up the search and returns straight to CarDash
+  __weak Dashboard *weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+   NSDictionary *chk = [NSDictionary dictionaryWithContentsOfFile:vsPath];
+   if([chk[@"pending"] boolValue] && [chk[@"query"] isEqualToString:q]){
+    Dashboard *s = weakSelf;
+    if(s){
+     [[TRDOBDClient sharedClient] obdLog:@"VOICE waking audioNINJA for '%@'", q];
+     [s launchBundleApp:@"com.legacymusic.app"];
+    }
+   }
+  });
  } else {
   [self showVoiceToast:[NSString stringWithFormat:@"🎙️ ได้ยิน: %@", raw] color:[UIColor colorWithRed:1.0 green:0.85 blue:0.35 alpha:1.0] autoHide:2.8];
  }
@@ -8397,12 +8403,12 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [self.voicePill setTitle:@"⏹" forState:UIControlStateNormal];
  self.voicePill.backgroundColor = [UIColor colorWithRed:0.85 green:0.08 blue:0.16 alpha:0.98];
  self.voicePill.layer.borderColor = [UIColor whiteColor].CGColor;
- [self showVoiceToast:@"🎙️ กำลังฟัง... พูดคำสั่งได้เลย (เช่น เสก โลโซ / เปิดกล้อง / แผนที่)" color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:0];
+ [self showVoiceToast:@"🎙️ กำลังฟัง... พูดชื่อเพลงหรือคำสั่งได้เลย" color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:0];
 
  @try {
   AVAudioSession *sess = [AVAudioSession sharedInstance];
   [sess setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:(AVAudioSessionCategoryOptionDefaultToSpeaker|AVAudioSessionCategoryOptionAllowBluetooth|AVAudioSessionCategoryOptionDuckOthers) error:nil];
-  [sess setMode:AVAudioSessionModeMeasurement error:nil];
+  [sess setMode:AVAudioSessionModeDefault error:nil];
   [sess setActive:YES withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
 
   if(!self.speechRecognizer){
@@ -8419,9 +8425,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   self.speechRequest.shouldReportPartialResults = YES;
 
   AVAudioInputNode *inputNode = self.voiceEngine.inputNode;
-  AVAudioFormat *fmt = [inputNode outputFormatForBus:0];
   __weak Dashboard *weakSelf = self;
-  [inputNode installTapOnBus:0 bufferSize:1024 format:fmt block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when){
+  [inputNode installTapOnBus:0 bufferSize:1024 format:nil block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when){
    Dashboard *s = weakSelf;
    if(s && s.speechRequest)[s.speechRequest appendAudioPCMBuffer:buffer];
   }];

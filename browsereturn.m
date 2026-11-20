@@ -10,6 +10,17 @@
 #include <notify.h>
 static NSString *const Arm=@"/var/mobile/codex-car/browse-return.plist";
 static NSString *const Log=@"/var/mobile/codex-car/browse-return-state.plist";
+static NSString *const VoiceSearchPlist=@"/var/mobile/codex-car/voice-search.plist";
+static NSString *const VoiceSearchLog=@"/var/mobile/codex-car/voice-search-state.plist";
+
+@protocol TRDLTYouTubeClient <NSObject>
++(instancetype)sharedClient;
+-(void)searchVideosWithQuery:(NSString *)query completion:(void (^)(NSArray *tracks, NSError *error))completion;
+@end
+@protocol TRDLTPlayerController <NSObject>
++(instancetype)sharedController;
+-(void)playQueue:(NSArray *)tracks atIndex:(NSInteger)index;
+@end
 
 @interface TRDFloatingHome: UIButton <UIGestureRecognizerDelegate>
 +(void)installIfNeeded;
@@ -374,6 +385,53 @@ static BOOL Hook_ShouldAutorotate(id self, SEL _cmd) {
  return YES;
 }
 
+static void TRDHandleVoiceSearchIfPending(void){
+ dispatch_async(dispatch_get_main_queue(),^{
+  NSDictionary *req=[NSDictionary dictionaryWithContentsOfFile:VoiceSearchPlist];
+  if(![req isKindOfClass:[NSDictionary class]])return;
+  if(![req[@"pending"] boolValue])return;
+  NSString *q=[req[@"query"] isKindOfClass:[NSString class]]?req[@"query"]:@"";
+  q=[q stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  NSDate *at=[req[@"at"] isKindOfClass:[NSDate class]]?req[@"at"]:nil;
+  if(!q.length || (at && [at timeIntervalSinceNow] < -35.0))return;
+
+  NSMutableDictionary *done=[req mutableCopy];
+  done[@"pending"]=@NO;
+  done[@"pickedAt"]=[NSDate date];
+  [done writeToFile:VoiceSearchPlist atomically:YES];
+  [@{@"status":@"searching",@"query":q,@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+
+  Class ytCls=NSClassFromString(@"LTYouTubeClient");
+  if(!ytCls || ![ytCls respondsToSelector:@selector(sharedClient)]){
+   [@{@"status":@"no_yt_client",@"query":q,@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+   return;
+  }
+  id<TRDLTYouTubeClient> yt=[ytCls sharedClient];
+  [yt searchVideosWithQuery:q completion:^(NSArray *tracks, NSError *error){
+   dispatch_async(dispatch_get_main_queue(),^{
+    if(tracks && tracks.count > 0){
+     TRDNormalizeNinjaOutput();
+     Class plCls=NSClassFromString(@"LTPlayerController");
+     id<TRDLTPlayerController> player=(plCls && [plCls respondsToSelector:@selector(sharedController)])?[plCls sharedController]:nil;
+     if(player && [player respondsToSelector:@selector(playQueue:atIndex:)]){
+      [player playQueue:tracks atIndex:0];
+      [@{@"status":@"playing",@"query":q,@"count":@(tracks.count),@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+      if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
+       dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.4*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+        if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
+         [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"] options:@{} completionHandler:nil];
+        }
+       });
+      }
+      return;
+     }
+    }
+    [@{@"status":@"not_found",@"query":q,@"error":error.localizedDescription?:@"empty",@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+   });
+  }];
+ });
+}
+
 __attribute__((constructor))static void Install(void){@autoreleasepool{
  NSString *bundle=NSBundle.mainBundle.bundleIdentifier;NSString *name=nil,*selector=nil;IMP replacement=NULL;IMP *original=NULL;const char *a=NULL,*b=NULL;
  if([@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash",@"com.google.ios.youtube"]containsObject:bundle]){
@@ -381,7 +439,7 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
    [@{@"bundle":NSBundle.mainBundle.bundleIdentifier,@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
    notify_post("com.codex.trd.network.internet");
    [TRDFloatingHome installIfNeeded];
-   if([bundle isEqual:@"com.legacymusic.app"]){TRDNormalizeNinjaOutput();TRDAutoPlayIfRequested();[TRDRoadAudio install];}
+   if([bundle isEqual:@"com.legacymusic.app"]){TRDNormalizeNinjaOutput();TRDAutoPlayIfRequested();[TRDRoadAudio install];TRDHandleVoiceSearchIfPending();}
    if([bundle isEqual:@"com.legacymusic.app"]){
     dispatch_async(dispatch_get_main_queue(),^{
      NSDictionary *arm=[NSDictionary dictionaryWithContentsOfFile:Arm];
@@ -422,7 +480,13 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   });
  }
  if([bundle isEqual:@"com.legacymusic.app"]){
-  static int musicPlayTok=0,musicPauseTok=0;
+  static int musicPlayTok=0,musicPauseTok=0,voiceSearchTok=0;
+  notify_register_dispatch("com.codex.trd.music.voicesearch",&voiceSearchTok,dispatch_get_main_queue(),^(int t){
+   TRDHandleVoiceSearchIfPending();
+  });
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.9*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   TRDHandleVoiceSearchIfPending();
+  });
   notify_register_dispatch("com.codex.trd.music.pause",&musicPauseTok,dispatch_get_main_queue(),^(int t){
    TRDReversePaused=YES;
    [roadAudio carPause:nil];
