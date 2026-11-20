@@ -24,12 +24,14 @@ cmd = (
     "-framework Speech -framework MapKit -framework CoreMedia -lc++ main.m -o CarDash.new && "
     "/usr/bin/ldid -S/var/mobile/h109-build/car-dash/TRDNetwork.entitlements CarDash.new && "
     "killall -9 CarDash 2>/dev/null || true; "
-    "/bin/cp -f CarDash.new /Applications/CarDash.app/CarDash && "
+    "/bin/rm -f /Applications/CarDash.app/CarDash && "
+    "/bin/cp CarDash.new /Applications/CarDash.app/CarDash && "
     "/bin/chmod 755 /Applications/CarDash.app/CarDash && "
+    "/usr/bin/ldid -S/var/mobile/h109-build/car-dash/TRDNetwork.entitlements /Applications/CarDash.app/CarDash && "
     "su - mobile -c '/usr/bin/uiopen cardash://home' && "
     "sleep 2 && "
     "ps aux | grep CarDash | grep -v grep && "
     "ls -la /var/mobile/codex-car/hud-live.plist && "
-    "echo CARDASH_V19_HUD_SYNC_OK"
+    "echo CARDASH_V19_1_MIC_CARPLAY_OK"
 )
 ipad_cmd.run_ssh(cmd)

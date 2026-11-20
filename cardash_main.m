@@ -3544,6 +3544,13 @@ static NSUInteger gTRDUpdateTicks=0;
       [self.view bringSubviewToFront:self.carplayTelemetryWidget];
     }
     [self.view bringSubviewToFront:self.carplayDock];
+    if (self.voicePill) {
+      self.voicePill.hidden = NO;
+      self.voicePill.frame = CGRectMake(13, 374, 50, 50);
+      self.voicePill.layer.cornerRadius = 25.0;
+      self.voicePill.titleLabel.font = [UIFont boldSystemFontOfSize:22.0];
+      [self.view bringSubviewToFront:self.voicePill];
+    }
     if (self.settingsSheet) {
       self.settingsSheet.frame = self.view.bounds;
       [self.view bringSubviewToFront:self.settingsSheet];
