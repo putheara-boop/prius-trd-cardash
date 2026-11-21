@@ -8554,8 +8554,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
  @try {
   AVAudioSession *sess = [AVAudioSession sharedInstance];
-  // Use built-in iPad mic + keep Bluetooth in A2DP Stereo (NO HFP AllowBluetooth -> eliminates car speaker 'buzz' & volume drop!)
-  AVAudioSessionCategoryOptions vOpts = AVAudioSessionCategoryOptionDefaultToSpeaker | AVAudioSessionCategoryOptionAllowBluetoothA2DP;
+  // Use built-in iPad mic + A2DP Stereo + MixWithOthers so iOS NEVER suspends audioNINJA in background (0 popup!)
+  AVAudioSessionCategoryOptions vOpts = AVAudioSessionCategoryOptionDefaultToSpeaker | AVAudioSessionCategoryOptionAllowBluetoothA2DP | AVAudioSessionCategoryOptionMixWithOthers;
   [sess setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:vOpts error:nil];
   [sess setMode:AVAudioSessionModeDefault error:nil];
   [sess setActive:YES error:nil];
