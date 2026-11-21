@@ -7599,7 +7599,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
   CLLocation *curLoc = self.fix ?: [[CLLocation alloc] initWithLatitude:lat longitude:lng];
   MKLocalSearchRequest *mkReq = [[MKLocalSearchRequest alloc] init];
   mkReq.naturalLanguageQuery = query;
-  mkReq.region = MKCoordinateRegionMakeWithDistance(CLLocationCoordinate2DMake(lat, lng), 35000, 35000);
+  mkReq.region = MKCoordinateRegionMakeWithDistance(CLLocationCoordinate2DMake(lat, lng), 120000, 120000);
   MKLocalSearch *mkSearch = [[MKLocalSearch alloc] initWithRequest:mkReq];
   __weak Dashboard *weak = self;
   [mkSearch startWithCompletionHandler:^(MKLocalSearchResponse *resp, NSError *mkErr){
@@ -8514,7 +8514,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   notify_post("com.codex.trd.music.voicesearch");
   // If audioNINJA wasn't running in background yet, wake it after 1.1s so it picks up the search and returns straight to CarDash
   __weak Dashboard *weakSelf = self;
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
    NSDictionary *chk = [NSDictionary dictionaryWithContentsOfFile:vsPath];
    if([chk[@"pending"] boolValue] && [chk[@"query"] isEqualToString:q]){
     Dashboard *s = weakSelf;

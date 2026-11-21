@@ -397,7 +397,12 @@ static void TRDWaitAndReturnToCarDash(id<TRDLTPlayerController> player, int trie
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.45*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
   BOOL playing = [player respondsToSelector:@selector(isPlaying)] && [player isPlaying];
   double ct = [player respondsToSelector:@selector(currentTime)] ? [player currentTime] : 0.0;
-  if(playing && isfinite(ct) && ct >= 1.2){
+  if(playing && isfinite(ct) && ct >= 1.8){
+   @try {
+    AVAudioSession *s = [AVAudioSession sharedInstance];
+    [s setCategory:AVAudioSessionCategoryPlayback error:nil];
+    [s setActive:YES error:nil];
+   } @catch(NSException *e) {}
    if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
     [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"] options:@{} completionHandler:nil];
    }
@@ -444,14 +449,19 @@ static void TRDHandleVoiceSearchIfPending(void){
   [yt searchVideosWithQuery:q completion:^(NSArray *tracks, NSError *error){
    dispatch_async(dispatch_get_main_queue(),^{
     if(tracks && tracks.count > 0){
+     @try {
+      AVAudioSession *sess = [AVAudioSession sharedInstance];
+      [sess setCategory:AVAudioSessionCategoryPlayback error:nil];
+      [sess setActive:YES error:nil];
+     } @catch(NSException *e) {}
      TRDNormalizeNinjaOutput();
      Class plCls=NSClassFromString(@"LTPlayerController");
      id<TRDLTPlayerController> player=(plCls && [plCls respondsToSelector:@selector(sharedController)])?[plCls sharedController]:nil;
      if(player && [player respondsToSelector:@selector(playQueue:atIndex:)]){
       [player playQueue:tracks atIndex:0];
       [@{@"status":@"playing",@"query":q,@"count":@(tracks.count),@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
-      // Wait until AVPlayer is genuinely streaming (>=1.2s) before returning to CarDash so iOS keeps background audio alive!
-      TRDWaitAndReturnToCarDash(player, 26, bgTask);
+      // Keep AVAudioSessionPlayback active & wait until streaming (>=1.8s) so iOS NEVER cuts off at 10s!
+      TRDWaitAndReturnToCarDash(player, 30, bgTask);
       return;
      }
     }
