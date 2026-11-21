@@ -105,7 +105,8 @@ extern NSString * const TRDOBDGearChangedNotification;
 - (void)simulateGear:(NSString *)gear;
 - (void)setAutoDoorLockEnabled:(BOOL)enabled;
 - (void)setAutoDoorUnlockOnParkEnabled:(BOOL)enabled;
-- (void)requestDoorLock:(BOOL)lock;
+- (void)evaluateAutoDoorLockForSpeed:(CGFloat)kmh;
+- (BOOL)requestDoorLock:(BOOL)lock;
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt;
 - (void)updateRealConsumptionWithDistanceKm:(double)distanceKm;
 

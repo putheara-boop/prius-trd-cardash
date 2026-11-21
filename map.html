@@ -504,58 +504,65 @@ var maneuverSvgs = {
   arrive: '<svg viewBox="0 0 24 24"><path fill="#ff2035" d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>'
 };
 
-// Web Audio API Synthesized In-Car Navigation Chime
-function playChime(type) {
+// Native Thai Turn-by-Turn Voice Bridge (NO WebAudio -> 0% music volume drop & 0% 10s audio cutoff!)
+function speakNavThai(phrase) {
+  if (!soundEnabled || !phrase) return;
+  callNative('cardash-navspeak', phrase);
+}
+function playChime(type, extraText) {
   if (!soundEnabled) return;
-  try {
-    var AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    var ctx = new AudioCtx();
-    var now = ctx.currentTime;
-    var osc = ctx.createOscillator();
-    var gain = ctx.createGain();
-    osc.type = 'sine';
-    
-    if (type === 'turn') {
-      // High pleasant double ping: 880Hz -> 1175Hz
-      osc.frequency.setValueAtTime(880, now);
-      osc.frequency.setValueAtTime(1174.66, now + 0.12);
-      gain.gain.setValueAtTime(0.35, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.47);
-    } else if (type === 'start') {
-      // Ready chime: 587Hz -> 880Hz
-      osc.frequency.setValueAtTime(587.33, now);
-      osc.frequency.setValueAtTime(880, now + 0.15);
-      gain.gain.setValueAtTime(0.35, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.50);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.52);
-    } else if (type === 'arrive') {
-      // Triple victory chime
-      osc.frequency.setValueAtTime(523.25, now);
-      osc.frequency.setValueAtTime(659.25, now + 0.14);
-      osc.frequency.setValueAtTime(783.99, now + 0.28);
-      gain.gain.setValueAtTime(0.35, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.67);
-    }
-  } catch(e) {}
+  if (type === 'start') speakNavThai(extraText || 'เริ่มนำทางครับ');
+  else if (type === 'turn') speakNavThai(extraText || 'เตรียมเลี้ยวด้านหน้าครับ');
+  else if (type === 'reroute') speakNavThai('กำลังคำนวณเส้นทางใหม่ครับ');
+  else if (type === 'arrive') speakNavThai('ถึงจุดหมายปลายทางแล้วครับ');
 }
 
 function toggleSound() {
   soundEnabled = !soundEnabled;
   document.getElementById('svg-sound-on').style.display = soundEnabled ? 'block' : 'none';
   document.getElementById('svg-sound-off').style.display = soundEnabled ? 'none' : 'block';
-  if (soundEnabled) playChime('start');
+  if (soundEnabled) speakNavThai('เปิดเสียงนำทางแล้วครับ');
+}
+
+var headingUp = true;
+var routeCoords = [];
+var offRouteHits = 0;
+var lastRerouteAt = 0;
+
+function applyMapRotation(deg) {
+  var mapEl = document.getElementById('map');
+  if (!mapEl) return;
+  if (headingUp && tracking) {
+    var rot = 'rotate(' + (-deg) + 'deg) scale(1.42)';
+    mapEl.style.webkitTransform = rot;
+    mapEl.style.transform = rot;
+    mapEl.style.webkitTransition = '-webkit-transform 0.35s linear';
+    mapEl.style.transition = 'transform 0.35s linear';
+  } else {
+    mapEl.style.webkitTransform = 'none';
+    mapEl.style.transform = 'none';
+  }
+}
+
+function toggleHeadingUp() {
+  headingUp = !headingUp;
+  var b = document.getElementById('btn-heading');
+  if (b) {
+    b.className = headingUp ? 'trd-btn active' : 'trd-btn';
+    b.textContent = headingUp ? '🧭 หมุนตามรถ' : '🧭 ทิศเหนือ';
+  }
+  applyMapRotation(lastHeading);
+}
+
+function minDistToRouteMeters(lat, lng) {
+  if (!routeCoords || routeCoords.length === 0) return 0;
+  var best = 999999;
+  var stride = routeCoords.length > 200 ? 2 : 1;
+  for (var i = 0; i < routeCoords.length; i += stride) {
+    var d = getDistance(lat, lng, routeCoords[i][0], routeCoords[i][1]);
+    if (d < best) best = d;
+  }
+  return best;
 }
 
 map.on('dragstart', function() {
@@ -596,6 +603,9 @@ function updateCar(lat, lng, heading, speed) {
         svg.style.transform = 'rotate(' + lastHeading + 'deg)';
         svg.style.webkitTransform = 'rotate(' + lastHeading + 'deg)';
       }
+      if (tracking && headingUp && speed >= 3) {
+        applyMapRotation(lastHeading);
+      }
     }
   }
   if (tracking && (Math.abs(lat - _lastPanLat) >= 0.00002 || Math.abs(lng - _lastPanLng) >= 0.00002)) {
@@ -629,10 +639,36 @@ function updateCar(lat, lng, heading, speed) {
       document.getElementById('nav-dist-next').textContent = nextBanner;
     }
     
-    // Play chime when approaching turn (at 120m)
-    if (dist <= 120 && lastChimeStep !== currentStepIdx) {
+    // Speak Thai turn prompt when approaching turn (at 150m)
+    if (dist <= 150 && lastChimeStep !== currentStepIdx) {
       lastChimeStep = currentStepIdx;
-      playChime('turn');
+      var mMod = ((step.maneuver && (step.maneuver.modifier || step.maneuver.type)) || '').toLowerCase();
+      var turnThai = 'ตรงไป';
+      if (mMod.indexOf('uturn') >= 0) turnThai = 'กลับรถ';
+      else if (mMod.indexOf('left') >= 0) turnThai = 'เลี้ยวซ้าย';
+      else if (mMod.indexOf('right') >= 0) turnThai = 'เลี้ยวขวา';
+      else if (mMod.indexOf('arrive') >= 0) turnThai = 'จะถึงจุดหมายปลายทาง';
+      var roadTxt = step.name ? ('เข้า ' + step.name) : '';
+      playChime('turn', 'อีก ' + Math.round(dist) + ' เมตร ' + turnThai + ' ' + roadTxt);
+    }
+
+    // Automatic Off-Route Rerouting if deviated > 55m from active polyline
+    if (selectedDest && routeCoords.length > 1) {
+      var offDist = minDistToRouteMeters(lastLat, lastLng);
+      if (offDist > 55) {
+        offRouteHits++;
+        var nowMs = Date.now();
+        if (offRouteHits >= 2 && (nowMs - lastRerouteAt) > 10000) {
+          offRouteHits = 0;
+          lastRerouteAt = nowMs;
+          playChime('reroute');
+          var rc = lastLng + ',' + lastLat + ';' + selectedDest.lng + ',' + selectedDest.lat;
+          callNative('cardash-route', rc);
+          return;
+        }
+      } else {
+        offRouteHits = 0;
+      }
     }
     
     // Auto advance step if within 35 meters
@@ -835,6 +871,10 @@ function drawRoute(route) {
   for (var i = 0; i < coords.length; i++) {
     latlngs.push([coords[i][1], coords[i][0]]);
   }
+  routeCoords = latlngs;
+  offRouteHits = 0;
+  tracking = true;
+  applyMapRotation(lastHeading);
   
   // High visibility electric line with TRD red glowing outer aura
   routeGlow = L.polyline(latlngs, {

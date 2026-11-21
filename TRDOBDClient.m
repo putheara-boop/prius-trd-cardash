@@ -2009,14 +2009,14 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     [self obdLog:@"AutoDoorUnlockOnParkEnabled -> %d", enabled];
 }
 
-- (void)requestDoorLock:(BOOL)lock {
+- (BOOL)requestDoorLock:(BOOL)lock {
     if (!self.isConnected || !self.obdInitialized) {
         [self obdLog:@"BODY_ECU door %@ skipped (OBD not connected)", lock ? @"LOCK" : @"UNLOCK"];
-        return;
+        return NO;
     }
     if (self.pendingBodyCommands.count > 0) {
         [self obdLog:@"BODY_ECU door %@ skipped (command already queued)", lock ? @"LOCK" : @"UNLOCK"];
-        return;
+        return NO;
     }
     NSString *payload = lock ? @"30 11 00 80 00" : @"30 11 00 40 00";
     [self.pendingBodyCommands addObjectsFromArray:@[
@@ -2027,16 +2027,19 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         @"ATSH 7DF"
     ]];
     [self obdLog:@"BODY_ECU enqueue door %@ (speed=%.0f gear=%@)", lock ? @"LOCK" : @"UNLOCK", self.currentSpeedKmh, self.currentGear ?: @"?"];
+    return YES;
 }
 
 - (void)evaluateAutoDoorLockForSpeed:(CGFloat)kmh {
     if (!self.autoDoorLockEnabled || !self.isConnected || !self.obdInitialized) return;
     BOOL anyDoorOpen = self.doorSensorsLive && (self.doorFrontLeftOpen || self.doorFrontRightOpen || self.doorRearLeftOpen || self.doorRearRightOpen);
     if (!self.autoDoorLockedForDrive) {
-        if (!anyDoorOpen && kmh >= 20.0 && ![self.currentGear isEqualToString:@"P"]) {
-            self.autoDoorLockedForDrive = YES;
-            [self obdLog:@"Auto-Lock triggered at %.0f km/h (gear=%@)", kmh, self.currentGear ?: @"?"];
-            [self requestDoorLock:YES];
+        // If speed >= 20 km/h (OBD or GPS), the car is definitely moving even if CAN 0x127 gear hasn't refreshed from P yet
+        if (!anyDoorOpen && kmh >= 20.0) {
+            if ([self requestDoorLock:YES]) {
+                self.autoDoorLockedForDrive = YES;
+                [self obdLog:@"Auto-Lock triggered at %.0f km/h (gear=%@)", kmh, self.currentGear ?: @"?"];
+            }
         }
     } else if ([self.currentGear isEqualToString:@"P"] && kmh < 1.0) {
         self.autoDoorLockedForDrive = NO;

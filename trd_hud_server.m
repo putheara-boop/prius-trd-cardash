@@ -186,6 +186,9 @@ static NSString *const kHUDHTML =
 "        <span id=\"ectTxt\">86°C</span>\n"
 "        <span id=\"auxTxt\">13.8V</span>\n"
 "      </div>\n"
+"      <div class=\"hyb-metrics\" style=\"margin-top:6px;color:#ffcf56;font-size:16px;\">\n"
+"        <span id=\"fuelCostTxt\">⛽ ฿0.0 • 22.0 km/L</span>\n"
+"      </div>\n"
 "    </div>\n"
 "  </div>\n"
 "  <div class=\"botbar\" id=\"botBar\" onclick=\"event.stopPropagation()\">\n"
@@ -286,6 +289,7 @@ static NSString *const kHUDHTML =
 "        for(var i=0;i<cells.length;i++){ cells[i].className = 'cell' + (i < lit ? (' ' + cls) : ''); }\n"
 "        document.getElementById('ectTxt').innerText = (d.ect || 86) + '°C';\n"
 "        document.getElementById('auxTxt').innerText = (d.aux12v || '13.8') + 'V';\n"
+"        document.getElementById('fuelCostTxt').innerText = '⛽ ฿' + (d.fuelCost || '0.0') + ' • ' + (d.kmPerL || '22.0') + ' km/L';\n"
 "        document.getElementById('songTxt').innerText = d.song ? ('🎵 ' + d.song) : '🎵 PRIUS TRD';\n"
 "      } catch(e){}\n"
 "    }\n"
@@ -366,6 +370,8 @@ static NSString *buildLiveHUDJSON(void) {
       @"gear": gearStr,
       @"clock": clockStr,
       @"trip": tripStr,
+      @"fuelCost": live[@"fuelCost"] ?: @"0.0",
+      @"kmPerL": live[@"kmPerL"] ?: @"22.0",
       @"weather": weatherStr ?: @"",
       @"navArrow": navArrow,
       @"navDist": navDist,

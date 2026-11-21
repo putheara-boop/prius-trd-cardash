@@ -5061,20 +5061,27 @@ static NSUInteger gTRDUpdateTicks=0;
   [self refreshDriveTripDisplay];[self refreshMini];[self refreshBrakeStatus];
  }
  [self refreshLiveOBDDashboard];
- if(self.ticks%2==0){
+ {
   TRDOBDClient *hObd=[TRDOBDClient sharedClient];
-  double hSpd=(hObd.isConnected && hObd.obdInitialized)?MAX(0.0,hObd.currentSpeedKmh):((self.fix && self.fix.speed>=0)?(self.fix.speed*3.6):0.0);
+  double gpsKmh=(self.fix && self.fix.speed>=0)?(self.fix.speed*3.6):0.0;
+  double hSpd=(hObd.isConnected && hObd.obdInitialized)?MAX(0.0,hObd.currentSpeedKmh):gpsKmh;
+  [hObd evaluateAutoDoorLockForSpeed:(CGFloat)MAX(hSpd, gpsKmh)];
   NSString *hGear=hObd.currentGear.length?hObd.currentGear:(hSpd>=1.0?@"D":@"P");
   double hSoc=(hObd.hybridBatterySOC>0.5)?hObd.hybridBatterySOC:72.0;
   double hEct=(hObd.coolantTempC>1.0)?hObd.coolantTempC:86.0;
   double hAux=(hObd.auxBatteryVoltage>5.0)?hObd.auxBatteryVoltage:13.8;
+  double hKmL=[self effectiveFuelKmPerL];
+  double hTripKm=self.trip?(self.trip.meters/1000.0):0.0;
+  double hPrice=(hObd.fuelPricePerLiter>5.0)?hObd.fuelPricePerLiter:38.14;
+  double hFuelL=(hObd.hasLiveMAFFuel && hObd.tripFuelUsedLiters>0.005)?hObd.tripFuelUsedLiters:(hKmL>1.0?(hTripKm/hKmL):0.0);
+  double hCost=hFuelL*hPrice;
   NSString *hMode=(hObd.engineRPM>350)?((hSpd>80.0)?@"HYBRID POWER":@"ENGINE DRIVE"):((hObd.hvPackCurrent<-2.0)?@"REGEN CHARGE":@"EV ELECTRIC");
   NSString *hNavArrow=@"↑";
   NSString *hNavDist=self.gpsStatus.text.length?self.gpsStatus.text:@"GPS LIVE";
   NSString *hNavSub=@"AUTO SYNC • PRIUS TRD";
   NSString *hNavStreet=@"พร้อมขับขี่ • ซิงก์พิกัดสดจาก iPad";
   BOOL mapNavLive=NO;
-  if(self.mapWebView && self.mapWebView.request && !self.mapWebView.loading){
+  if(self.mapWebView && self.mapWebView.request && !self.mapWebView.loading && (self.ticks%2==0)){
    NSString *navJS=@"(function(){if(window.navActive){var st=(window.navSteps&&window.navSteps[window.currentStepIdx])||{};var m=st.maneuver||{};var mod=(m.modifier||m.type||'straight').toLowerCase();var d=(document.getElementById('nav-dist-next')||{}).innerText||'';var s=(document.getElementById('nav-street')||{}).innerText||'';var dt=(document.getElementById('dest-title')||{}).innerText||'';var sm=(document.getElementById('nav-summary')||{}).innerText||'';return '1|'+mod+'|'+d+'|'+s+'|'+dt+'|'+sm;}return '0|||||';})()";
    NSString *res=[self.mapWebView stringByEvaluatingJavaScriptFromString:navJS];
    NSArray *parts=[res componentsSeparatedByString:@"|"];
@@ -5102,12 +5109,14 @@ static NSUInteger gTRDUpdateTicks=0;
    NSInteger dIdx=((NSInteger)floor((self.fix.course+22.5)/45.0))%8;
    hNavSub=[NSString stringWithFormat:@"COMPASS %@ %.0f°",dirs[dIdx],self.fix.course];
   }
-  NSString *hTrip=[NSString stringWithFormat:@"TRIP %.1f KM", self.trip ? (self.trip.meters/1000.0) : 0.0];
+  NSString *hTrip=[NSString stringWithFormat:@"TRIP %.1f KM", hTripKm];
   NSDictionary *hudLive=@{
    @"speed":@(hSpd),
    @"gear":hGear,
    @"clock":self.clock.text?:@"",
    @"trip":hTrip,
+   @"fuelCost":[NSString stringWithFormat:@"%.1f",hCost],
+   @"kmPerL":[NSString stringWithFormat:@"%.1f",hKmL],
    @"navActive":@(mapNavLive),
    @"navArrow":hNavArrow,
    @"navDist":hNavDist,
@@ -7475,7 +7484,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
 -(void)loadMapHTML{[self ensureMapWebView];NSString *path=@"/Applications/CarDash.app/map.html";if([[NSFileManager defaultManager]fileExistsAtPath:path])[self.mapWebView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:path]]];}
 -(void)updateMapCar{[self updateMapCarForce:NO];}
 -(void)updateMapCarForce:(BOOL)force{if((!self.mapMode&&!self.carplayMode)||!self.mapWebView||!self.mapWebView.request||self.mapWebView.loading)return;if(!self.fix)return;static CLLocationDegrees lastLat=0,lastLng=0;static double lastKmh=-999;static UIWebView *lastWebView=nil;CLLocationDegrees lat=self.fix.coordinate.latitude;CLLocationDegrees lng=self.fix.coordinate.longitude;double kmh=(self.fix.speed>=0)?(self.fix.speed*3.6):-1;if(!force&&lastWebView==self.mapWebView&&fabs(lat-lastLat)<0.000015&&fabs(lng-lastLng)<0.000015&&fabs(kmh-lastKmh)<2.0)return;lastWebView=self.mapWebView;lastLat=lat;lastLng=lng;lastKmh=kmh;BOOL courseValid=self.fix.course>=0&&self.fix.course<360&&kmh>=5&&self.fix.horizontalAccuracy>=0&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;double course=courseValid?self.fix.course:-1;NSString *js=[NSString stringWithFormat:@"if(window.updateCar){window.updateCar(%f,%f,%f,%f);}",lat,lng,course,kmh];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
--(BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)type{NSString *scheme=request.URL.scheme;if([scheme isEqualToString:@"cardash-route"]){NSString *coords=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchRouteWithCoords:coords];return NO;}if([scheme isEqualToString:@"cardash-search"]){NSString *query=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchSearchWithQuery:query];return NO;}return YES;}
+-(BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)type{NSString *scheme=request.URL.scheme;if([scheme isEqualToString:@"cardash-route"]){NSString *coords=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchRouteWithCoords:coords];return NO;}if([scheme isEqualToString:@"cardash-search"]){NSString *query=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchSearchWithQuery:query];return NO;}if([scheme isEqualToString:@"cardash-navspeak"]){NSString *phrase=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];if(phrase.length)[self speakQuickAlert:phrase];return NO;}return YES;}
 -(void)dispatchFallbackRouteFrom:(CLLocationCoordinate2D)src to:(CLLocationCoordinate2D)dst{
   MKPlacemark *p1 = [[MKPlacemark alloc] initWithCoordinate:src addressDictionary:nil];
   MKPlacemark *p2 = [[MKPlacemark alloc] initWithCoordinate:dst addressDictionary:nil];
@@ -8394,11 +8403,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   @try { [self.speechTask cancel]; } @catch (NSException *ex) {}
   self.speechTask = nil;
  }
- // Cleanly deactivate recording session and hand audio focus back to audioNINJA so background playback NEVER cuts at 8s!
+ // Cleanly reset category to Ambient (no HFP/Duck) BEFORE deactivating so audioNINJA keeps 100% stereo volume & never cuts off!
  @try {
   AVAudioSession *sess = [AVAudioSession sharedInstance];
-  [sess setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
   [sess setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
+  [sess setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
  } @catch (NSException *ex) {}
  [self.voicePill setTitle:@"🎙️" forState:UIControlStateNormal];
  self.voicePill.backgroundColor = [UIColor colorWithRed:0.18 green:0.04 blue:0.08 alpha:0.95];
@@ -8522,6 +8531,17 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
 -(void)startVoiceListening{
  if(self.voiceListening) return;
+ static NSTimeInterval sLastVoiceStartAt = 0;
+ NSTimeInterval nowUpV = [NSProcessInfo processInfo].systemUptime;
+ if((nowUpV - sLastVoiceStartAt) < 0.45) return;
+ sLastVoiceStartAt = nowUpV;
+ // Ensure any previous engine/task is 100% torn down before starting a new session
+ if(self.voiceEngine){
+  @try { if(self.voiceEngine.isRunning)[self.voiceEngine stop]; [self.voiceEngine.inputNode removeTapOnBus:0]; } @catch (NSException *e) {}
+  self.voiceEngine = nil;
+ }
+ if(self.speechTask){ @try { [self.speechTask cancel]; } @catch (NSException *e) {} self.speechTask = nil; }
+ if(self.speechRequest){ @try { [self.speechRequest endAudio]; } @catch (NSException *e) {} self.speechRequest = nil; }
  self.voiceListening = YES;
  self.voiceLastTranscript = @"";
  self.voiceSessionGen++;
@@ -8534,9 +8554,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
  @try {
   AVAudioSession *sess = [AVAudioSession sharedInstance];
-  [sess setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:(AVAudioSessionCategoryOptionDefaultToSpeaker|AVAudioSessionCategoryOptionAllowBluetooth|AVAudioSessionCategoryOptionDuckOthers) error:nil];
+  // Use built-in iPad mic + keep Bluetooth in A2DP Stereo (NO HFP AllowBluetooth -> eliminates car speaker 'buzz' & volume drop!)
+  AVAudioSessionCategoryOptions vOpts = AVAudioSessionCategoryOptionDefaultToSpeaker | AVAudioSessionCategoryOptionAllowBluetoothA2DP;
+  [sess setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:vOpts error:nil];
   [sess setMode:AVAudioSessionModeDefault error:nil];
-  [sess setActive:YES withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+  [sess setActive:YES error:nil];
 
   if(!self.speechRecognizer){
    self.speechRecognizer = [[SFSpeechRecognizer alloc]initWithLocale:[NSLocale localeWithLocaleIdentifier:@"th-TH"]];
