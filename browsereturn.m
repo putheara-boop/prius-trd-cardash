@@ -397,7 +397,7 @@ static void TRDWaitAndReturnToCarDash(id<TRDLTPlayerController> player, int trie
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.45*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
   BOOL playing = [player respondsToSelector:@selector(isPlaying)] && [player isPlaying];
   double ct = [player respondsToSelector:@selector(currentTime)] ? [player currentTime] : 0.0;
-  if(playing && isfinite(ct) && ct >= 1.8){
+  if(playing && isfinite(ct) && ct >= 1.5){
    @try {
     AVAudioSession *s = [AVAudioSession sharedInstance];
     [s setCategory:AVAudioSessionCategoryPlayback error:nil];
@@ -406,8 +406,13 @@ static void TRDWaitAndReturnToCarDash(id<TRDLTPlayerController> player, int trie
    if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
     [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"] options:@{} completionHandler:nil];
    }
+   // CRITICAL: Keep bgTask alive for 25 more seconds after returning to CarDash so LTPlayerController's
+   // NSURLConnection finishes downloading 100% of the ltstream:// track in background (eliminates 10s cutoff!)
    if(bgTask != UIBackgroundTaskInvalid){
-    [[UIApplication sharedApplication] endBackgroundTask:bgTask];
+    UIBackgroundTaskIdentifier holdTask = bgTask;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(25.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+     [[UIApplication sharedApplication] endBackgroundTask:holdTask];
+    });
    }
   } else {
    TRDWaitAndReturnToCarDash(player, triesLeft - 1, bgTask);
