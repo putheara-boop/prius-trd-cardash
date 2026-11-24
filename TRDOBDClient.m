@@ -254,34 +254,38 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:args];
     va_end(args);
 
+    NSDate *now = [NSDate date];
+    static dispatch_queue_t sLogQueue = nil;
     static NSDateFormatter *df = nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
+        sLogQueue = dispatch_queue_create("com.codex.trd.obdlog", DISPATCH_QUEUE_SERIAL);
         df = [[NSDateFormatter alloc] init];
         [df setDateFormat:@"HH:mm:ss.SSS"];
     });
-    NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [df stringFromDate:[NSDate date]], msg];
-
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSDictionary *attrs = [fm attributesOfItemAtPath:kTRDOBDDebugLogPath error:nil];
-    if (attrs && [attrs fileSize] > 48 * 1024) {
-        // Keep one complete previous log. If rotation fails, append to the current
-        // file instead of truncating it and losing the in-car capture.
-        if (![fm fileExistsAtPath:kTRDOBDPreviousDebugLogPath] ||
-            [fm removeItemAtPath:kTRDOBDPreviousDebugLogPath error:nil]) {
-            [fm moveItemAtPath:kTRDOBDDebugLogPath toPath:kTRDOBDPreviousDebugLogPath error:nil];
+    dispatch_async(sLogQueue, ^{
+        @autoreleasepool {
+            NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [df stringFromDate:now], msg];
+            NSFileManager *fm = [NSFileManager defaultManager];
+            NSDictionary *attrs = [fm attributesOfItemAtPath:kTRDOBDDebugLogPath error:nil];
+            if (attrs && [attrs fileSize] > 48 * 1024) {
+                if (![fm fileExistsAtPath:kTRDOBDPreviousDebugLogPath] ||
+                    [fm removeItemAtPath:kTRDOBDPreviousDebugLogPath error:nil]) {
+                    [fm moveItemAtPath:kTRDOBDDebugLogPath toPath:kTRDOBDPreviousDebugLogPath error:nil];
+                }
+            }
+            if (![fm fileExistsAtPath:kTRDOBDDebugLogPath]) {
+                [line writeToFile:kTRDOBDDebugLogPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+            } else {
+                NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kTRDOBDDebugLogPath];
+                if (fh) {
+                    [fh seekToEndOfFile];
+                    [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+                    [fh closeFile];
+                }
+            }
         }
-    }
-    if (![fm fileExistsAtPath:kTRDOBDDebugLogPath]) {
-        [line writeToFile:kTRDOBDDebugLogPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    } else {
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kTRDOBDDebugLogPath];
-        if (fh) {
-            [fh seekToEndOfFile];
-            [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-            [fh closeFile];
-        }
-    }
+    });
 }
 
 - (void)initBluetooth {
@@ -492,7 +496,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 
             if (self.pendingScan && self.centralManager.state == CBCentralManagerStatePoweredOn) {
                 // Back off BLE scan cadence when parked away from car to reduce idle CPU & radio drain.
-                NSTimeInterval retryPause = (self.emptyBLEScanCount >= 16) ? 8.0 : ((self.emptyBLEScanCount >= 6) ? 4.0 : 0.6);
+                NSTimeInterval retryPause = (self.emptyBLEScanCount >= 24) ? 15.0 : ((self.emptyBLEScanCount >= 12) ? 8.0 : ((self.emptyBLEScanCount >= 5) ? 4.0 : 0.6));
                 if (retryPause >= 2.0) {
                     [self.centralManager stopScan];
                 }
@@ -543,6 +547,9 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         }
         [self obdLog:@"ensureConnectedOrScan: resetting incomplete/stale connection (age=%.1fs)", age];
         [self forceReconnect];
+        return;
+    }
+    if (self.centralManager.isScanning) {
         return;
     }
     self.emptyBLEScanCount = 0;

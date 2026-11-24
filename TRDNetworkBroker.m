@@ -173,10 +173,15 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
    @"at":[NSDate date]
   };
  [state writeToFile:StatePath atomically:YES];
- NSMutableArray *history=[[NSArray arrayWithContentsOfFile:HistoryPath]mutableCopy]?:[NSMutableArray array];
- [history addObject:state];
- while(history.count>80)[history removeObjectAtIndex:0];
- [history writeToFile:HistoryPath atomically:YES];
+ static dispatch_queue_t sHistQueue=nil;
+ static dispatch_once_t histOnce;
+ dispatch_once(&histOnce,^{sHistQueue=dispatch_queue_create("com.codex.trd.nethist",DISPATCH_QUEUE_SERIAL);});
+ dispatch_async(sHistQueue,^{
+  NSMutableArray *history=[[NSArray arrayWithContentsOfFile:HistoryPath]mutableCopy]?:[NSMutableArray array];
+  [history addObject:state];
+  while(history.count>40)[history removeObjectAtIndex:0];
+  [history writeToFile:HistoryPath atomically:YES];
+ });
  notify_post("com.codex.trd.network.changed");
 }
 
@@ -495,6 +500,12 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
 -(void)watchdogTick{@autoreleasepool{
  if(self.timer)return;
  if([self.mode isEqual:@"camera"])return;
+ // Never hijack camera Wi-Fi while Reverse Gear is active or H109Viewer is actively streaming
+ NSDictionary *rev=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/reverse-camera.plist"];
+ NSDate *revAt=[rev[@"at"] isKindOfClass:[NSDate class]]?rev[@"at"]:nil;
+ if([rev[@"rear"] boolValue] && revAt && -[revAt timeIntervalSinceNow]<45.0)return;
+ NSDictionary *vState=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/h109-build/viewer-state.plist"];
+ if([vState[@"wantsLive"] boolValue] && [vState[@"applicationState"] integerValue]==0)return;
  // Parked/screen-off battery guard: never scan or wake Wi-Fi when display is off
  NSDictionary *pwr=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/sb-power-state.plist"];
  if(pwr && pwr[@"screenIsOn"] && ![pwr[@"screenIsOn"] boolValue])return;
@@ -520,7 +531,10 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  NSArray *allowed=@[@"Rock",@"Dance",@"Pop",@"Jazz",@"Classical",@"Flat"];
  if(![allowed containsObject:clean])return;
  NSString *target=[clean copy];
- dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH,0),^{
+ static dispatch_queue_t sEQQueue=nil;
+ static dispatch_once_t eqOnce;
+ dispatch_once(&eqOnce,^{sEQQueue=dispatch_queue_create("com.codex.trd.eqe",DISPATCH_QUEUE_SERIAL);});
+ dispatch_async(sEQQueue,^{
   char *args[]={(char *)"/bin/sh",(char *)"/usr/local/bin/trd-eqe",(char *)target.UTF8String,NULL};
   char *envp[]={(char *)"PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",(char *)"HOME=/var/root",NULL};
   pid_t child=0;

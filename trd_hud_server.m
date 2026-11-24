@@ -251,10 +251,14 @@ static NSString *const kHUDHTML =
 "setInterval(updateAnalogClock, 1000);\n"
 "updateAnalogClock();\n"
 "applyUI();\n"
+"var pollBusy = false;\n"
 "function poll(){\n"
+"  if(pollBusy) return;\n"
+"  pollBusy = true;\n"
 "  var xhr = new XMLHttpRequest();\n"
 "  xhr.open('GET', '/api/hud?t=' + (new Date().getTime()), true);\n"
-"  xhr.timeout = 1500;\n"
+"  xhr.timeout = 1200;\n"
+"  xhr.onloadend = function(){ pollBusy = false; };\n"
 "  xhr.onload = function(){\n"
 "    if(xhr.status === 200){\n"
 "      try {\n"
@@ -297,7 +301,7 @@ static NSString *const kHUDHTML =
 "  xhr.onerror = function(){ document.getElementById('connDot').style.background = '#ff3344'; };\n"
 "  xhr.send();\n"
 "}\n"
-"setInterval(poll, 250);\n"
+"setInterval(poll, 350);\n"
 "poll();\n"
 "</script>\n"
 "</body>\n"
@@ -325,14 +329,21 @@ static BOOL sendAllBytes(int fd, const void *buf, size_t len) {
 
 static NSString *buildLiveHUDJSON(void) {
   @autoreleasepool {
-    NSDictionary *state = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/h109-build/cardash-state.plist"] ?: @{};
+    static NSDateFormatter *df = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      df = [[NSDateFormatter alloc] init];
+      df.dateFormat = @"HH:mm";
+    });
     NSDictionary *live = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/hud-live.plist"] ?: @{};
+    NSDictionary *state = (live.count > 0) ? @{} : ([NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/h109-build/cardash-state.plist"] ?: @{});
 
     NSString *speedStr = live[@"speed"] ?: (state[@"speed"] ?: @"0");
     double spd = [speedStr doubleValue];
-    NSDateFormatter *df = [[NSDateFormatter alloc] init];
-    df.dateFormat = @"HH:mm";
-    NSString *clockStr = [df stringFromDate:[NSDate date]];
+    NSString *clockStr = live[@"clock"] ?: @"";
+    if (clockStr.length == 0) {
+      @synchronized(df) { clockStr = [df stringFromDate:[NSDate date]]; }
+    }
     NSString *gearStr = live[@"gear"] ?: @"D";
     NSString *navArrow = live[@"navArrow"] ?: @"↑";
     NSString *navDist = live[@"navDist"] ?: (state[@"gps"] ?: @"GPS LIVE");

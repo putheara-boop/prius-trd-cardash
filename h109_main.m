@@ -435,7 +435,7 @@ if([u.scheme.lowercaseString isEqual:@"rtsp"]&&u.host.length&&!u.user.length&&!u
  self.rtsp.sample=^(CMSampleBufferRef sample){
   Viewer *v=weak;H109RTSP *client=engine;if(!v||!client)return;
   @synchronized([Viewer class]){
-   if(sPendingEnqueues>=8){[client requestKeyframeWait];return;}
+   if(sPendingEnqueues>=2){[client requestKeyframeWait];return;}
    sPendingEnqueues++;
   }
   CFRetain(sample);
@@ -449,7 +449,7 @@ if([u.scheme.lowercaseString isEqual:@"rtsp"]&&u.host.length&&!u.user.length&&!u
      if(!v.frames){[[NSUserDefaults standardUserDefaults]setObject:v.address.text forKey:@"lastWorkingStream"];[[NSUserDefaults standardUserDefaults]synchronize];}
      v.frames++;v.lastFrame=[NSDate date];v.emptyLabel.hidden=YES;
      if(v.frames==15)[v captureState];
-     if(!v.statusUntil||[v.statusUntil timeIntervalSinceNow]<=0){
+     if((v.frames<=1 || (v.frames%15)==0) && (!v.statusUntil||[v.statusUntil timeIntervalSinceNow]<=0)){
       NSString *side=(v.channels.selectedSegmentIndex==1)?@"REAR":@"FRONT";
       v.status.text=[NSString stringWithFormat:@"%@ • RTSP H.264 • %lu frames received",side,(unsigned long)v.frames];
      }
