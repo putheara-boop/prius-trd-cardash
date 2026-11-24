@@ -1,5 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import <CoreMedia/CoreMedia.h>
+#import <CoreVideo/CoreVideo.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <Speech/Speech.h>
@@ -2022,9 +2024,208 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  });
 }
 
+@interface TRDFrontGestureEngine : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate> {
+ float _baseLuma[96];
+ float _prevLuma[96];
+ BOOL _hasPrev;
+ CFAbsoluteTime _waveStartAt;
+ int _peakMotion;
+ CFAbsoluteTime _holdStartAt;
+ BOOL _holdFired;
+ CFAbsoluteTime _cooldownUntil;
+ NSUInteger _frameIdx;
+ float _smoothAmbient;
+}
+@property (nonatomic, strong) AVCaptureSession *session;
+@property (nonatomic, strong) dispatch_queue_t queue;
+@property (nonatomic, copy) void (^onWaveNext)(void);
+@property (nonatomic, copy) void (^onHoldVoiceSearch)(void);
++(instancetype)sharedEngine;
+-(void)startIfEnabled;
+-(void)stop;
+@end
+
+@implementation TRDFrontGestureEngine
++(instancetype)sharedEngine{
+ static TRDFrontGestureEngine *s=nil;
+ static dispatch_once_t once;
+ dispatch_once(&once,^{ s=[[TRDFrontGestureEngine alloc]init]; });
+ return s;
+}
+-(instancetype)init{
+ if((self=[super init])){
+  _queue=dispatch_queue_create("com.codex.cardash.frontgesture",DISPATCH_QUEUE_SERIAL);
+  _smoothAmbient=-1.0f;
+ }
+ return self;
+}
+-(void)startIfEnabled{
+ if([[NSUserDefaults standardUserDefaults] boolForKey:@"TRDFrontGestureDisabled"]){
+  [self stop];
+  return;
+ }
+ dispatch_async(_queue,^{
+  if(self.session){
+   if(!self.session.isRunning)[self.session startRunning];
+   return;
+  }
+  AVCaptureDevice *front=nil;
+  for(AVCaptureDevice *d in [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo]){
+   if(d.position==AVCaptureDevicePositionFront){front=d;break;}
+  }
+  if(!front)return;
+  NSError *err=nil;
+  AVCaptureDeviceInput *input=[AVCaptureDeviceInput deviceInputWithDevice:front error:&err];
+  if(!input||err)return;
+  AVCaptureSession *sess=[[AVCaptureSession alloc]init];
+  if([sess respondsToSelector:@selector(setAutomaticallyConfiguresApplicationAudioSession:)]){
+   sess.automaticallyConfiguresApplicationAudioSession=NO;
+  }
+  [sess beginConfiguration];
+  if([sess canSetSessionPreset:AVCaptureSessionPresetLow]){
+   sess.sessionPreset=AVCaptureSessionPresetLow;
+  }
+  if([sess canAddInput:input])[sess addInput:input];
+  AVCaptureVideoDataOutput *out=[[AVCaptureVideoDataOutput alloc]init];
+  out.alwaysDiscardsLateVideoFrames=YES;
+  out.videoSettings=@{(id)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)};
+  [out setSampleBufferDelegate:self queue:self.queue];
+  if([sess canAddOutput:out])[sess addOutput:out];
+  [sess commitConfiguration];
+  if([front lockForConfiguration:nil]){
+   front.activeVideoMinFrameDuration=CMTimeMake(1,10);
+   front.activeVideoMaxFrameDuration=CMTimeMake(1,8);
+   [front unlockForConfiguration];
+  }
+  _hasPrev=NO;
+  _waveStartAt=0;
+  _holdStartAt=0;
+  _holdFired=NO;
+  self.session=sess;
+  [sess startRunning];
+ });
+}
+-(void)stop{
+ dispatch_async(_queue,^{
+  if(self.session && self.session.isRunning){
+   [self.session stopRunning];
+  }
+  _hasPrev=NO;
+  _waveStartAt=0;
+  _holdStartAt=0;
+  _holdFired=NO;
+ });
+}
+-(void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection{
+ CVImageBufferRef pix=CMSampleBufferGetImageBuffer(sampleBuffer);
+ if(!pix)return;
+ if(CVPixelBufferLockBaseAddress(pix,kCVPixelBufferLock_ReadOnly)!=kCVReturnSuccess)return;
+ size_t w=CVPixelBufferGetWidthOfPlane(pix,0);
+ size_t h=CVPixelBufferGetHeightOfPlane(pix,0);
+ size_t bpr=CVPixelBufferGetBytesPerRowOfPlane(pix,0);
+ const uint8_t *base=(const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(pix,0);
+ if(!base||w<24||h<16){CVPixelBufferUnlockBaseAddress(pix,kCVPixelBufferLock_ReadOnly);return;}
+
+ float cur[96];
+ float sumLuma=0;
+ int idx=0;
+ for(int gy=0;gy<8;gy++){
+  size_t py=(h*(gy*2+1))/16;
+  const uint8_t *row=base+py*bpr;
+  for(int gx=0;gx<12;gx++){
+   size_t px=(w*(gx*2+1))/24;
+   float v=(float)row[px];
+   cur[idx++]=v;
+   sumLuma+=v;
+  }
+ }
+ CVPixelBufferUnlockBaseAddress(pix,kCVPixelBufferLock_ReadOnly);
+
+ float meanLuma=sumLuma/96.0f;
+ _frameIdx++;
+ if(!_hasPrev){
+  for(int i=0;i<96;i++){_prevLuma[i]=cur[i];_baseLuma[i]=cur[i];}
+  _hasPrev=YES;
+  _smoothAmbient=meanLuma;
+  return;
+ }
+
+ int motionCells=0;
+ int occludedCells=0;
+ for(int i=0;i<96;i++){
+  float dm=fabsf(cur[i]-_prevLuma[i]);
+  float db=fabsf(cur[i]-_baseLuma[i]);
+  if(dm>=18.0f)motionCells++;
+  if(db>=26.0f || (meanLuma<28.0f && _baseLuma[i]>42.0f))occludedCells++;
+  _prevLuma[i]=cur[i];
+  if(motionCells<4 && occludedCells<10){
+   _baseLuma[i]=_baseLuma[i]*0.92f + cur[i]*0.08f;
+  }
+ }
+
+ CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();
+ // Smart Cabin Auto-Brightness every ~5s when idle
+ if((_frameIdx % 45)==0 && motionCells<=2 && occludedCells<=8){
+  _smoothAmbient=(_smoothAmbient<0)?meanLuma:(_smoothAmbient*0.7f + meanLuma*0.3f);
+  float norm=(_smoothAmbient-14.0f)/150.0f;
+  if(norm<0.0f)norm=0.0f;
+  if(norm>1.0f)norm=1.0f;
+  CGFloat targetB=0.28 + norm*0.70; // 28% night cabin .. 98% bright daylight
+  dispatch_async(dispatch_get_main_queue(),^{
+   CGFloat curB=[UIScreen mainScreen].brightness;
+   if(curB>0.06 && fabs(curB-targetB)>=0.06){
+    [UIScreen mainScreen].brightness = curB*0.65 + targetB*0.35;
+   }
+  });
+ }
+
+ if(now < _cooldownUntil){
+  _waveStartAt=0;
+  _holdStartAt=0;
+  _holdFired=NO;
+  return;
+ }
+
+ // 1) Hold hand near front camera (~0.95s) -> Hands-free Thai Voice Search for new song!
+ if(occludedCells>=34 || motionCells>=14){
+  if(_holdStartAt==0){_holdStartAt=now;_holdFired=NO;}
+  else if(!_holdFired && (now-_holdStartAt)>=0.95 && occludedCells>=30){
+   _holdFired=YES;
+   _waveStartAt=0;
+   _cooldownUntil=now+4.0;
+   void (^cb)(void)=self.onHoldVoiceSearch;
+   if(cb)dispatch_async(dispatch_get_main_queue(),cb);
+   return;
+  }
+ }else{
+  _holdStartAt=0;
+  _holdFired=NO;
+ }
+
+ // 2) Quick hand wave past front camera (0.08s - 0.70s) -> Skip to Next Song!
+ if(motionCells>=13){
+  if(_waveStartAt==0){_waveStartAt=now;_peakMotion=motionCells;}
+  else if(motionCells>_peakMotion)_peakMotion=motionCells;
+  if((now-_waveStartAt)>0.85){_waveStartAt=0;_peakMotion=0;}
+ }else if(_waveStartAt>0 && motionCells<=5){
+  double dur=now-_waveStartAt;
+  int peak=_peakMotion;
+  _waveStartAt=0;
+  _peakMotion=0;
+  if(dur>=0.07 && dur<=0.75 && peak>=15 && !_holdFired){
+   _cooldownUntil=now+1.45;
+   void (^cb)(void)=self.onWaveNext;
+   if(cb)dispatch_async(dispatch_get_main_queue(),cb);
+  }
+ }
+}
+@end
+
 @interface Dashboard:UIViewController<CLLocationManagerDelegate,UIGestureRecognizerDelegate,UIWebViewDelegate>
 @property (nonatomic, strong) TRDCarPlayMediaWidget *carplayMediaWidget;
 @property (nonatomic, strong) TRDCarPlayTelemetryWidget *carplayTelemetryWidget;
+-(void)showGestureToast:(NSString *)msg;
+-(void)voiceMusicTapped;
 
 
 @property (nonatomic, strong) TRDAnalogSpeedoDial *homeSpeedoDial, *driveSpeedoDial;
@@ -3348,6 +3549,23 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   rCenter.togglePlayPauseCommand.enabled = YES;
   rCenter.playCommand.enabled = YES;
   rCenter.pauseCommand.enabled = YES;
+
+  __weak typeof(self) weakGestureSelf = self;
+  TRDFrontGestureEngine *ge = [TRDFrontGestureEngine sharedEngine];
+  ge.onWaveNext = ^{
+   Dashboard *d = weakGestureSelf;
+   if(!d || d.isReverseActive) return;
+   AudioServicesPlaySystemSound(1104);
+   [d miniNext];
+   [d showGestureToast:@"👋 โบกมือข้ามไปเพลงถัดไป ⏭️"];
+  };
+  ge.onHoldVoiceSearch = ^{
+   Dashboard *d = weakGestureSelf;
+   if(!d || d.isReverseActive) return;
+   AudioServicesPlaySystemSound(1113);
+   [d voiceMusicTapped];
+  };
+  [ge startIfEnabled];
 }
 -(BOOL)prefersStatusBarHidden{return YES;}
 -(void)rotateTo:(NSNumber *)value{[[UIDevice currentDevice]setValue:value forKey:@"orientation"];[UIViewController attemptRotationToDeviceOrientation];}
@@ -8886,6 +9104,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 -(void)handleReverseEngaged{
  if(self.isReverseActive)return;
  self.isReverseActive=YES;
+ [[TRDFrontGestureEngine sharedEngine] stop];
  [self prepareForExternalAppLaunch];
  [@{@"rear": @YES, @"at": [NSDate date], @"fast": @YES} writeToFile:@"/var/mobile/codex-car/reverse-camera.plist" atomically:YES];
  notify_post("com.codex.trd.network.camera");
@@ -9074,6 +9293,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  notify_post("com.codex.trd.network.internet.force");
  [self homePage];
  [self launchBundleApp:@"com.codex.cardash"];
+ [[TRDFrontGestureEngine sharedEngine] startIfEnabled];
  if(shouldResume && srcKind>0){
   __weak typeof(self) weakSelf=self;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.18*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
@@ -9150,6 +9370,19 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [ud setInteger:cur forKey:@"TRDDriveWidgetMode"];
  [ud synchronize];
  [self refreshLiveOBDDashboard];
+}
+-(void)showGestureToast:(NSString *)msg{
+ UIView *hud = [self ensureVoiceHudPopup];
+ UILabel *lbl = (UILabel *)[hud viewWithTag:956];
+ if(lbl) lbl.text = msg;
+ hud.hidden = NO;
+ hud.alpha = 1.0;
+ [[hud superview] bringSubviewToFront:hud];
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+  if(lbl && [lbl.text isEqualToString:msg]){
+   hud.hidden = YES;
+  }
+ });
 }
 -(void)voiceMusicTapped{
  if([self respondsToSelector:@selector(startVoiceMusicSearch)]){
@@ -9782,6 +10015,14 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if([url.host isEqualToString:@"help"])[v openFeatureHelpMenu];
  if([url.host isEqualToString:@"explain"])[v carStatusTapped];
  if([url.host isEqualToString:@"oil"])[v serviceSettings];
+ if([url.host isEqualToString:@"gesture"]){
+  NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];
+  BOOL off=![ud boolForKey:@"TRDFrontGestureDisabled"];
+  [ud setBool:off forKey:@"TRDFrontGestureDisabled"];
+  [ud synchronize];
+  if(off){[[TRDFrontGestureEngine sharedEngine] stop];[v showGestureToast:@"👋 ปิดระบบโบกมือหน้ากล้องแล้ว"];}
+  else{[[TRDFrontGestureEngine sharedEngine] startIfEnabled];[v showGestureToast:@"👋 เปิดระบบโบกมือหน้ากล้อง & ปรับแสงอัตโนมัติ"];}
+ }
  if([url.host isEqualToString:@"capture"]){[v ensureActiveRunLoopHealth];[v update];[v capture];}
  if([url.host isEqualToString:@"testsettings"]&&url.path.length>1)[v testSettingsAction:@([[url.path substringFromIndex:1] integerValue])];
  return YES;
@@ -9803,6 +10044,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  v.metadataPending=NO;
  [v.audioBars stop];
  [v.driveCar stop];
+ [[TRDFrontGestureEngine sharedEngine] stop];
  [v.timer invalidate];
  v.timer=nil;
  [v saveTrip];
@@ -9834,7 +10076,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [v ensureActiveRunLoopHealth];
  [v restoreDisplayBrightness];
 }
--(void)applicationDidBecomeActive:(UIApplication *)app{Dashboard *v=(Dashboard *)self.window.rootViewController;if(!v.isReverseActive && ![TRDOBDClient sharedClient].isReverseGear){notify_post("com.codex.trd.network.internet");}[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];[v ensureActiveRunLoopHealth];[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.10;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];[v ensureActiveRunLoopHealth];[v startGPS];[v update];[v captureLifecycle];}
+-(void)applicationDidBecomeActive:(UIApplication *)app{Dashboard *v=(Dashboard *)self.window.rootViewController;if(!v.isReverseActive && ![TRDOBDClient sharedClient].isReverseGear){notify_post("com.codex.trd.network.internet");}[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];[v ensureActiveRunLoopHealth];[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.10;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];if(!v.isReverseActive)[[TRDFrontGestureEngine sharedEngine] startIfEnabled];[v ensureActiveRunLoopHealth];[v startGPS];[v update];[v captureLifecycle];}
 
 @end
 static void TRDCrashHandler(NSException *exception) {
