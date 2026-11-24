@@ -67,7 +67,8 @@ NSString *H109ResolvedCameraSSID(void){
 
 static BOOL readExact(int fd,void *p,size_t n){while(n){ssize_t k=recv(fd,p,n,0);if(k<=0){if(k<0&&errno==EINTR)continue;return NO;}p=(char *)p+k;n-=k;}return YES;}
 static BOOL sendAll(int fd,NSData *d){const char *p=d.bytes;size_t n=d.length;while(n){ssize_t k=send(fd,p,n,0);if(k<=0){if(k<0&&errno==EINTR)continue;return NO;}p+=k;n-=k;}return YES;}
-static int openTCP(NSString *host,int port){struct addrinfo hints={0},*addresses=NULL;hints.ai_family=AF_INET;hints.ai_socktype=SOCK_STREAM;char service[16];snprintf(service,sizeof(service),"%d",port);if(getaddrinfo(host.UTF8String,service,&hints,&addresses))return -1;int result=-1;for(struct addrinfo *a=addresses;a;a=a->ai_next){int fd=socket(a->ai_family,a->ai_socktype,0);if(fd<0)continue;int one=1;setsockopt(fd,SOL_SOCKET,SO_NOSIGPIPE,&one,sizeof(one));fcntl(fd,F_SETFL,O_NONBLOCK);int err=connect(fd,a->ai_addr,a->ai_addrlen);if(err<0&&errno==EINPROGRESS){fd_set out;FD_ZERO(&out);FD_SET(fd,&out);struct timeval timeout={2,0};err=select(fd+1,NULL,&out,NULL,&timeout);if(err>0){int e=0;socklen_t len=sizeof(e);getsockopt(fd,SOL_SOCKET,SO_ERROR,&e,&len);err=e?-1:0;}else err=-1;}if(err==0){fcntl(fd,F_SETFL,0);struct timeval rcvTimeout={4,0};struct timeval sndTimeout={2,0};setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&rcvTimeout,sizeof(rcvTimeout));setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&sndTimeout,sizeof(sndTimeout));int rcvbuf=262144;setsockopt(fd,SOL_SOCKET,SO_RCVBUF,&rcvbuf,sizeof(rcvbuf));int nodelay=1;setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,&nodelay,sizeof(nodelay));result=fd;break;}close(fd);}freeaddrinfo(addresses);return result;}
+static int openTCPTimeout(NSString *host,int port,int connectMs,int rcvMs){struct addrinfo hints={0},*addresses=NULL;hints.ai_family=AF_INET;hints.ai_socktype=SOCK_STREAM;char service[16];snprintf(service,sizeof(service),"%d",port);if(getaddrinfo(host.UTF8String,service,&hints,&addresses))return -1;int result=-1;for(struct addrinfo *a=addresses;a;a=a->ai_next){int fd=socket(a->ai_family,a->ai_socktype,0);if(fd<0)continue;int one=1;setsockopt(fd,SOL_SOCKET,SO_NOSIGPIPE,&one,sizeof(one));fcntl(fd,F_SETFL,O_NONBLOCK);int err=connect(fd,a->ai_addr,a->ai_addrlen);if(err<0&&errno==EINPROGRESS){fd_set out;FD_ZERO(&out);FD_SET(fd,&out);struct timeval timeout={connectMs/1000,(connectMs%1000)*1000};err=select(fd+1,NULL,&out,NULL,&timeout);if(err>0){int e=0;socklen_t len=sizeof(e);getsockopt(fd,SOL_SOCKET,SO_ERROR,&e,&len);err=e?-1:0;}else err=-1;}if(err==0){fcntl(fd,F_SETFL,0);struct timeval rcvTimeout={rcvMs/1000,(rcvMs%1000)*1000};struct timeval sndTimeout={1,200000};setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&rcvTimeout,sizeof(rcvTimeout));setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&sndTimeout,sizeof(sndTimeout));int rcvbuf=262144;setsockopt(fd,SOL_SOCKET,SO_RCVBUF,&rcvbuf,sizeof(rcvbuf));int nodelay=1;setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,&nodelay,sizeof(nodelay));result=fd;break;}close(fd);}freeaddrinfo(addresses);return result;}
+static int openTCP(NSString *host,int port){return openTCPTimeout(host,port,1200,2500);}
 static NSDictionary *response(int fd,int first){NSMutableData *header=[NSMutableData data];if(first>=0){uint8_t c=first;[header appendBytes:&c length:1];}CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+6;while(header.length<32768){if(CFAbsoluteTimeGetCurrent()>deadline)return nil;uint8_t c;if(!readExact(fd,&c,1))return nil;[header appendBytes:&c length:1];if(header.length>=4&&!memcmp((char *)header.bytes+header.length-4,"\r\n\r\n",4))break;}NSString *text=[[NSString alloc]initWithData:header encoding:NSUTF8StringEncoding];if(!text||![text hasPrefix:@"RTSP/"])return nil;NSArray *lines=[text componentsSeparatedByString:@"\r\n"];NSArray *status=[lines[0] componentsSeparatedByString:@" "];if(status.count<2)return nil;NSMutableDictionary *r=[NSMutableDictionary dictionary];r[@"code"]=@([status[1] integerValue]);for(NSString *line in lines){NSRange colon=[line rangeOfString:@":"];if(colon.location==NSNotFound)continue;r[[[line substringToIndex:colon.location]lowercaseString]]=[[line substringFromIndex:colon.location+1]stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];}NSInteger size=[r[@"content-length"]integerValue];if(size<0||size>1048576)return nil;NSMutableData *body=[NSMutableData dataWithLength:size];if(size&&!readExact(fd,body.mutableBytes,size))return nil;r[@"body"]=[[NSString alloc]initWithData:body encoding:NSUTF8StringEncoding]?:@"";return r;}
 static BOOL request(int fd,NSString *method,NSString *url,int cseq,NSDictionary *headers){NSMutableString *s=[NSMutableString stringWithFormat:@"%@ %@ RTSP/1.0\r\nCSeq: %d\r\nUser-Agent: H109Viewer/0.2\r\n",method,url,cseq];for(NSString *key in headers)[s appendFormat:@"%@: %@\r\n",key,headers[key]];[s appendString:@"\r\n"];return sendAll(fd,[s dataUsingEncoding:NSUTF8StringEncoding]);}
 
@@ -96,11 +97,11 @@ static NSData *H109ParameterSet(NSData *data){const uint8_t *p=data.bytes;NSUInt
 -(void)start:(NSURL *)url{@synchronized(self){self.stopped=NO;self.runFinished=NO;}dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0),^{@autoreleasepool{[self run:url];}});}
 // Respect Content-Length: this camera may keep HTTP/1.0 sockets open.
 +(NSString *)readMetadata:(NSString *)host path:(NSString *)path{
- int fd=openTCP(host,80);if(fd<0)return nil;NSMutableData *bytes=[NSMutableData data];NSString *result=nil;
+ int fd=openTCPTimeout(host,80,700,900);if(fd<0)return nil;NSMutableData *bytes=[NSMutableData data];NSString *result=nil;
  @try{
   NSString *req=[NSString stringWithFormat:@"GET %@ HTTP/1.1\r\nHost: %@\r\nConnection: close\r\nUser-Agent: H109Viewer/0.7\r\n\r\n",path,host];
   if(!sendAll(fd,[req dataUsingEncoding:NSUTF8StringEncoding]))return nil;
-  NSData *separator=[@"\r\n\r\n" dataUsingEncoding:NSUTF8StringEncoding];NSUInteger bodyStart=NSNotFound;long long expected=-1;uint8_t buf[2048];CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+6;
+  NSData *separator=[@"\r\n\r\n" dataUsingEncoding:NSUTF8StringEncoding];NSUInteger bodyStart=NSNotFound;long long expected=-1;uint8_t buf[2048];CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+1.5;
   while(bytes.length<65536&&CFAbsoluteTimeGetCurrent()<deadline){
    ssize_t n=recv(fd,buf,MIN(sizeof(buf),65536-bytes.length),0);if(n<=0)break;[bytes appendBytes:buf length:n];
    if(bodyStart==NSNotFound){NSRange end=[bytes rangeOfData:separator options:0 range:NSMakeRange(0,bytes.length)];if(end.location!=NSNotFound){bodyStart=NSMaxRange(end);NSString *header=[[NSString alloc]initWithData:[bytes subdataWithRange:NSMakeRange(0,end.location)] encoding:NSUTF8StringEncoding];for(NSString *line in [header componentsSeparatedByString:@"\r\n"]){if([line.lowercaseString hasPrefix:@"content-length:"]){NSScanner *scanner=[NSScanner scannerWithString:[line substringFromIndex:15]];if(![scanner scanLongLong:&expected]||expected<0||expected>65536)return nil;}}}}
@@ -133,9 +134,9 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
  }
  if([info[@"curcamid"]integerValue]==index)return YES;
  if(![self fastSwitchCamera:host index:index])return NO;
- CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+2.4;
+ CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+1.2;
  do{
-  [NSThread sleepForTimeInterval:0.06];
+  [NSThread sleepForTimeInterval:0.04];
   NSDictionary *after=[self cameraDeviceInfo:host];
   if([after[@"curcamid"]isKindOfClass:[NSNumber class]]&&[after[@"curcamid"]integerValue]==index)return YES;
  }while(CFAbsoluteTimeGetCurrent()<deadline);
@@ -175,7 +176,7 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
   }
   tSwitch=CFAbsoluteTimeGetCurrent();
   [self notify:@"Connecting to RTSP..."];
-  fd=openTCP(url.host,port);
+  fd=openTCPTimeout(url.host,port,600,2000);
   if(fd<0&&knownCamHost&&!self.stopped){
    [self notify:@"Opening camera preview session..."];
    [H109RTSP openCameraSession:url.host];
@@ -185,17 +186,16 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
      [H109RTSP switchCamera:url.host index:self.targetChannel];
     }
    }
-   CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+2.8;
+   CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+1.8;
    while(fd<0&&!self.stopped&&CFAbsoluteTimeGetCurrent()<deadline){
-    [NSThread sleepForTimeInterval:0.06];
+    [NSThread sleepForTimeInterval:0.04];
     if(self.stopped)break;
-    fd=openTCP(url.host,port);
+    fd=openTCPTimeout(url.host,port,350,2000);
    }
   }
   tTCP=CFAbsoluteTimeGetCurrent();
   if(fd<0){if(!self.stopped)[self notify:@"เชื่อมต่อ RTSP ไม่ได้ — ตรวจ Wi-Fi และ IP กล้อง"];return;}
   @synchronized(self){if(self.stopped)return;_fd=fd;}
-  if(request(fd,@"OPTIONS",uri,sequence++,@{}))response(fd,-1);
   if(!request(fd,@"DESCRIBE",uri,sequence++,@{@"Accept":@"application/sdp"}))return;NSDictionary *r=response(fd,-1);
   if([r[@"code"]intValue]!=200){[self notify:[NSString stringWithFormat:@"RTSP DESCRIBE: %@ — URL ผิด หรือกล้องต้องเข้าสู่ระบบ",r[@"code"]?:@"ไม่ตอบกลับ"]];return;}
   NSString *sdp=r[@"body"],*control=nil;BOOL video=NO,found=NO,h264=NO;NSString *fmtp=nil;
@@ -217,12 +217,12 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
   [self notify:udp<0?@"RTSP H.264 over TCP - waiting for video":@"RTSP H.264 over UDP - waiting for video"];
   CFAbsoluteTime started=CFAbsoluteTimeGetCurrent(),lastPacket=started,keepalive=started;
   while(!self.stopped){@autoreleasepool{
-   fd_set reads;FD_ZERO(&reads);FD_SET(fd,&reads);int maxfd=fd;if(udp>=0){FD_SET(udp,&reads);maxfd=MAX(maxfd,udp);}if(rtcp>=0){FD_SET(rtcp,&reads);maxfd=MAX(maxfd,rtcp);}struct timeval wait={1,0};int ready=select(maxfd+1,&reads,NULL,NULL,&wait);if(ready<0){if(errno==EINTR)continue;break;}
+   fd_set reads;FD_ZERO(&reads);FD_SET(fd,&reads);int maxfd=fd;if(udp>=0){FD_SET(udp,&reads);maxfd=MAX(maxfd,udp);}if(rtcp>=0){FD_SET(rtcp,&reads);maxfd=MAX(maxfd,rtcp);}struct timeval wait={0,500000};int ready=select(maxfd+1,&reads,NULL,NULL,&wait);if(ready<0){if(errno==EINTR)continue;break;}
    if(ready>0&&FD_ISSET(fd,&reads)){uint8_t first;if(!readExact(fd,&first,1))break;if(first=='$'){uint8_t header[3];if(!readExact(fd,header,3))break;size_t length=((size_t)header[1]<<8)|header[2];NSMutableData *packet=[NSMutableData dataWithLength:length];if(!readExact(fd,packet.mutableBytes,length))break;const uint8_t *p=packet.bytes;if(packet.length>=12&&(p[0]>>6)==2&&(p[1]&127)==_videoPayload){[self rtp:packet];lastPacket=CFAbsoluteTimeGetCurrent();if(!tFirstIDR&&_frameCount>0){tFirstIDR=lastPacket;[[NSString stringWithFormat:@"target=%ld dev=%.3fs switch=%.3fs tcp554=%.3fs play=%.3fs firstIDR=%.3fs\n",(long)self.targetChannel,tDev-t0,tSwitch-t0,tTCP-t0,tPlay-t0,tFirstIDR-t0]writeToFile:@"/var/mobile/h109-build/rtsp-timing.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];}}}else if(first!='\r'&&first!='\n'&&!response(fd,first))break;}
    if(udp>=0&&ready>0&&FD_ISSET(udp,&reads)){uint8_t packet[65536];ssize_t n=recv(udp,packet,sizeof(packet),0);if(n>0){[self rtp:[NSData dataWithBytes:packet length:n]];lastPacket=CFAbsoluteTimeGetCurrent();}}
    if(rtcp>=0&&ready>0&&FD_ISSET(rtcp,&reads)){uint8_t drop[2048];recv(rtcp,drop,sizeof(drop),0);}
-   CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();if(now-keepalive>12){request(fd,@"OPTIONS",uri,sequence++,@{@"Session":session});keepalive=now;}
-   if((!self.frameCount&&now-started>18)||now-lastPacket>15){[self notify:@"No fresh H.264 video received. Check the codec and stream channel."];break;}
+   CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();if(now-keepalive>10){request(fd,@"OPTIONS",uri,sequence++,@{@"Session":session});keepalive=now;}
+   if((!self.frameCount&&now-started>5.5)||now-lastPacket>3.0){[self notify:@"Stream stalled — reconnecting..."];break;}
   }}
  }@catch(NSException *e){[self notify:[NSString stringWithFormat:@"Invalid RTSP data: %@",e.name]];}
  @finally{if(playing&&fd>=0)request(fd,@"TEARDOWN",uri,sequence++,@{@"Session":session?:@""});@synchronized(self){_fd=-1;}if(fd>=0)close(fd);if(udp>=0)close(udp);if(rtcp>=0)close(rtcp);if(!self.stopped&&self.frameCount)[self notify:@"Live stream connection ended"];void (^completion)(void)=nil;@synchronized(self){self.runFinished=YES;completion=self.stopCompletion;self.stopCompletion=nil;}dispatch_async(dispatch_get_main_queue(),^{if(completion)completion();if(self.finished)self.finished();});}
@@ -264,6 +264,6 @@ static void snapshotDecoded(void *context,void *source,OSStatus error,VTDecodeIn
  if(!marker||!_unit.length||!_sps.length||!_pps.length)return;
  if(self.waitForIDR){if(!_unitIDR){[_unit setLength:0];return;}self.waitForIDR=NO;}
  if(!_format){const uint8_t *sets[]={_sps.bytes,_pps.bytes};size_t sizes[]={_sps.length,_pps.length};if(CMVideoFormatDescriptionCreateFromH264ParameterSets(kCFAllocatorDefault,2,sets,sizes,4,&_format)!=noErr){[_unit setLength:0];return;}}
- CMBlockBufferRef block=NULL;CMSampleBufferRef sample=NULL;size_t size=_unit.length;OSStatus err=CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault,NULL,size,kCFAllocatorDefault,NULL,0,size,0,&block);if(err==noErr)err=CMBlockBufferReplaceDataBytes(_unit.bytes,block,0,size);CMSampleTimingInfo timing={kCMTimeInvalid,kCMTimeInvalid,kCMTimeInvalid};if(err==noErr)err=CMSampleBufferCreateReady(kCFAllocatorDefault,block,_format,1,1,&timing,1,&size,&sample);if(sample){CFArrayRef attachments=CMSampleBufferGetSampleAttachmentsArray(sample,YES);if(attachments&&CFArrayGetCount(attachments))CFDictionarySetValue((CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments,0),kCMSampleAttachmentKey_DisplayImmediately,kCFBooleanTrue);@synchronized(self){_frameCount++;if(_unitIDR)[self clearGOP];if(_unitIDR||_gop.count){if(_gopBytes+size>3145728||_gop.count>=60)[self clearGOP];else{CFRetain(sample);[_gop addObject:[NSValue valueWithPointer:sample]];_gopBytes+=size;_lastFrameAt=CFAbsoluteTimeGetCurrent();}}}if(self.sample&&!self.stopped)self.sample(sample);CFRelease(sample);}if(block)CFRelease(block);[_unit setLength:0];
+ CMBlockBufferRef block=NULL;CMSampleBufferRef sample=NULL;size_t size=_unit.length;OSStatus err=CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault,NULL,size,kCFAllocatorDefault,NULL,0,size,0,&block);if(err==noErr)err=CMBlockBufferReplaceDataBytes(_unit.bytes,block,0,size);CMSampleTimingInfo timing={kCMTimeInvalid,kCMTimeInvalid,kCMTimeInvalid};if(err==noErr)err=CMSampleBufferCreateReady(kCFAllocatorDefault,block,_format,1,1,&timing,1,&size,&sample);if(sample){CFArrayRef attachments=CMSampleBufferGetSampleAttachmentsArray(sample,YES);if(attachments&&CFArrayGetCount(attachments))CFDictionarySetValue((CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments,0),kCMSampleAttachmentKey_DisplayImmediately,kCFBooleanTrue);@synchronized(self){_frameCount++;if(_unitIDR)[self clearGOP];if(_unitIDR||_gop.count){if(_gopBytes+size>1572864||_gop.count>=30)[self clearGOP];else{CFRetain(sample);[_gop addObject:[NSValue valueWithPointer:sample]];_gopBytes+=size;_lastFrameAt=CFAbsoluteTimeGetCurrent();}}}if(self.sample&&!self.stopped)self.sample(sample);CFRelease(sample);}if(block)CFRelease(block);[_unit setLength:0];
 }
 @end

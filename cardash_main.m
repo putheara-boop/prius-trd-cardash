@@ -8822,6 +8822,12 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   [self handleReverseEngaged];
  }else{
   [self handleReverseDisengaged];
+  // If already on camera Wi-Fi (192.168.169.x), pre-warm rear stream in standby without touching Hotspot or OBD2
+  NSDictionary *netState=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-state.plist"];
+  NSString *ip=[netState[@"address"] isKindOfClass:[NSString class]]?netState[@"address"]:@"";
+  if([ip hasPrefix:@"192.168.169."]){
+   notify_post("com.codex.h109.prewarm");
+  }
  }
 }
 
@@ -8829,8 +8835,9 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(self.isReverseActive)return;
  self.isReverseActive=YES;
  [self prepareForExternalAppLaunch];
- [@{@"rear": @YES, @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/reverse-camera.plist" atomically:YES];
+ [@{@"rear": @YES, @"at": [NSDate date], @"fast": @YES} writeToFile:@"/var/mobile/codex-car/reverse-camera.plist" atomically:YES];
  notify_post("com.codex.trd.network.camera");
+ notify_post("com.codex.h109.reverse.show");
  [self launchBundleApp:@"com.codex.h109viewer"];
  self.pausedMusicForReverse=NO;
  self.reverseAudioSource=0;
