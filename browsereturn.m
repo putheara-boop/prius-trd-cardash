@@ -281,7 +281,7 @@ static id networkRouteObserver;
  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive||[self.deadline timeIntervalSinceNow]<=0){[self stop];return;}
  if(!isNinja && (![arm[@"pending"]boolValue]||![arm[@"token"]isEqual:self.token]||![arm[@"bundle"]isEqual:bundle]||[arm[@"expires"]timeIntervalSinceNow]<=0)){[self stop];return;}
  BOOL ready=NO;
- if(isNinja){id<TRDBrowseNinjaPlayer> player=self.source;NSArray *queue=[player queue];NSInteger index=[player currentIndex];id track=index>=0&&index<(NSInteger)queue.count?queue[index]:nil;NSString *key=[track respondsToSelector:@selector(videoId)]?[track videoId]:nil;double time=[player currentTime];ready=(!self.expectedTrackID.length||[key isEqual:self.expectedTrackID])&&[player isPlaying]&&isfinite(time)&&time>=1.2&&self.lastTime>=0&&time>self.lastTime+.05;self.lastTime=isfinite(time)?time:-1;}
+ if(isNinja){id<TRDBrowseNinjaPlayer> player=self.source;NSArray *queue=[player queue];NSInteger index=[player currentIndex];id track=index>=0&&index<(NSInteger)queue.count?queue[index]:nil;NSString *key=[track respondsToSelector:@selector(videoId)]?[track videoId]:nil;double time=[player currentTime];ready=(!self.expectedTrackID.length||[key isEqual:self.expectedTrackID])&&[player isPlaying]&&isfinite(time)&&time>=0.45&&self.lastTime>=0&&time>self.lastTime+.02;self.lastTime=isfinite(time)?time:-1;}
  else {
  id candidate=[self.source respondsToSelector:@selector(player)]?[self.source player]:nil;
  if(![candidate isKindOfClass:[AVPlayer class]]&&![candidate isKindOfClass:[AVAudioPlayer class]]){unsigned count=0;Ivar *vars=class_copyIvarList([self.source class],&count);for(unsigned i=0;i<count;i++){const char *type=ivar_getTypeEncoding(vars[i]);NSString *name=[NSString stringWithUTF8String:ivar_getName(vars[i])];if(type&&type[0]=='@'&&[name.lowercaseString containsString:@"player"]){id object=object_getIvar(self.source,vars[i]);if([object isKindOfClass:[AVPlayer class]]||[object isKindOfClass:[AVAudioPlayer class]]){candidate=object;break;}}}free(vars);}
@@ -317,14 +317,16 @@ static id networkRouteObserver;
     }
    });
   }
+  notify_post("com.codex.trd.launch.cardash");
  }
  [[UIApplication sharedApplication]openURL:[NSURL URLWithString:isNinja?@"cardash://home":@"cardash://music"]];
 }
 @end
 #import "RoadAudio.h"
 #import "TRDNinjaAutoplay.h"
+static BOOL TRDVoiceSearchInFlight = NO;
 static void(*oldMusic)(id,SEL,id,NSUInteger);
-static void Music(id obj,SEL sel,id queue,NSUInteger index){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-selection");if(!TRDAutoStarting)queue=TRDExpandQueue(obj,queue,&index);oldMusic(obj,sel,queue,index);if(!TRDAutoStarting){TRDSaveQueue();[TRDBrowseReturn selected:obj];}[TRDRoadAudio install];}
+static void Music(id obj,SEL sel,id queue,NSUInteger index){if(!TRDAutoStarting)TRDManualPlaybackOverride(@"manual-selection");if(!TRDAutoStarting && !TRDVoiceSearchInFlight)queue=TRDExpandQueue(obj,queue,&index);oldMusic(obj,sel,queue,index);if(!TRDAutoStarting && !TRDVoiceSearchInFlight){TRDSaveQueue();[TRDBrowseReturn selected:obj];}[TRDRoadAudio install];}
 static void(*oldPause)(id,SEL);
 static BOOL TRDReversePaused = NO;
 static void AutoPause(id obj,SEL sel){if(!TRDAutoStarting && !TRDReversePaused)TRDManualPlaybackOverride(@"manual-pause");oldPause(obj,sel);TRDSaveQueue();}
@@ -415,41 +417,45 @@ static BOOL Hook_ShouldAutorotate(id self, SEL _cmd) {
  return YES;
 }
 
+static void TRDReturnToCarDashNowWithBgTask(UIBackgroundTaskIdentifier bgTask){
+ @try {
+  AVAudioSession *s = [AVAudioSession sharedInstance];
+  [s setCategory:AVAudioSessionCategoryPlayback error:nil];
+  [s setActive:YES error:nil];
+ } @catch(NSException *e) {}
+ if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
+  notify_post("com.codex.trd.launch.cardash");
+  [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"] options:@{} completionHandler:nil];
+ }
+ if(bgTask != UIBackgroundTaskInvalid){
+  UIBackgroundTaskIdentifier holdTask = bgTask;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(25.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   [[UIApplication sharedApplication] endBackgroundTask:holdTask];
+  });
+ }
+}
+
 static void TRDWaitAndReturnToCarDash(id<TRDLTPlayerController> player, int triesLeft, UIBackgroundTaskIdentifier bgTask){
  if(triesLeft <= 0){
-  if(bgTask != UIBackgroundTaskInvalid){
-   [[UIApplication sharedApplication] endBackgroundTask:bgTask];
-  }
+  // Never stay stuck on audioNINJA screen even if YouTube stream buffers slowly!
+  TRDReturnToCarDashNowWithBgTask(bgTask);
   return;
  }
- dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.45*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.35*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
   BOOL playing = [player respondsToSelector:@selector(isPlaying)] && [player isPlaying];
   double ct = [player respondsToSelector:@selector(currentTime)] ? [player currentTime] : 0.0;
-  if(playing && isfinite(ct) && ct >= 1.5){
-   @try {
-    AVAudioSession *s = [AVAudioSession sharedInstance];
-    [s setCategory:AVAudioSessionCategoryPlayback error:nil];
-    [s setActive:YES error:nil];
-   } @catch(NSException *e) {}
-   if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
-    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"] options:@{} completionHandler:nil];
-   }
-   // CRITICAL: Keep bgTask alive for 25 more seconds after returning to CarDash so LTPlayerController's
-   // NSURLConnection finishes downloading 100% of the ltstream:// track in background (eliminates 10s cutoff!)
-   if(bgTask != UIBackgroundTaskInvalid){
-    UIBackgroundTaskIdentifier holdTask = bgTask;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(25.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
-     [[UIApplication sharedApplication] endBackgroundTask:holdTask];
-    });
-   }
+  if(playing && isfinite(ct) && ct >= 0.45){
+   TRDReturnToCarDashNowWithBgTask(bgTask);
   } else {
    TRDWaitAndReturnToCarDash(player, triesLeft - 1, bgTask);
   }
  });
 }
 
+static BOOL gVoiceSearchHandling = NO;
 static void TRDHandleVoiceSearchIfPending(void){
  dispatch_async(dispatch_get_main_queue(),^{
+  if(gVoiceSearchHandling) return;
   NSDictionary *req=[NSDictionary dictionaryWithContentsOfFile:VoiceSearchPlist];
   if(![req isKindOfClass:[NSDictionary class]])return;
   if(![req[@"pending"] boolValue])return;
@@ -458,6 +464,7 @@ static void TRDHandleVoiceSearchIfPending(void){
   NSDate *at=[req[@"at"] isKindOfClass:[NSDate class]]?req[@"at"]:nil;
   if(!q.length || (at && [at timeIntervalSinceNow] < -35.0))return;
 
+  gVoiceSearchHandling = YES;
   NSMutableDictionary *done=[req mutableCopy];
   done[@"pending"]=@NO;
   done[@"pickedAt"]=[NSDate date];
@@ -474,13 +481,15 @@ static void TRDHandleVoiceSearchIfPending(void){
 
   Class ytCls=NSClassFromString(@"LTYouTubeClient");
   if(!ytCls || ![ytCls respondsToSelector:@selector(sharedClient)]){
+   gVoiceSearchHandling = NO;
    [@{@"status":@"no_yt_client",@"query":q,@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
-   if(bgTask != UIBackgroundTaskInvalid){[[UIApplication sharedApplication] endBackgroundTask:bgTask]; bgTask = UIBackgroundTaskInvalid;}
+   TRDReturnToCarDashNowWithBgTask(bgTask);
    return;
   }
   id<TRDLTYouTubeClient> yt=[ytCls sharedClient];
   [yt searchVideosWithQuery:q completion:^(NSArray *tracks, NSError *error){
    dispatch_async(dispatch_get_main_queue(),^{
+    gVoiceSearchHandling = NO;
     if(tracks && tracks.count > 0){
      @try {
       AVAudioSession *sess = [AVAudioSession sharedInstance];
@@ -491,15 +500,17 @@ static void TRDHandleVoiceSearchIfPending(void){
      Class plCls=NSClassFromString(@"LTPlayerController");
      id<TRDLTPlayerController> player=(plCls && [plCls respondsToSelector:@selector(sharedController)])?[plCls sharedController]:nil;
      if(player && [player respondsToSelector:@selector(playQueue:atIndex:)]){
+      TRDVoiceSearchInFlight = YES;
       [player playQueue:tracks atIndex:0];
+      TRDVoiceSearchInFlight = NO;
+      TRDSaveQueue();
       [@{@"status":@"playing",@"query":q,@"count":@(tracks.count),@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
-      // Keep AVAudioSessionPlayback active & wait until streaming (>=1.8s) so iOS NEVER cuts off at 10s!
-      TRDWaitAndReturnToCarDash(player, 30, bgTask);
+      TRDWaitAndReturnToCarDash(player, 12, bgTask);
       return;
      }
     }
     [@{@"status":@"not_found",@"query":q,@"error":error.localizedDescription?:@"empty",@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
-    if(bgTask != UIBackgroundTaskInvalid){[[UIApplication sharedApplication] endBackgroundTask:bgTask]; bgTask = UIBackgroundTaskInvalid;}
+    TRDReturnToCarDashNowWithBgTask(bgTask);
    });
   }];
  });

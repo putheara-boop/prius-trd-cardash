@@ -2032,6 +2032,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  int _peakMotion;
  CFAbsoluteTime _holdStartAt;
  BOOL _holdFired;
+ float _startCX;
+ float _lastCX;
  CFAbsoluteTime _cooldownUntil;
  NSUInteger _frameIdx;
  float _smoothAmbient;
@@ -2039,6 +2041,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property (nonatomic, strong) AVCaptureSession *session;
 @property (nonatomic, strong) dispatch_queue_t queue;
 @property (nonatomic, copy) void (^onWaveNext)(void);
+@property (nonatomic, copy) void (^onWavePrev)(void);
+@property (nonatomic, copy) void (^onPlayPause)(void);
 @property (nonatomic, copy) void (^onHoldVoiceSearch)(void);
 +(instancetype)sharedEngine;
 -(void)startIfEnabled;
@@ -2064,6 +2068,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   [self stop];
   return;
  }
+ UIInterfaceOrientation uiOri=[NSThread isMainThread]?[UIApplication sharedApplication].statusBarOrientation:UIInterfaceOrientationLandscapeRight;
  dispatch_async(_queue,^{
   if(self.session){
    if(!self.session.isRunning)[self.session startRunning];
@@ -2091,6 +2096,16 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   out.videoSettings=@{(id)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)};
   [out setSampleBufferDelegate:self queue:self.queue];
   if([sess canAddOutput:out])[sess addOutput:out];
+  AVCaptureConnection *conn=[out connectionWithMediaType:AVMediaTypeVideo];
+  if(conn){
+   if(conn.isVideoOrientationSupported){
+    conn.videoOrientation=(uiOri==UIInterfaceOrientationLandscapeLeft)?AVCaptureVideoOrientationLandscapeLeft:AVCaptureVideoOrientationLandscapeRight;
+   }
+   if(conn.isVideoMirroringSupported){
+    conn.automaticallyAdjustsVideoMirroring=NO;
+    conn.videoMirrored=YES;
+   }
+  }
   [sess commitConfiguration];
   if([front lockForConfiguration:nil]){
    front.activeVideoMinFrameDuration=CMTimeMake(1,10);
@@ -2152,13 +2167,20 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 
  int motionCells=0;
  int occludedCells=0;
+ float weightedX=0.0f, totalW=0.0f;
  for(int i=0;i<96;i++){
+  int gx = i % 12;
   float dm=fabsf(cur[i]-_prevLuma[i]);
   float db=fabsf(cur[i]-_baseLuma[i]);
-  if(dm>=18.0f)motionCells++;
+  if(dm>=16.0f)motionCells++;
   if(db>=26.0f || (meanLuma<28.0f && _baseLuma[i]>42.0f))occludedCells++;
+  float wCell=(dm>=14.0f ? dm : 0.0f) + (db>=22.0f ? db*0.4f : 0.0f);
+  if(wCell>0.0f){
+   weightedX += ((float)gx / 11.0f) * wCell;
+   totalW += wCell;
+  }
   _prevLuma[i]=cur[i];
-  if(motionCells<4 && occludedCells<10){
+  if(dm<8.0f && db<18.0f){
    _baseLuma[i]=_baseLuma[i]*0.92f + cur[i]*0.08f;
   }
  }
@@ -2186,36 +2208,65 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   return;
  }
 
- // 1) Hold hand near front camera (~0.95s) -> Hands-free Thai Voice Search for new song!
- if(occludedCells>=34 || motionCells>=14){
-  if(_holdStartAt==0){_holdStartAt=now;_holdFired=NO;}
-  else if(!_holdFired && (now-_holdStartAt)>=0.95 && occludedCells>=30){
-   _holdFired=YES;
-   _waveStartAt=0;
-   _cooldownUntil=now+4.0;
-   void (^cb)(void)=self.onHoldVoiceSearch;
-   if(cb)dispatch_async(dispatch_get_main_queue(),cb);
+ // 1) Intentional Close-Hand Lens Cover (hand within ~3-8 cm of front camera -> lens dark):
+ //    - Brief cover & release (0.30s .. 1.35s) => Play / Pause toggle!
+ //    - Hold cover (>= 1.50s) => Chime & open Hands-Free Voice Song Search!
+ float ambRef = (_smoothAmbient > 24.0f) ? _smoothAmbient : 60.0f;
+ BOOL lensCovered = (meanLuma < 28.0f && meanLuma < ambRef * 0.48f) || (occludedCells >= 72 && meanLuma < ambRef * 0.55f);
+ if(lensCovered){
+  _waveStartAt = 0;
+  _peakMotion = 0;
+  if(_holdStartAt == 0){
+   _holdStartAt = now;
+   _holdFired = NO;
+  } else if(!_holdFired && (now - _holdStartAt) >= 1.45){
+   _holdFired = YES;
+   _cooldownUntil = now + 4.0;
+   void (^cb)(void) = self.onHoldVoiceSearch;
+   if(cb) dispatch_async(dispatch_get_main_queue(), cb);
+  }
+  return;
+ } else if(_holdStartAt > 0){
+  double coverDur = now - _holdStartAt;
+  BOOL alreadyFired = _holdFired;
+  _holdStartAt = 0;
+  _holdFired = NO;
+  if(!alreadyFired && coverDur >= 0.28 && coverDur < 1.45){
+   _cooldownUntil = now + 1.35;
+   void (^cb)(void) = self.onPlayPause;
+   if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
   }
- }else{
-  _holdStartAt=0;
-  _holdFired=NO;
  }
 
- // 2) Quick hand wave past front camera (0.08s - 0.70s) -> Skip to Next Song!
- if(motionCells>=13){
-  if(_waveStartAt==0){_waveStartAt=now;_peakMotion=motionCells;}
-  else if(motionCells>_peakMotion)_peakMotion=motionCells;
+ // 2) Directional horizontal hand sweep (Mirrored Landscape: Left->Right = Next+Play, Right->Left = Prev+Play!)
+ if(motionCells>=10 && totalW>95.0f){
+  float cx = weightedX / totalW;
+  if(_waveStartAt==0){
+   _waveStartAt=now;
+   _peakMotion=motionCells;
+   _startCX=cx;
+   _lastCX=cx;
+  } else {
+   if(motionCells>_peakMotion)_peakMotion=motionCells;
+   _lastCX=cx;
+  }
   if((now-_waveStartAt)>0.85){_waveStartAt=0;_peakMotion=0;}
- }else if(_waveStartAt>0 && motionCells<=5){
+ }else if(_waveStartAt>0 && motionCells<=4){
   double dur=now-_waveStartAt;
   int peak=_peakMotion;
+  float deltaX=_lastCX - _startCX;
   _waveStartAt=0;
   _peakMotion=0;
-  if(dur>=0.07 && dur<=0.75 && peak>=15 && !_holdFired){
-   _cooldownUntil=now+1.45;
-   void (^cb)(void)=self.onWaveNext;
-   if(cb)dispatch_async(dispatch_get_main_queue(),cb);
+  if(dur>=0.05 && dur<=0.80 && peak>=12 && fabsf(deltaX)>=0.10f){
+   _cooldownUntil=now+1.30;
+   if(deltaX > 0){
+    void (^cb)(void)=self.onWaveNext;
+    if(cb)dispatch_async(dispatch_get_main_queue(),cb);
+   } else {
+    void (^cb)(void)=self.onWavePrev;
+    if(cb)dispatch_async(dispatch_get_main_queue(),cb);
+   }
   }
  }
 }
@@ -3554,14 +3605,37 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   TRDFrontGestureEngine *ge = [TRDFrontGestureEngine sharedEngine];
   ge.onWaveNext = ^{
    Dashboard *d = weakGestureSelf;
-   if(!d || d.isReverseActive) return;
+   if(!d || d.isReverseActive || d.voiceListening) return;
    AudioServicesPlaySystemSound(1104);
    [d miniNext];
-   [d showGestureToast:@"👋 โบกมือข้ามไปเพลงถัดไป ⏭️"];
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    notify_post("com.codex.trd.music.play");
+    TRDSendMediaRemoteExternal(0, nil);
+   });
+   [d showGestureToast:@"👋➡️ ปัดขวา: เพลงถัดไป ⏭️"];
+  };
+  ge.onWavePrev = ^{
+   Dashboard *d = weakGestureSelf;
+   if(!d || d.isReverseActive || d.voiceListening) return;
+   AudioServicesPlaySystemSound(1104);
+   [d miniPrev];
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    notify_post("com.codex.trd.music.play");
+    TRDSendMediaRemoteExternal(0, nil);
+   });
+   [d showGestureToast:@"⬅️👋 ปัดซ้าย: เพลงก่อนหน้า ⏮️"];
+  };
+  ge.onPlayPause = ^{
+   Dashboard *d = weakGestureSelf;
+   if(!d || d.isReverseActive || d.voiceListening) return;
+   BOOL wasPlaying = (d.mediaRate > 0.05) || (d.radioPlayer && d.radioPlayer.rate > 0.05);
+   AudioServicesPlaySystemSound(1104);
+   [d miniPlay];
+   [d showGestureToast:wasPlaying ? @"✋ หยุดพักเพลงชั่วคราว ⏸️" : @"✋ เล่นเพลงต่อทันที ▶️"];
   };
   ge.onHoldVoiceSearch = ^{
    Dashboard *d = weakGestureSelf;
-   if(!d || d.isReverseActive) return;
+   if(!d || d.isReverseActive || d.voiceListening) return;
    AudioServicesPlaySystemSound(1113);
    [d voiceMusicTapped];
   };
@@ -8782,7 +8856,29 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   NSDate *reqAt = [NSDate date];
   [@{@"query":q, @"pending":@YES, @"at":reqAt} writeToFile:vsPath atomically:YES];
   notify_post("com.codex.trd.music.voicesearch");
-  // If audioNINJA wasn't running in background yet, wake it after 1.1s so it picks up the search and returns straight to CarDash
+  // Wake audioNINJA silently in background first via FBSSystemService (__ActivateSuspended) so screen NEVER leaves CarDash!
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+   NSDictionary *chkBg = [NSDictionary dictionaryWithContentsOfFile:vsPath];
+   if([chkBg[@"pending"] boolValue] && [chkBg[@"query"] isEqualToString:q]){
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+     Class fbsCls = NSClassFromString(@"FBSSystemService");
+     if(!fbsCls){
+      dlopen("/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices", RTLD_LAZY);
+      fbsCls = NSClassFromString(@"FBSSystemService");
+     }
+     id svc = (fbsCls && [fbsCls respondsToSelector:@selector(sharedService)]) ? ((id (*)(id, SEL))objc_msgSend)(fbsCls, @selector(sharedService)) : nil;
+     SEL openSel = NSSelectorFromString(@"openApplication:options:withResult:");
+     if(svc && [svc respondsToSelector:openSel]){
+      NSDictionary *opts = @{@"__ActivateSuspended": @YES};
+      ((void (*)(id, SEL, NSString *, NSDictionary *, id))objc_msgSend)(svc, openSel, @"com.legacymusic.app", opts, nil);
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.65 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+       notify_post("com.codex.trd.music.voicesearch");
+      });
+     }
+    });
+   }
+  });
+  // Fallback only if suspended background wake was blocked and audioNINJA still hasn't picked up after 2.4s:
   __weak Dashboard *weakSelf = self;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
    NSDictionary *chk = [NSDictionary dictionaryWithContentsOfFile:vsPath];
