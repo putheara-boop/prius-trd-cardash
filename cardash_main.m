@@ -2215,18 +2215,18 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   int gx = i % 12;
   float dm=fabsf(cur[i]-_prevLuma[i]);
   float db=fabsf(cur[i]-_baseLuma[i]);
-  if(dm>=12.0f)motionCells++;
-  if(db>=22.0f || (meanLuma<32.0f && _baseLuma[i]>42.0f))occludedCells++;
-  float wCell=(dm>=11.0f ? dm : 0.0f) + (db>=18.0f ? db*0.45f : 0.0f);
+  if(dm>=22.0f)motionCells++;
+  if(db>=32.0f || (meanLuma<30.0f && _baseLuma[i]>48.0f))occludedCells++;
+  float wCell=(dm>=22.0f ? dm : 0.0f);
   if(wCell>0.0f){
    weightedX += ((float)gx / 11.0f) * wCell;
    totalW += wCell;
-   if(gx <= 4 && (dm>=12.0f || db>=20.0f)) leftHits++;
-   else if(gx >= 7 && (dm>=12.0f || db>=20.0f)) rightHits++;
+   if(gx <= 4) leftHits++;
+   else if(gx >= 7) rightHits++;
   }
   _prevLuma[i]=cur[i];
-  if(dm<7.0f && db<16.0f){
-   _baseLuma[i]=_baseLuma[i]*0.92f + cur[i]*0.08f;
+  if(dm<12.0f && occludedCells<50){
+   _baseLuma[i]=_baseLuma[i]*0.88f + cur[i]*0.12f;
   }
  }
 
@@ -2253,29 +2253,18 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   return;
  }
 
- // Track fresh hand entry motion so sitting still never false-triggers!
- if(motionCells >= 9){
-  _lastMotionEntryAt = now;
- }
- // Re-baseline if static shadow persists > 3.2s (e.g. driver leaned forward in seat)
- if(_holdStartAt > 0 && (now - _holdStartAt) > 3.2){
-  for(int i=0;i<96;i++) _baseLuma[i] = cur[i];
-  _holdStartAt = 0;
-  _holdFired = NO;
- }
-
- // 1) Raise & Hold Hand ~15-25 cm in front of camera (or close cover):
- //    Requires a recent hand entry (< 2.6s ago) + hand held steady in frame (occludedCells >= 18 && motionCells <= 11)
- //    - Hold >= 1.05s => Chime & open Hands-Free Voice Song Search immediately!
- //    - Brief hold (0.35s .. 1.00s) then pull hand away => Play / Pause toggle!
- float ambRef = (_smoothAmbient > 24.0f) ? _smoothAmbient : 60.0f;
- BOOL closeDark = (meanLuma < 32.0f && meanLuma < ambRef * 0.55f);
- BOOL handHeldInView = closeDark || (occludedCells >= 18 && motionCells <= 12 && (now - _lastMotionEntryAt) <= 2.8);
- if(handHeldInView){
+ // STRICT NEAR-FIELD ONLY (~5-12 cm from lens!):
+ // Sitting 0.5m-1.0m away affects < 25 cells and is 100% IGNORED!
+ // 1) Close Palm Cover (~3-8 cm from lens: covers >= 68/96 cells [>70% of lens] OR drops lens dark):
+ //    - Hold >= 1.30s => Chime & open Voice Song Search!
+ //    - Brief cover (0.35s .. 1.20s) & release => Play / Pause toggle!
+ float ambRef = (_smoothAmbient > 28.0f) ? _smoothAmbient : 65.0f;
+ BOOL nearPalmCover = (meanLuma < 30.0f && meanLuma < ambRef * 0.48f) || (occludedCells >= 68 && meanLuma < ambRef * 0.68f);
+ if(nearPalmCover){
   if(_holdStartAt == 0){
    _holdStartAt = now;
    _holdFired = NO;
-  } else if(!_holdFired && (now - _holdStartAt) >= 1.05){
+  } else if(!_holdFired && (now - _holdStartAt) >= 1.30){
    _holdFired = YES;
    _waveStartAt = 0;
    _peakMotion = 0;
@@ -2285,15 +2274,16 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
   }
+  return;
  } else if(_holdStartAt > 0){
   double coverDur = now - _holdStartAt;
   BOOL alreadyFired = _holdFired;
   _holdStartAt = 0;
   _holdFired = NO;
-  if(!alreadyFired && coverDur >= 0.35 && coverDur < 1.05 && _peakMotion < 28){
+  if(!alreadyFired && coverDur >= 0.32 && coverDur < 1.30){
    _waveStartAt = 0;
    _peakMotion = 0;
-   _cooldownUntil = now + 1.25;
+   _cooldownUntil = now + 1.50;
    for(int i=0;i<96;i++) _baseLuma[i] = cur[i];
    void (^cb)(void) = self.onPlayPause;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
@@ -2301,24 +2291,24 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   }
  }
 
- // 2) Directional horizontal hand sweep (15 FPS + Left/Right zone crossing + centroid delta!)
- if(motionCells>=7 && totalW>65.0f){
+ // 2) Close Hand Sweep (~5-15 cm across lens: requires >= 38/96 moving cells + BOTH left & right zones crossed!)
+ if(motionCells>=24 && totalW>480.0f){
   float cx = weightedX / totalW;
   if(_waveStartAt==0){
    _waveStartAt=now;
    _peakMotion=motionCells;
    _startCX=cx;
    _lastCX=cx;
-   _leftPeakAt=(leftHits>=4)?now:0;
-   _rightPeakAt=(rightHits>=4)?now:0;
+   _leftPeakAt=(leftHits>=12)?now:0;
+   _rightPeakAt=(rightHits>=12)?now:0;
   } else {
    if(motionCells>_peakMotion)_peakMotion=motionCells;
    _lastCX=cx;
-   if(leftHits>=4 && _leftPeakAt==0)_leftPeakAt=now;
-   if(rightHits>=4 && _rightPeakAt==0)_rightPeakAt=now;
+   if(leftHits>=12 && _leftPeakAt==0)_leftPeakAt=now;
+   if(rightHits>=12 && _rightPeakAt==0)_rightPeakAt=now;
   }
-  if((now-_waveStartAt)>0.90){_waveStartAt=0;_peakMotion=0;_leftPeakAt=0;_rightPeakAt=0;}
- }else if(_waveStartAt>0 && motionCells<=3){
+  if((now-_waveStartAt)>0.65){_waveStartAt=0;_peakMotion=0;_leftPeakAt=0;_rightPeakAt=0;}
+ }else if(_waveStartAt>0 && motionCells<=6){
   double dur=now-_waveStartAt;
   int peak=_peakMotion;
   float deltaX=_lastCX - _startCX;
@@ -2327,18 +2317,10 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   _peakMotion=0;
   _leftPeakAt=0;
   _rightPeakAt=0;
-  if(dur>=0.04 && dur<=0.85 && peak>=9){
-   BOOL hasZoneOrder = (lAt > 0 && rAt > 0 && fabs(rAt - lAt) >= 0.02);
-   BOOL goNext = YES;
-   if(hasZoneOrder){
-    goNext = (rAt > lAt); // Left zone hit first, then Right zone => Left-to-Right => Next!
-   } else if(fabsf(deltaX) >= 0.06f){
-    goNext = (deltaX > 0);
-   } else {
-    if(peak < 13) return; // Ignore tiny non-directional jitter
-    goNext = (_startCX <= 0.5f);
-   }
-   _cooldownUntil=now+1.10;
+  BOOL crossedBothSides = (lAt > 0 && rAt > 0 && fabs(rAt - lAt) >= 0.02);
+  if(dur>=0.06 && dur<=0.62 && peak>=36 && (crossedBothSides || fabsf(deltaX)>=0.22f)){
+   BOOL goNext = crossedBothSides ? (rAt > lAt) : (deltaX > 0);
+   _cooldownUntil=now+1.50;
    if(goNext){
     void (^cb)(void)=self.onWaveNext;
     if(cb)dispatch_async(dispatch_get_main_queue(),cb);
