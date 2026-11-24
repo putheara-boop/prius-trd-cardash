@@ -266,18 +266,22 @@ static id networkRouteObserver;
 +(void)selected:(id)source{dispatch_async(dispatch_get_main_queue(),^{
  NSDictionary *arm=[NSDictionary dictionaryWithContentsOfFile:Arm];NSString *bundle=NSBundle.mainBundle.bundleIdentifier;
  if([bundle isEqual:@"com.himais0giiiin.ytnine"]||[bundle isEqual:@"com.google.ios.youtube"])return; // Never auto-return from YouTube
- if(![arm[@"pending"]boolValue]||![arm[@"bundle"]isEqual:bundle]||![arm[@"expires"]isKindOfClass:[NSDate class]]||[arm[@"expires"]timeIntervalSinceNow]<=0||[UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
- if(!bridge){bridge=[TRDBrowseReturn new];[[NSNotificationCenter defaultCenter]addObserver:bridge selector:@selector(stop) name:UIApplicationDidEnterBackgroundNotification object:nil];}[bridge stop];bridge.source=source;bridge.token=arm[@"token"];bridge.oldTitle=arm[@"baselineTitle"]?:@"";bridge.lastTime=-1;bridge.deadline=[NSDate dateWithTimeIntervalSinceNow:25];
- if([bundle isEqual:@"com.legacymusic.app"]){NSArray *queue=[(id<TRDBrowseNinjaPlayer>)source queue];NSInteger index=[(id<TRDBrowseNinjaPlayer>)source currentIndex];id track=index>=0&&index<(NSInteger)queue.count?queue[index]:nil;bridge.expectedTrackID=[track respondsToSelector:@selector(videoId)]?[track videoId]:nil;}
- bridge.timer=[NSTimer scheduledTimerWithTimeInterval:.5 target:bridge selector:@selector(tick) userInfo:nil repeats:YES];
+ if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
+ BOOL isNinja=[bundle isEqual:@"com.legacymusic.app"];
+ if(!isNinja && (![arm[@"pending"]boolValue]||![arm[@"bundle"]isEqual:bundle]||![arm[@"expires"]isKindOfClass:[NSDate class]]||[arm[@"expires"]timeIntervalSinceNow]<=0))return;
+ if(!bridge){bridge=[TRDBrowseReturn new];[[NSNotificationCenter defaultCenter]addObserver:bridge selector:@selector(stop) name:UIApplicationDidEnterBackgroundNotification object:nil];}[bridge stop];bridge.source=source;bridge.token=arm[@"token"]?:@"auto-ninja";bridge.oldTitle=arm[@"baselineTitle"]?:@"";bridge.lastTime=-1;bridge.deadline=[NSDate dateWithTimeIntervalSinceNow:25];
+ if(isNinja){NSArray *queue=[(id<TRDBrowseNinjaPlayer>)source queue];NSInteger index=[(id<TRDBrowseNinjaPlayer>)source currentIndex];id track=index>=0&&index<(NSInteger)queue.count?queue[index]:nil;bridge.expectedTrackID=[track respondsToSelector:@selector(videoId)]?[track videoId]:nil;}
+ bridge.timer=[NSTimer scheduledTimerWithTimeInterval:.45 target:bridge selector:@selector(tick) userInfo:nil repeats:YES];
  [@{@"event":@"selection",@"bundle":bundle,@"token":bridge.token?:@""}writeToFile:Log atomically:YES];
  });}
 -(void)stop{[self.timer invalidate];self.timer=nil;self.source=nil;self.item=nil;self.expectedTrackID=nil;}
 -(void)tick{
  NSDictionary *arm=[NSDictionary dictionaryWithContentsOfFile:Arm];NSString *bundle=NSBundle.mainBundle.bundleIdentifier;
- if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive||![arm[@"pending"]boolValue]||![arm[@"token"]isEqual:self.token]||![arm[@"bundle"]isEqual:bundle]||[arm[@"expires"]timeIntervalSinceNow]<=0||[self.deadline timeIntervalSinceNow]<=0){[self stop];return;}
+ BOOL isNinja=[bundle isEqual:@"com.legacymusic.app"];
+ if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive||[self.deadline timeIntervalSinceNow]<=0){[self stop];return;}
+ if(!isNinja && (![arm[@"pending"]boolValue]||![arm[@"token"]isEqual:self.token]||![arm[@"bundle"]isEqual:bundle]||[arm[@"expires"]timeIntervalSinceNow]<=0)){[self stop];return;}
  BOOL ready=NO;
- if([bundle isEqual:@"com.legacymusic.app"]){id<TRDBrowseNinjaPlayer> player=self.source;NSArray *queue=[player queue];NSInteger index=[player currentIndex];id track=index>=0&&index<(NSInteger)queue.count?queue[index]:nil;NSString *key=[track respondsToSelector:@selector(videoId)]?[track videoId]:nil;double time=[player currentTime];ready=self.expectedTrackID.length&&[key isEqual:self.expectedTrackID]&&[player isPlaying]&&isfinite(time)&&self.lastTime>=0&&time>self.lastTime+.05;self.lastTime=isfinite(time)?time:-1;}
+ if(isNinja){id<TRDBrowseNinjaPlayer> player=self.source;NSArray *queue=[player queue];NSInteger index=[player currentIndex];id track=index>=0&&index<(NSInteger)queue.count?queue[index]:nil;NSString *key=[track respondsToSelector:@selector(videoId)]?[track videoId]:nil;double time=[player currentTime];ready=(!self.expectedTrackID.length||[key isEqual:self.expectedTrackID])&&[player isPlaying]&&isfinite(time)&&time>=1.2&&self.lastTime>=0&&time>self.lastTime+.05;self.lastTime=isfinite(time)?time:-1;}
  else {
  id candidate=[self.source respondsToSelector:@selector(player)]?[self.source player]:nil;
  if(![candidate isKindOfClass:[AVPlayer class]]&&![candidate isKindOfClass:[AVAudioPlayer class]]){unsigned count=0;Ivar *vars=class_copyIvarList([self.source class],&count);for(unsigned i=0;i<count;i++){const char *type=ivar_getTypeEncoding(vars[i]);NSString *name=[NSString stringWithUTF8String:ivar_getName(vars[i])];if(type&&type[0]=='@'&&[name.lowercaseString containsString:@"player"]){id object=object_getIvar(self.source,vars[i]);if([object isKindOfClass:[AVPlayer class]]||[object isKindOfClass:[AVAudioPlayer class]]){candidate=object;break;}}}free(vars);}
@@ -288,9 +292,33 @@ static id networkRouteObserver;
  }
 
  if(!ready)return;
- NSMutableDictionary *done=[arm mutableCopy];done[@"pending"]=@NO;done[@"returned"]=@YES;done[@"returnedAt"]=[NSDate date];if(![done writeToFile:Arm atomically:YES]){[self stop];return;}
+ if([arm isKindOfClass:[NSDictionary class]] && [arm[@"pending"] boolValue]){
+  NSMutableDictionary *done=[arm mutableCopy];done[@"pending"]=@NO;done[@"returned"]=@YES;done[@"returnedAt"]=[NSDate date];[done writeToFile:Arm atomically:YES];
+ }
  [@{@"event":@"returned",@"bundle":bundle,@"token":self.token?:@""}writeToFile:Log atomically:YES];
- [self stop];[[UIApplication sharedApplication]openURL:[NSURL URLWithString:[bundle isEqual:@"com.legacymusic.app"]?@"cardash://home":@"cardash://music"]];
+ [self stop];
+ if(isNinja){
+  @try {
+   AVAudioSession *s = [AVAudioSession sharedInstance];
+   [s setCategory:AVAudioSessionCategoryPlayback error:nil];
+   [s setActive:YES error:nil];
+  } @catch(NSException *e) {}
+  __block UIBackgroundTaskIdentifier holdBg = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
+   if(holdBg != UIBackgroundTaskInvalid){
+    [[UIApplication sharedApplication] endBackgroundTask:holdBg];
+    holdBg = UIBackgroundTaskInvalid;
+   }
+  }];
+  if(holdBg != UIBackgroundTaskInvalid){
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(25.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+    if(holdBg != UIBackgroundTaskInvalid){
+     [[UIApplication sharedApplication] endBackgroundTask:holdBg];
+     holdBg = UIBackgroundTaskInvalid;
+    }
+   });
+  }
+ }
+ [[UIApplication sharedApplication]openURL:[NSURL URLWithString:isNinja?@"cardash://home":@"cardash://music"]];
 }
 @end
 #import "RoadAudio.h"
@@ -557,7 +585,7 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   Method seek=class_getInstanceMethod(playerClass,@selector(seekToTime:));if(Signature(seek,"d",NULL))oldSeek=(void(*)(id,SEL,double))method_setImplementation(seek,(IMP)AutoSeek);
   Method toggle=class_getInstanceMethod(playerClass,NSSelectorFromString(@"togglePlayPause"));if(toggle&&method_getNumberOfArguments(toggle)==2){char *type=method_copyReturnType(toggle);if(type&&type[0]=='v')oldToggle=(void(*)(id,SEL))method_setImplementation(toggle,(IMP)NinjaToggle);free(type);}
 
-   name=@"LTPlayerController";selector=@"playQueue:atIndex:";replacement=(IMP)Music;original=(IMP *)&oldMusic;a="@";b="iI";
+   name=@"LTPlayerController";selector=@"playQueue:atIndex:";replacement=(IMP)Music;original=(IMP *)&oldMusic;a="@";b="iIqQ";
   
   Class tabCls = NSClassFromString(@"LTTabBarController");
   if(tabCls){
@@ -614,7 +642,7 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   dispatch_async(dispatch_get_main_queue(),^{[TRDRoadAudio install];});
   name=@"YTPlayback";selector=@"loadWatch:startAt:";replacement=(IMP)YouTube;original=(IMP *)&oldYT;a="@";b="d";
  }
- else if([bundle isEqual:@"com.codex.poddash"]){name=@"Podcasts";selector=@"playIndex:";replacement=(IMP)Podcast;original=(IMP *)&oldPod;a="i";}
+ else if([bundle isEqual:@"com.codex.poddash"]){name=@"Podcasts";selector=@"playIndex:";replacement=(IMP)Podcast;original=(IMP *)&oldPod;a="iq";}
  else if([bundle isEqual:@"com.google.ios.youtube"]){return;}
  else return;
  Class cls=NSClassFromString(name);SEL sel=NSSelectorFromString(selector);Method method=class_getInstanceMethod(cls,sel);BOOL valid=Signature(method,a,b);BOOL installed=valid;

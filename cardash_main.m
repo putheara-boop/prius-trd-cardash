@@ -9385,8 +9385,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  });
 }
 -(void)voiceMusicTapped{
- if([self respondsToSelector:@selector(startVoiceMusicSearch)]){
-  [self performSelector:@selector(startVoiceMusicSearch)];
+ if(self.voicePill){
+  [self.voicePill sendActionsForControlEvents:UIControlEventTouchUpInside];
  } else {
   [self openSearchMusic];
  }
