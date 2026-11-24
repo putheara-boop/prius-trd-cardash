@@ -2028,6 +2028,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  float _baseLuma[96];
  float _prevLuma[96];
  BOOL _hasPrev;
+ int _warmupFrames;
+ BOOL _mustUncoverFirst;
+ int _uncoveredFrames;
  CFAbsoluteTime _waveStartAt;
  int _peakMotion;
  CFAbsoluteTime _holdStartAt;
@@ -2051,6 +2054,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 +(instancetype)sharedEngine;
 -(void)startIfEnabled;
 -(void)ensureRunning;
+-(void)cooldownFor:(NSTimeInterval)seconds;
 -(void)stop;
 @end
 
@@ -2065,10 +2069,23 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  if((self=[super init])){
   _queue=dispatch_queue_create("com.codex.cardash.frontgesture",DISPATCH_QUEUE_SERIAL);
   _smoothAmbient=-1.0f;
+  _warmupFrames=18;
+  _mustUncoverFirst=YES;
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleSessionEvent:) name:AVCaptureSessionInterruptionEndedNotification object:nil];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleSessionEvent:) name:AVCaptureSessionRuntimeErrorNotification object:nil];
  }
  return self;
+}
+-(void)cooldownFor:(NSTimeInterval)seconds{
+ dispatch_async(_queue,^{
+  CFAbsoluteTime target = CFAbsoluteTimeGetCurrent() + seconds;
+  if(target > _cooldownUntil) _cooldownUntil = target;
+  _mustUncoverFirst = YES;
+  _uncoveredFrames = 0;
+  _holdStartAt = 0;
+  _holdFired = NO;
+  _waveStartAt = 0;
+ });
 }
 -(void)handleSessionEvent:(NSNotification *)note{
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.35*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
@@ -2095,6 +2112,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
     conn.videoOrientation=(uiOri==UIInterfaceOrientationLandscapeLeft)?AVCaptureVideoOrientationLandscapeLeft:AVCaptureVideoOrientationLandscapeRight;
    }
    _hasPrev=NO;
+   _warmupFrames=18;
+   _mustUncoverFirst=YES;
+   _uncoveredFrames=0;
    _waveStartAt=0;
    _holdStartAt=0;
    _holdFired=NO;
@@ -2111,7 +2131,15 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  UIInterfaceOrientation uiOri=[NSThread isMainThread]?[UIApplication sharedApplication].statusBarOrientation:UIInterfaceOrientationLandscapeRight;
  dispatch_async(_queue,^{
   if(self.session){
-   if(!self.session.isRunning)[self.session startRunning];
+   if(!self.session.isRunning){
+    _hasPrev=NO;
+    _warmupFrames=18;
+    _mustUncoverFirst=YES;
+    _uncoveredFrames=0;
+    _holdStartAt=0;
+    _holdFired=NO;
+    [self.session startRunning];
+   }
    return;
   }
   AVCaptureDevice *front=nil;
@@ -2153,6 +2181,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    [front unlockForConfiguration];
   }
   _hasPrev=NO;
+  _warmupFrames=18;
+  _mustUncoverFirst=YES;
+  _uncoveredFrames=0;
   _waveStartAt=0;
   _holdStartAt=0;
   _holdFired=NO;
@@ -2167,6 +2198,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    [self.session stopRunning];
   }
   _hasPrev=NO;
+  _warmupFrames=18;
+  _mustUncoverFirst=YES;
+  _uncoveredFrames=0;
   _waveStartAt=0;
   _holdStartAt=0;
   _holdFired=NO;
@@ -2200,40 +2234,52 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  float meanLuma=sumLuma/96.0f;
  _lastSampleAt=CFAbsoluteTimeGetCurrent();
  _frameIdx++;
- if(!_hasPrev){
+ // Let front camera Auto-Exposure settle for ~1.2s after startRunning so AE ramp NEVER triggers hold!
+ if(!_hasPrev || _warmupFrames > 0){
+  if(_warmupFrames > 0) _warmupFrames--;
   for(int i=0;i<96;i++){_prevLuma[i]=cur[i];_baseLuma[i]=cur[i];}
   _hasPrev=YES;
   _smoothAmbient=meanLuma;
   return;
  }
 
+ float baseSum=0.0f;
+ for(int i=0;i<96;i++) baseSum += _baseLuma[i];
+ float baseMean = baseSum / 96.0f;
+
  int motionCells=0;
  int occludedCells=0;
- int leftHits=0, rightHits=0;
+ int localOccluded=0;
+ int leftEdgeHits=0, rightEdgeHits=0;
  float weightedX=0.0f, totalW=0.0f;
  for(int i=0;i<96;i++){
   int gx = i % 12;
   float dm=fabsf(cur[i]-_prevLuma[i]);
   float db=fabsf(cur[i]-_baseLuma[i]);
-  if(dm>=22.0f)motionCells++;
-  if(db>=32.0f || (meanLuma<30.0f && _baseLuma[i]>48.0f))occludedCells++;
-  float wCell=(dm>=22.0f ? dm : 0.0f);
+  float localDiff=fabsf((cur[i]-meanLuma) - (_baseLuma[i]-baseMean));
+  if(dm>=16.0f)motionCells++;
+  if(db>=24.0f)occludedCells++;
+  if(localDiff>=18.0f)localOccluded++;
+  float wCell=(dm>=16.0f ? dm : 0.0f);
   if(wCell>0.0f){
    weightedX += ((float)gx / 11.0f) * wCell;
    totalW += wCell;
-   if(gx <= 4) leftHits++;
-   else if(gx >= 7) rightHits++;
+   if(gx <= 3) leftEdgeHits++;
+   else if(gx >= 8) rightEdgeHits++;
   }
   _prevLuma[i]=cur[i];
-  if(dm<12.0f && occludedCells<50){
-   _baseLuma[i]=_baseLuma[i]*0.88f + cur[i]*0.12f;
+ }
+ // Only adapt _baseLuma & _smoothAmbient when scene is calm and no cover/hold is active
+ if(motionCells <= 3 && localOccluded <= 16 && _holdStartAt == 0){
+  for(int i=0;i<96;i++){
+   _baseLuma[i]=_baseLuma[i]*0.92f + cur[i]*0.08f;
   }
+  _smoothAmbient=(_smoothAmbient<0)?meanLuma:(_smoothAmbient*0.92f + meanLuma*0.08f);
  }
 
  CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();
  // Smart Cabin Auto-Brightness every ~5s when idle
- if((_frameIdx % 45)==0 && motionCells<=2 && occludedCells<=8){
-  _smoothAmbient=(_smoothAmbient<0)?meanLuma:(_smoothAmbient*0.7f + meanLuma*0.3f);
+ if((_frameIdx % 45)==0 && motionCells<=2 && localOccluded<=10 && _holdStartAt==0){
   float norm=(_smoothAmbient-14.0f)/150.0f;
   if(norm<0.0f)norm=0.0f;
   if(norm>1.0f)norm=1.0f;
@@ -2250,65 +2296,96 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   _waveStartAt=0;
   _holdStartAt=0;
   _holdFired=NO;
+  _mustUncoverFirst=YES;
+  _uncoveredFrames=0;
   return;
  }
 
- // STRICT NEAR-FIELD ONLY (~5-12 cm from lens!):
- // Sitting 0.5m-1.0m away affects < 25 cells and is 100% IGNORED!
- // 1) Close Palm Cover (~3-8 cm from lens: covers >= 68/96 cells [>70% of lens] OR drops lens dark):
- //    - Hold >= 1.30s => Chime & open Voice Song Search!
- //    - Brief cover (0.35s .. 1.20s) & release => Play / Pause toggle!
- float ambRef = (_smoothAmbient > 28.0f) ? _smoothAmbient : 65.0f;
- BOOL nearPalmCover = (meanLuma < 30.0f && meanLuma < ambRef * 0.48f) || (occludedCells >= 68 && meanLuma < ambRef * 0.68f);
- if(nearPalmCover){
+ float ambRef = (_smoothAmbient > 22.0f) ? _smoothAmbient : 56.0f;
+ BOOL darkCover = (meanLuma < 25.0f) || (ambRef >= 24.0f && meanLuma < ambRef * 0.58f);
+
+ // Latch: require 8 clean uncovered idle frames before Hold/Cover can ever arm (prevents ANY repeat loop!)
+ if(_mustUncoverFirst){
+  if(!darkCover && motionCells <= 4 && localOccluded <= 18){
+   _uncoveredFrames++;
+   if(_uncoveredFrames >= 8){
+    _mustUncoverFirst = NO;
+    for(int i=0;i<96;i++) _baseLuma[i] = cur[i];
+    _smoothAmbient = meanLuma;
+   }
+  } else {
+   _uncoveredFrames = 0;
+  }
+ }
+
+ if(motionCells >= 12 && _holdStartAt == 0){
+  _lastMotionEntryAt = now;
+ }
+ if(_holdStartAt > 0 && (now - _holdStartAt) > 2.8){
+  for(int i=0;i<96;i++) _baseLuma[i] = cur[i];
+  _smoothAmbient = meanLuma;
+  _holdStartAt = 0;
+  _holdFired = NO;
+  _mustUncoverFirst = YES;
+  _uncoveredFrames = 0;
+ }
+
+ // 1) Close Hand Cover (~3-10 cm over front camera bezel):
+ //    - Quick cover (0.22-1.05s) -> Play/Pause
+ //    - Hold cover (>= 1.10s) -> Voice Search ONCE (strictly latched until uncovered!)
+ BOOL canStartCover = (!_mustUncoverFirst && darkCover && motionCells <= 16 && ((now - _lastMotionEntryAt) <= 1.25 || meanLuma < 22.0f));
+ BOOL stillHoldingCover = (_holdStartAt > 0 && motionCells <= 14 && (darkCover || (meanLuma < ambRef * 0.72f && localOccluded >= 20)));
+ if(_holdStartAt == 0 ? canStartCover : stillHoldingCover){
   if(_holdStartAt == 0){
    _holdStartAt = now;
    _holdFired = NO;
-  } else if(!_holdFired && (now - _holdStartAt) >= 1.30){
+  } else if(!_holdFired && (now - _holdStartAt) >= 1.10){
    _holdFired = YES;
+   _mustUncoverFirst = YES;
+   _uncoveredFrames = 0;
    _waveStartAt = 0;
    _peakMotion = 0;
-   _cooldownUntil = now + 4.0;
-   for(int i=0;i<96;i++) _baseLuma[i] = cur[i];
+   _cooldownUntil = now + 6.0;
    void (^cb)(void) = self.onHoldVoiceSearch;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
   }
-  return;
  } else if(_holdStartAt > 0){
   double coverDur = now - _holdStartAt;
   BOOL alreadyFired = _holdFired;
   _holdStartAt = 0;
   _holdFired = NO;
-  if(!alreadyFired && coverDur >= 0.32 && coverDur < 1.30){
+  _mustUncoverFirst = YES;
+  _uncoveredFrames = 0;
+  if(!alreadyFired && coverDur >= 0.22 && coverDur < 1.10 && _peakMotion < 28){
    _waveStartAt = 0;
    _peakMotion = 0;
-   _cooldownUntil = now + 1.50;
-   for(int i=0;i<96;i++) _baseLuma[i] = cur[i];
+   _cooldownUntil = now + 1.5;
    void (^cb)(void) = self.onPlayPause;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
   }
  }
 
- // 2) Close Hand Sweep (~5-15 cm across lens: requires >= 38/96 moving cells + BOTH left & right zones crossed!)
- if(motionCells>=24 && totalW>480.0f){
+ // 2) Comfortable Hand Wave (~10-28 cm across screen: MUST cross BOTH far-left [gx<=3] AND far-right [gx>=8] edges in <=0.65s!)
+ //    Sitting 1m away stays in the center and NEVER crosses both far edges in 0.65s!
+ if(motionCells>=14 && totalW>220.0f){
   float cx = weightedX / totalW;
   if(_waveStartAt==0){
    _waveStartAt=now;
    _peakMotion=motionCells;
    _startCX=cx;
    _lastCX=cx;
-   _leftPeakAt=(leftHits>=12)?now:0;
-   _rightPeakAt=(rightHits>=12)?now:0;
+   _leftPeakAt=(leftEdgeHits>=5)?now:0;
+   _rightPeakAt=(rightEdgeHits>=5)?now:0;
   } else {
    if(motionCells>_peakMotion)_peakMotion=motionCells;
    _lastCX=cx;
-   if(leftHits>=12 && _leftPeakAt==0)_leftPeakAt=now;
-   if(rightHits>=12 && _rightPeakAt==0)_rightPeakAt=now;
+   if(leftEdgeHits>=5 && _leftPeakAt==0)_leftPeakAt=now;
+   if(rightEdgeHits>=5 && _rightPeakAt==0)_rightPeakAt=now;
   }
-  if((now-_waveStartAt)>0.65){_waveStartAt=0;_peakMotion=0;_leftPeakAt=0;_rightPeakAt=0;}
- }else if(_waveStartAt>0 && motionCells<=6){
+  if((now-_waveStartAt)>0.70){_waveStartAt=0;_peakMotion=0;_leftPeakAt=0;_rightPeakAt=0;}
+ }else if(_waveStartAt>0 && motionCells<=5){
   double dur=now-_waveStartAt;
   int peak=_peakMotion;
   float deltaX=_lastCX - _startCX;
@@ -2317,10 +2394,10 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   _peakMotion=0;
   _leftPeakAt=0;
   _rightPeakAt=0;
-  BOOL crossedBothSides = (lAt > 0 && rAt > 0 && fabs(rAt - lAt) >= 0.02);
-  if(dur>=0.06 && dur<=0.62 && peak>=36 && (crossedBothSides || fabsf(deltaX)>=0.22f)){
-   BOOL goNext = crossedBothSides ? (rAt > lAt) : (deltaX > 0);
-   _cooldownUntil=now+1.50;
+  BOOL crossedFullSpan = (lAt > 0 && rAt > 0 && fabs(rAt - lAt) >= 0.015);
+  if(dur>=0.05 && dur<=0.68 && peak>=18 && (crossedFullSpan || fabsf(deltaX)>=0.28f)){
+   BOOL goNext = crossedFullSpan ? (rAt > lAt) : (deltaX > 0);
+   _cooldownUntil=now+1.35;
    if(goNext){
     void (^cb)(void)=self.onWaveNext;
     if(cb)dispatch_async(dispatch_get_main_queue(),cb);
@@ -3691,7 +3768,17 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    if(!d || d.isReverseActive || d.voiceListening) return;
    BOOL wasPlaying = (d.mediaRate > 0.05) || (d.radioPlayer && d.radioPlayer.rate > 0.05);
    AudioServicesPlaySystemSound(1104);
-   [d miniPlay];
+   if(d.radioPlayer){
+    [d miniPlay];
+   } else if([d isYouTubeMediaActive]){
+    notify_post("com.codex.trd.youtube.toggle");
+   } else if(wasPlaying){
+    notify_post("com.codex.trd.music.pause");
+    TRDSendMediaRemoteExternal(1, nil);
+   } else {
+    notify_post("com.codex.trd.music.play");
+    TRDSendMediaRemoteExternal(0, nil);
+   }
    [d showGestureToast:wasPlaying ? @"✋ หยุดพักเพลงชั่วคราว ⏸️" : @"✋ เล่นเพลงต่อทันที ▶️"];
   };
   ge.onHoldVoiceSearch = ^{
@@ -8814,7 +8901,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   [sess setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
   [sess setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
  } @catch (NSException *ex) {}
- dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+ [[TRDFrontGestureEngine sharedEngine] cooldownFor:4.5];
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
   if(!self.isReverseActive && !self.voiceListening && [UIApplication sharedApplication].applicationState == UIApplicationStateActive){
    [[TRDFrontGestureEngine sharedEngine] ensureRunning];
   }
@@ -8987,8 +9075,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
  @try {
   AVAudioSession *sess = [AVAudioSession sharedInstance];
-  // Use built-in iPad mic + A2DP Stereo + MixWithOthers so iOS NEVER suspends audioNINJA in background (0 popup!)
-  AVAudioSessionCategoryOptions vOpts = AVAudioSessionCategoryOptionDefaultToSpeaker | AVAudioSessionCategoryOptionAllowBluetoothA2DP | AVAudioSessionCategoryOptionMixWithOthers;
+  // Use built-in iPad mic + A2DP Stereo + DuckOthers so music lowers briefly while listening & never feeds lyrics into mic!
+  AVAudioSessionCategoryOptions vOpts = AVAudioSessionCategoryOptionDefaultToSpeaker | AVAudioSessionCategoryOptionAllowBluetoothA2DP | AVAudioSessionCategoryOptionMixWithOthers | AVAudioSessionCategoryOptionDuckOthers;
   [sess setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:vOpts error:nil];
   [sess setMode:AVAudioSessionModeDefault error:nil];
   [sess setActive:YES error:nil];
