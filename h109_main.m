@@ -146,7 +146,7 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
 @property BOOL showGuide;
 -(void)toggleGuide;
 -(void)swipeChannel:(UISwipeGestureRecognizer *)gesture;
-@property BOOL fullscreen,mirrored,wantsLive,retryScheduled,fixtureMode;
+@property BOOL fullscreen,mirrored,wantsLive,retryScheduled,fixtureMode,inReverseSession;
 @property NSUInteger retryCount;
 @property NSTimer *health;
 @property NSDate *lastFrame;
@@ -189,6 +189,7 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
 @implementation Viewer
 #import "H109HUD.h"
 -(void)toggleChannelFull{
+ self.inReverseSession=NO;
  NSInteger target=(self.channels.selectedSegmentIndex==0)?1:0;
  self.channels.selectedSegmentIndex=target;
  [self selectChannel];
@@ -230,9 +231,10 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
  }
 }
 -(BOOL)wantsReverseRearCamera{
+ if(self.inReverseSession)return YES;
  NSDictionary *rev=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/reverse-camera.plist"];
  NSDate *at=[rev[@"at"]isKindOfClass:[NSDate class]]?rev[@"at"]:nil;
- return [rev[@"rear"]boolValue]&&at&&-[at timeIntervalSinceNow]<15.0;
+ return [rev[@"rear"]boolValue]&&at&&-[at timeIntervalSinceNow]<180.0;
 }
 -(void)ensureLiveLayer{
  if(!self.liveLayer){
@@ -266,6 +268,7 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
  [self connect];
 }
 -(void)showReverseCamera{
+ self.inReverseSession=YES;
  [self ensureLiveLayer];
  self.fullscreen=YES;
  self.channels.selectedSegmentIndex=1;
@@ -273,19 +276,18 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
  if(self.parkingGuideView)self.parkingGuideView.hidden=NO;
  [self applyChannelMirror];
  [self updateFullHUD];
- BOOL alreadyRearFresh=(self.rtsp && self.wantsLive && self.lastFrame && -[self.lastFrame timeIntervalSinceNow]<=3.0);
+ BOOL alreadyRearFresh=(self.rtsp && self.wantsLive && self.channels.selectedSegmentIndex==1 && self.lastFrame && -[self.lastFrame timeIntervalSinceNow]<=3.0);
  if(alreadyRearFresh){
-  [[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/reverse-camera.plist" error:nil];
   self.emptyLabel.hidden=YES;
   self.stateLabel.text=@"LIVE • REVERSE READY";
   [UIApplication sharedApplication].idleTimerDisabled=YES;
   return;
  }
  // Avoid double-resetting Wi-Fi/RTSP when com.codex.h109.reverse.show is followed 0.4s later by applicationDidBecomeActive!
- if(self.networkWait && self.networkRequestedAt && -[self.networkRequestedAt timeIntervalSinceNow]<6.0){
+ if(self.networkWait && self.networkRequestedAt && -[self.networkRequestedAt timeIntervalSinceNow]<8.0){
   return;
  }
- if(self.rtsp && self.wantsLive && self.channels.selectedSegmentIndex==1 && self.connectionBegan && -[self.connectionBegan timeIntervalSinceNow]<2.6){
+ if(self.rtsp && self.wantsLive && self.channels.selectedSegmentIndex==1 && self.connectionBegan && -[self.connectionBegan timeIntervalSinceNow]<4.2){
   return;
  }
  [self beginAutomaticCamera];
@@ -353,7 +355,7 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
  if((fresh&&(([state[@"cameraUnavailable"]boolValue]&&[@[@"restored",@"error"]containsObject:state[@"phase"]])||([state[@"mode"]isEqual:@"camera"]&&[state[@"phase"]isEqual:@"error"])))||[self.networkDeadline timeIntervalSinceNow]<=0){[self.networkWait invalidate];self.networkWait=nil;self.stateLabel.text=@"WI-FI NOT CONNECTED";self.emptyLabel.text=@"CHECK CAMERA WI-FI\nTap FIND to retry";self.status.text=[state[@"cameraUnavailable"]boolValue]?([state[@"phase"]isEqual:@"restored"]?@"Camera unavailable. Previous Wi-Fi restored. Tap FIND to retry.":@"Camera unavailable. Restoring previous Wi-Fi; tap FIND later."):state[@"error"]?:@"Could not join the camera Wi-Fi. Check that the camera is on, then tap FIND.";[UIApplication sharedApplication].idleTimerDisabled=NO;}
 }
 -(void)checkMainCameraChannel{
- if(self.channelProbeBusy||!self.wantsLive||!self.rtsp||(self.frames>20&&self.lastFrame&&-[self.lastFrame timeIntervalSinceNow]<3)||self.presentedViewController||[UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
+ if(self.inReverseSession||[self wantsReverseRearCamera]||self.channelProbeBusy||!self.wantsLive||!self.rtsp||(self.frames>20&&self.lastFrame&&-[self.lastFrame timeIntervalSinceNow]<3)||self.presentedViewController||[UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
  NSURL *url=[NSURL URLWithString:self.address.text];if(![[[NSUserDefaults standardUserDefaults]stringForKey:@"reportedCameraHost"]isEqual:url.host])return;
  self.channelProbeBusy=YES;NSUInteger generation=self.discoveryGeneration;NSString *host=url.host;__weak Viewer *weak=self;
  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0),^{NSDictionary *info=[H109RTSP cameraDeviceInfo:host];dispatch_async(dispatch_get_main_queue(),^{
@@ -436,7 +438,7 @@ if([u.scheme.lowercaseString isEqual:@"rtsp"]&&u.host.length&&!u.user.length&&!u
  __weak Viewer *weak=self;__weak H109RTSP *engine=self.rtsp;
  self.rtsp.finished=^{Viewer *v=weak;if(v.rtsp==engine){[UIApplication sharedApplication].idleTimerDisabled=NO;[v scheduleReconnect];}};
  self.rtsp.status=^(NSString *message){Viewer *v=weak;if(v.rtsp==engine)if(!v.statusUntil||[v.statusUntil timeIntervalSinceNow]<=0)v.status.text=message;};
- self.rtsp.channelUpdated=^(NSInteger channel,BOOL switched){Viewer *v=weak;if(!v||v.rtsp!=engine)return;v.mainCameraChannel=channel;v.mainCameraReadAt=[NSDate date];if(!switched&&(channel==0||channel==1)&&v.channels.selectedSegmentIndex!=channel){v.channels.selectedSegmentIndex=channel;if(v.parkingGuideView)v.parkingGuideView.hidden=!(v.showGuide&&channel==1);[v applyChannelMirror];[v updateFullHUD];v.statusUntil=[NSDate dateWithTimeIntervalSinceNow:3];v.status.text=@"Camera channel not switched; showing active sensor.";}};
+ self.rtsp.channelUpdated=^(NSInteger channel,BOOL switched){Viewer *v=weak;if(!v||v.rtsp!=engine)return;v.mainCameraChannel=channel;v.mainCameraReadAt=[NSDate date];if(!v.inReverseSession&&![v wantsReverseRearCamera]&&!switched&&(channel==0||channel==1)&&v.channels.selectedSegmentIndex!=channel){v.channels.selectedSegmentIndex=channel;if(v.parkingGuideView)v.parkingGuideView.hidden=!(v.showGuide&&channel==1);[v applyChannelMirror];[v updateFullHUD];v.statusUntil=[NSDate dateWithTimeIntervalSinceNow:3];v.status.text=@"Camera channel not switched; showing active sensor.";}};
  static NSInteger sPendingEnqueues=0;
  self.rtsp.sample=^(CMSampleBufferRef sample){
   Viewer *v=weak;H109RTSP *client=engine;if(!v||!client)return;
@@ -489,6 +491,7 @@ if(!u.host.length||u.user.length||u.password.length||![@[@"http",@"https"] conta
 -(BOOL)application:(UIApplication *)a didFinishLaunchingWithOptions:(NSDictionary *)o{self.window=[[UIWindow alloc]initWithFrame:[UIScreen mainScreen].bounds];self.window.rootViewController=[Viewer new];[self.window makeKeyAndVisible];return YES;}
 -(void)applicationDidEnterBackground:(UIApplication *)a{
  Viewer *v=(Viewer *)self.window.rootViewController;
+ v.inReverseSession=NO;
  H109RTSP *prev=v.rtsp;
  __block UIBackgroundTaskIdentifier bg=[a beginBackgroundTaskWithExpirationHandler:^{
   if(bg!=UIBackgroundTaskInvalid){[a endBackgroundTask:bg];bg=UIBackgroundTaskInvalid;}

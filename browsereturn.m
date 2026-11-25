@@ -423,10 +423,15 @@ static void TRDReturnToCarDashNowWithBgTask(UIBackgroundTaskIdentifier bgTask){
   [s setCategory:AVAudioSessionCategoryPlayback error:nil];
   [s setActive:YES error:nil];
  } @catch(NSException *e) {}
- if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
-  notify_post("com.codex.trd.launch.cardash");
-  [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"] options:@{} completionHandler:nil];
- }
+ void (^fireReturn)(void) = ^{
+  if([UIApplication sharedApplication].applicationState == UIApplicationStateActive){
+   notify_post("com.codex.trd.launch.cardash");
+   [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://home"] options:@{} completionHandler:nil];
+  }
+ };
+ fireReturn();
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.85*NSEC_PER_SEC)),dispatch_get_main_queue(),fireReturn);
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.90*NSEC_PER_SEC)),dispatch_get_main_queue(),fireReturn);
  if(bgTask != UIBackgroundTaskInvalid){
   UIBackgroundTaskIdentifier holdTask = bgTask;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(25.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
@@ -487,8 +492,20 @@ static void TRDHandleVoiceSearchIfPending(void){
    return;
   }
   id<TRDLTYouTubeClient> yt=[ytCls sharedClient];
+  __block BOOL searchFinished = NO;
+  // Hard 6.5s timeout so slow mobile internet NEVER leaves audioNINJA stuck on screen!
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(6.5*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   if(!searchFinished){
+    searchFinished = YES;
+    gVoiceSearchHandling = NO;
+    [@{@"status":@"timeout",@"query":q,@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+    TRDReturnToCarDashNowWithBgTask(bgTask);
+   }
+  });
   [yt searchVideosWithQuery:q completion:^(NSArray *tracks, NSError *error){
    dispatch_async(dispatch_get_main_queue(),^{
+    if(searchFinished) return;
+    searchFinished = YES;
     gVoiceSearchHandling = NO;
     if(tracks && tracks.count > 0){
      @try {

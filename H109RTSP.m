@@ -171,6 +171,7 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
    if(needEnter){
     if([H109RTSP openCameraSession:url.host]){
      @synchronized([H109RTSP class]){s_sessionOpenedAt[url.host]=@(CFAbsoluteTimeGetCurrent());}
+     [NSThread sleepForTimeInterval:0.10];
     }
    }
    NSDictionary *device=[H109RTSP cameraDeviceInfo:url.host];
@@ -181,24 +182,31 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
    if(cur<0&&!needEnter){
     if([H109RTSP openCameraSession:url.host]){
      @synchronized([H109RTSP class]){s_sessionOpenedAt[url.host]=@(CFAbsoluteTimeGetCurrent());}
+     [NSThread sleepForTimeInterval:0.10];
      device=[H109RTSP cameraDeviceInfo:url.host];
      cur=[device[@"curcamid"]isKindOfClass:[NSNumber class]]?[device[@"curcamid"]integerValue]:-1;
     }
    }
    if((target==0||target==1)&&target<camnum&&cur!=target){
     [self notify:(target==1)?@"Switching to REAR camera...":@"Switching to FRONT camera..."];
-    BOOL ok=[H109RTSP fastSwitchCamera:url.host index:target];
-    if(ok){
-     CFAbsoluteTime swDead=CFAbsoluteTimeGetCurrent()+0.45;
-     while(!self.stopped&&CFAbsoluteTimeGetCurrent()<swDead){
-      [NSThread sleepForTimeInterval:0.03];
-      NSDictionary *chk=[H109RTSP cameraDeviceInfo:url.host];
-      if([chk[@"curcamid"]isKindOfClass:[NSNumber class]]&&[chk[@"curcamid"]integerValue]==target){cur=target;break;}
+    BOOL ok=NO;
+    for(int swTry=0;swTry<3&&!self.stopped&&cur!=target;swTry++){
+     if(swTry>0)[NSThread sleepForTimeInterval:0.12];
+     ok=[H109RTSP fastSwitchCamera:url.host index:target];
+     if(ok){
+      CFAbsoluteTime swDead=CFAbsoluteTimeGetCurrent()+0.45;
+      while(!self.stopped&&CFAbsoluteTimeGetCurrent()<swDead){
+       [NSThread sleepForTimeInterval:0.04];
+       NSDictionary *chk=[H109RTSP cameraDeviceInfo:url.host];
+       if([chk[@"curcamid"]isKindOfClass:[NSNumber class]]&&[chk[@"curcamid"]integerValue]==target){cur=target;break;}
+      }
+     }else{
+      [H109RTSP openCameraSession:url.host];
      }
     }
     if(self.stopped)return;
     void (^cb)(NSInteger,BOOL)=self.channelUpdated;
-    if(cb)dispatch_async(dispatch_get_main_queue(),^{if(!self.stopped)cb(cur>=0?cur:target,ok);});
+    if(cb)dispatch_async(dispatch_get_main_queue(),^{if(!self.stopped)cb((cur==target)?cur:target,(cur==target)||ok);});
    }else if(cur>=0){
     void (^cb)(NSInteger,BOOL)=self.channelUpdated;
     if(cb)dispatch_async(dispatch_get_main_queue(),^{if(!self.stopped)cb(cur,YES);});
@@ -254,7 +262,7 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
    if(udp>=0&&ready>0&&FD_ISSET(udp,&reads)){uint8_t packet[65536];ssize_t n=recv(udp,packet,sizeof(packet),0);if(n>0){[self rtp:[NSData dataWithBytes:packet length:n]];lastPacket=CFAbsoluteTimeGetCurrent();}}
    if(rtcp>=0&&ready>0&&FD_ISSET(rtcp,&reads)){uint8_t drop[2048];recv(rtcp,drop,sizeof(drop),0);}
    CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();if(now-keepalive>10){request(fd,@"OPTIONS",uri,sequence++,@{@"Session":session});keepalive=now;}
-   if((!self.frameCount&&now-started>2.6)||now-lastPacket>2.6){[self notify:@"Stream stalled — reconnecting..."];break;}
+   if((!self.frameCount&&now-started>4.2)||now-lastPacket>3.4){[self notify:@"Stream stalled — reconnecting..."];break;}
   }}
  }@catch(NSException *e){[self notify:[NSString stringWithFormat:@"Invalid RTSP data: %@",e.name]];}
  @finally{if(playing&&fd>=0)request(fd,@"TEARDOWN",uri,sequence++,@{@"Session":session?:@""});@synchronized(self){_fd=-1;}if(fd>=0)close(fd);if(udp>=0)close(udp);if(rtcp>=0)close(rtcp);if(!self.stopped&&self.frameCount)[self notify:@"Live stream connection ended"];void (^completion)(void)=nil;@synchronized(self){self.runFinished=YES;completion=self.stopCompletion;self.stopCompletion=nil;}dispatch_async(dispatch_get_main_queue(),^{if(completion)completion();if(self.finished)self.finished();});}

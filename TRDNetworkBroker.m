@@ -317,14 +317,14 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  self.forceInternetSwitch=force;
  
  BOOL didDisassociate=NO;
- // Proactively tear down active Hotspot when entering camera mode (5GHz -> 2.4GHz H109Y avoids 2.5s roam stall!)
- // and tear down camera Wi-Fi when returning to internet mode (R -> D).
- if(([mode isEqual:@"camera"]&&!currentIsCamera&&current.length) ||
-    ([mode isEqual:@"internet"]&&currentIsCamera&&(force||current.length))){
+ // Only cancel stuck in-flight associations; let AssociateAsync roam cleanly without pre-killing the radio!
+ if(([mode isEqual:@"internet"]&&currentIsCamera&&(force||current.length))){
   if(Disassociate&&_device)Disassociate(_device);
   if(CancelAssociation&&_device)CancelAssociation(_device);
   didDisassociate=YES;
   [self writePhase:@"disassociating" error:nil];
+ }else if([mode isEqual:@"camera"]&&!currentIsCamera){
+  if(CancelAssociation&&_device)CancelAssociation(_device);
  }
  
  self.mode=mode;
@@ -332,17 +332,15 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  self.callbackDone=NO;
  self.callbackError=0;
  self.stableSince=nil;
- self.retryAt=didDisassociate?[NSDate dateWithTimeIntervalSinceNow:([mode isEqual:@"camera"]?0.05:0.10)]:nil;
+ self.retryAt=didDisassociate?[NSDate dateWithTimeIntervalSinceNow:0.12]:nil;
  
- self.deadline=[NSDate dateWithTimeIntervalSinceNow:[mode isEqual:@"camera"]?12.0:(force?18.0:14.0)];
- self.timer=[NSTimer scheduledTimerWithTimeInterval:0.06 target:self selector:@selector(tick) userInfo:nil repeats:YES];
- self.timer.tolerance=0.01;
- if([mode isEqual:@"camera"]){
-  [self triggerScanIfNeeded];
- }
+ self.deadline=[NSDate dateWithTimeIntervalSinceNow:[mode isEqual:@"camera"]?22.0:(force?18.0:14.0)];
+ self.timer=[NSTimer scheduledTimerWithTimeInterval:0.08 target:self selector:@selector(tick) userInfo:nil repeats:YES];
+ self.timer.tolerance=0.02;
+ // IMPORTANT: Never start ScanAsync at the same time as AssociateAsync — channel scanning aborts Broadcom WPA2 handshake!
  if(!didDisassociate){
   [self attemptJoin];
- }else if([mode isEqual:@"internet"]){
+ }else{
   [self triggerScanIfNeeded];
  }
 }}
@@ -445,15 +443,18 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
   return;
  }
  
- self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:[self.mode isEqual:@"camera"]?2.5:6.0];
+ self.attemptDeadline=[NSDate dateWithTimeIntervalSinceNow:[self.mode isEqual:@"camera"]?5.5:6.0];
  [self writePhase:@"joining" error:nil];
  
  int result=Associate(_device,_network,AssociationReturned,NULL);
  if(result!=0){
   self.callbackDone=YES;
   self.callbackError=result;
+  if(_network){CFRelease(_network);_network=NULL;}
+  if(_cachedCameraNetwork){CFRelease(_cachedCameraNetwork);_cachedCameraNetwork=NULL;}
   if(![self isCurrentOnTarget]&&Disassociate&&_device)Disassociate(_device);
-  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.15];
+  [self triggerScanIfNeeded];
+  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.35];
  }
 }}
 
@@ -463,11 +464,14 @@ static void ScanReturned(WiFiRef device,CFArrayRef results,int error,const void 
  self.callbackError=error;
  if(error!=0&&![self isCurrentOnTarget]){
   if(ssid.length)[self.failedSSIDs addObject:ssid];
-  if(Disassociate&&_device)Disassociate(_device);
-  if(![self.mode isEqual:@"camera"]){
-   [self triggerScanIfNeeded];
+  if(_network){CFRelease(_network);_network=NULL;}
+  if([self.mode isEqual:@"camera"]&&_cachedCameraNetwork){
+   CFRelease(_cachedCameraNetwork);
+   _cachedCameraNetwork=NULL;
   }
-  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.15];
+  if(Disassociate&&_device)Disassociate(_device);
+  [self triggerScanIfNeeded];
+  self.retryAt=[NSDate dateWithTimeIntervalSinceNow:0.30];
  }
 }}
 
