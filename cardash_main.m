@@ -2305,36 +2305,38 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  }
 
  // Close palm cover (~1-6 cm directly over camera lens):
- // Works even when Auto-Exposure boosts gain on skin because an out-of-focus palm has near-zero spatial contrast!
+ // Works even when Auto-Exposure boosts gain on skin because an out-of-focus palm has low spatial contrast!
  float avgContrast = spatialVarSum / 96.0f;
- BOOL flatClosePalm = (avgContrast < 10.0f && meanLuma < ambRef * 0.88f);
- BOOL darkDrop = (ambRef >= 14.0f && darkCells >= 42 && meanLuma < ambRef * 0.65f) || (darkCells >= 56 && meanLuma < 18.0f && ambRef > 14.0f);
+ BOOL flatClosePalm = (avgContrast < 14.0f && (meanLuma < ambRef * 0.95f || darkCells >= 24));
+ BOOL darkDrop = (ambRef >= 12.0f && darkCells >= 38 && meanLuma < ambRef * 0.68f) || (darkCells >= 50 && meanLuma < 20.0f && ambRef > 12.0f);
  BOOL darkCover = (darkDrop || flatClosePalm);
 
  if(_mustUncoverFirst){
-  if(!darkCover && darkCells < 36){
+  if(!darkCover && darkCells < 34){
    if(++_uncoveredFrames >= 3) _mustUncoverFirst = NO;
   } else {
    _uncoveredFrames = 0;
   }
  }
 
- // 1) Close Hand Cover (~1-6 cm over front camera) -> Play/Pause ONLY (NEVER opens mic / Voice Search!)
+ // 1) Close Hand Cover (~1-6 cm over front camera) -> Play/Pause ONLY (NEVER fall through into swipe!)
  if(!_mustUncoverFirst && darkCover){
+  _waveStartAt = 0;
+  _peakMotion = 0;
+  _leftPeakAt = 0;
+  _rightPeakAt = 0;
   if(_holdStartAt == 0){
    _holdStartAt = now;
    _holdFired = NO;
-  } else if(!_holdFired && (now - _holdStartAt) >= 0.28){
+  } else if(!_holdFired && (now - _holdStartAt) >= 0.26){
    _holdFired = YES;
    _mustUncoverFirst = YES;
    _uncoveredFrames = 0;
-   _waveStartAt = 0;
-   _peakMotion = 0;
    _cooldownUntil = now + 1.5;
    void (^cb)(void) = self.onPlayPause;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
-   return;
   }
+  return;
  } else if(_holdStartAt > 0){
   _holdStartAt = 0;
   _holdFired = NO;
@@ -3738,7 +3740,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   ge.onPlayPause = ^{
    Dashboard *d = weakGestureSelf;
    if(!d || d.isReverseActive || d.voiceListening) return;
-   BOOL wasPlaying = (d.mediaRate > 0.05) || (d.radioPlayer && d.radioPlayer.rate > 0.05);
+   BOOL wasPlaying = (d.mediaRate > 0.05) || [AVAudioSession sharedInstance].otherAudioPlaying || (d.radioPlayer && d.radioPlayer.rate > 0.05);
    AudioServicesPlaySystemSound(1104);
    if(d.radioPlayer){
     [d miniPlay];
