@@ -2424,33 +2424,39 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   }
  }
 
- // 1) 'OK' HAND SIGN DETECTOR (👌 at ~10-40 cm, repeatable unlimited times!):
- //    Thumb + index finger form an 'O' loop surrounded in >=6 of 8 radial directions by raised hand pixels!
+ // Track calm state so a brand-new deliberate hand raise is required for each OK trigger (ZERO phantom triggers!)
+ if(motionCells <= 3 && localOccluded <= 10){
+  if(_okIdleFrames < 100) _okIdleFrames++;
+ }
+ // Arm OK window ONLY when a large close hand deliberately enters the frame (motionCells >= 16 & localOccluded >= 18)
+ if(motionCells >= 16 && localOccluded >= 18 && !darkCover){
+  _lastMotionEntryAt = now;
+  if(_okIdleFrames >= 6){
+   _okLatched = NO;
+  }
+  _okIdleFrames = 0;
+ }
+
+ // 1) 'OK' HAND SIGN DETECTOR (👌 close at ~12-25 cm ONLY right after raising hand — 0% phantom trigger when idle!):
+ BOOL withinRaiseWindow = (!_okLatched && _lastMotionEntryAt > 0 && (now - _lastMotionEntryAt) <= 1.85);
  BOOL okFrameDetected = NO;
- if(!darkCover && handCount >= 60 && handCount <= 1320 && motion48 <= MAX(95, (handCount * 2) / 3) && (isNightCabin || skinFgCount >= 38)){
+ if(withinRaiseWindow && !darkCover && handCount >= 175 && handCount <= 1150 && skinFgCount >= 85 && motion48 <= MAX(75, handCount / 2)){
   int bboxW = (maxHX - minHX + 1), bboxH = (maxHY - minHY + 1);
-  float fillRatio = (bboxW > 4 && bboxH > 4) ? ((float)handCount / (float)(bboxW * bboxH)) : 1.0f;
-  if(bboxW >= 7 && bboxH >= 7 && fillRatio >= 0.15f && fillRatio <= 0.90f){
+  float fillRatio = (bboxW > 6 && bboxH > 6) ? ((float)handCount / (float)(bboxW * bboxH)) : 1.0f;
+  if(bboxW >= 11 && bboxH >= 11 && fillRatio >= 0.20f && fillRatio <= 0.85f){
    static const int rdx[8] = {1,-1,0,0,1,-1,1,-1};
    static const int rdy[8] = {0,0,1,-1,1,1,-1,-1};
    int ringHoleCells = 0;
-   int x0 = MAX(2, minHX + 1), x1 = MIN(45, maxHX - 1);
-   int y0 = MAX(2, minHY + 1), y1 = MIN(33, maxHY - 1);
+   int x0 = MAX(2, minHX + 2), x1 = MIN(45, maxHX - 2);
+   int y0 = MAX(2, minHY + 2), y1 = MIN(33, maxHY - 2);
    for(int gy = y0; gy <= y1; gy++){
     for(int gx = x0; gx <= x1; gx++){
-     int cIdx = gy * 48 + gx;
-     BOOL isHoleCandidate = (hand48[cIdx] == 0);
-     if(!isHoleCandidate && gx>=3 && gx<=44 && gy>=3 && gy<=32){
-      int cy = (int)y48[cIdx];
-      int ringAvg = ((int)y48[gy*48+(gx-3)] + (int)y48[gy*48+(gx+3)] + (int)y48[(gy-3)*48+gx] + (int)y48[(gy+3)*48+gx]) / 4;
-      if(cy + (isNightCabin?6:10) < ringAvg || cy - (isNightCabin?8:14) > ringAvg) isHoleCandidate = YES;
-     }
-     if(!isHoleCandidate) continue;
+     if(hand48[gy * 48 + gx] != 0) continue; // Strict true non-skin through-hole ONLY (never eyes/shadows!)
      int dirsHit = 0, cardinalsHit = 0;
      int firstDist[4] = {0,0,0,0};
      for(int d = 0; d < 8; d++){
       int hitsOnRay = 0, fDist = 0;
-      for(int st = 1; st <= 11; st++){
+      for(int st = 1; st <= 10; st++){
        int nx = gx + rdx[d]*st, ny = gy + rdy[d]*st;
        if(nx < 0 || nx >= 48 || ny < 0 || ny >= 36) break;
        if(hand48[ny*48 + nx]){
@@ -2458,41 +2464,34 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
         if(++hitsOnRay >= 2) break;
        }
       }
-      if(hitsOnRay >= 1){
+      if(hitsOnRay >= 2){
        dirsHit++;
        if(d < 4){ cardinalsHit++; firstDist[d] = fDist; }
       }
      }
      int spanEW = firstDist[0] + firstDist[1];
      int spanNS = firstDist[2] + firstDist[3];
-     if(dirsHit >= 6 && cardinalsHit >= 3 && spanEW >= 2 && spanEW <= 16 && spanNS >= 2 && spanNS <= 16){
+     if(dirsHit >= 7 && cardinalsHit == 4 && spanEW >= 3 && spanEW <= 13 && spanNS >= 3 && spanNS <= 13){
       ringHoleCells++;
      }
     }
    }
-   if(ringHoleCells >= 2 && ringHoleCells <= 110){
+   if(ringHoleCells >= 3 && ringHoleCells <= 70){
     okFrameDetected = YES;
    }
   }
  }
 
- if(_okLatched){
-  if(!okFrameDetected){
-   if(++_okIdleFrames >= 3) _okLatched = NO;
-  } else {
-   _okIdleFrames = 0;
-  }
- }
-
- if(!_okLatched && okFrameDetected){
+ if(withinRaiseWindow && okFrameDetected){
   _okStreak++;
   _waveStartAt = 0;
   _peakMotion = 0;
-  if(_okStreak >= 2){
+  if(_okStreak >= 3){
    _okStreak = 0;
    _okLatched = YES;
    _okIdleFrames = 0;
-   _cooldownUntil = now + 3.2;
+   _lastMotionEntryAt = 0;
+   _cooldownUntil = now + 5.0;
    void (^cb)(void) = self.onHoldVoiceSearch;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
