@@ -2264,11 +2264,13 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  int leftEdgeHits=0, rightEdgeHits=0;
  int darkCells=0;
  float ambRef = (_smoothAmbient > 8.0f) ? _smoothAmbient : meanLuma;
- float darkCellCut = MAX(18.0f, ambRef * 0.52f);
+ float darkCellCut = MAX(20.0f, ambRef * 0.62f);
+ float spatialVarSum = 0.0f;
  float weightedX=0.0f, totalW=0.0f;
  for(int i=0;i<96;i++){
   int gx = i % 12;
   int gy = i / 12;
+  spatialVarSum += fabsf(cur[i] - meanLuma);
   if(cur[i] <= darkCellCut) darkCells++;
   float dm=fabsf(cur[i]-_prevLuma[i]);
   _prevLuma[i]=cur[i];
@@ -2302,23 +2304,27 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   return;
  }
 
- // Close palm cover (~2-8 cm directly over camera lens): >= 54/96 cells dark simultaneously
- BOOL darkCover = (ambRef >= 18.0f && darkCells >= 54 && meanLuma < ambRef * 0.54f) || (darkCells >= 64 && meanLuma < 15.0f && ambRef > 18.0f);
+ // Close palm cover (~1-6 cm directly over camera lens):
+ // Works even when Auto-Exposure boosts gain on skin because an out-of-focus palm has near-zero spatial contrast!
+ float avgContrast = spatialVarSum / 96.0f;
+ BOOL flatClosePalm = (avgContrast < 10.0f && meanLuma < ambRef * 0.88f);
+ BOOL darkDrop = (ambRef >= 14.0f && darkCells >= 42 && meanLuma < ambRef * 0.65f) || (darkCells >= 56 && meanLuma < 18.0f && ambRef > 14.0f);
+ BOOL darkCover = (darkDrop || flatClosePalm);
 
  if(_mustUncoverFirst){
-  if(!darkCover && darkCells < 38){
-   if(++_uncoveredFrames >= 4) _mustUncoverFirst = NO;
+  if(!darkCover && darkCells < 36){
+   if(++_uncoveredFrames >= 3) _mustUncoverFirst = NO;
   } else {
    _uncoveredFrames = 0;
   }
  }
 
- // 1) Close Hand Cover (~2-8 cm over front camera) -> Play/Pause ONLY (NEVER opens mic / Voice Search!)
+ // 1) Close Hand Cover (~1-6 cm over front camera) -> Play/Pause ONLY (NEVER opens mic / Voice Search!)
  if(!_mustUncoverFirst && darkCover){
   if(_holdStartAt == 0){
    _holdStartAt = now;
    _holdFired = NO;
-  } else if(!_holdFired && (now - _holdStartAt) >= 0.32){
+  } else if(!_holdFired && (now - _holdStartAt) >= 0.28){
    _holdFired = YES;
    _mustUncoverFirst = YES;
    _uncoveredFrames = 0;
