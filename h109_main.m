@@ -281,6 +281,13 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
   [UIApplication sharedApplication].idleTimerDisabled=YES;
   return;
  }
+ // Avoid double-resetting Wi-Fi/RTSP when com.codex.h109.reverse.show is followed 0.4s later by applicationDidBecomeActive!
+ if(self.networkWait && self.networkRequestedAt && -[self.networkRequestedAt timeIntervalSinceNow]<6.0){
+  return;
+ }
+ if(self.rtsp && self.wantsLive && self.channels.selectedSegmentIndex==1 && self.connectionBegan && -[self.connectionBegan timeIntervalSinceNow]<2.6){
+  return;
+ }
  [self beginAutomaticCamera];
 }
 -(void)beginAutomaticCamera{
@@ -313,7 +320,6 @@ static void H109Record(NSMutableArray *trace,NSString *event,NSString *detail){i
   NSString *host=gw.length?gw:@"192.168.169.1";
   [prefs setObject:host forKey:@"reportedCameraHost"];
   if([self wantsReverseRearCamera]){
-   [[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/reverse-camera.plist" error:nil];
    self.channels.selectedSegmentIndex=1;
    self.showGuide=YES;
    if(self.parkingGuideView)self.parkingGuideView.hidden=NO;
@@ -446,9 +452,13 @@ if([u.scheme.lowercaseString isEqual:@"rtsp"]&&u.host.length&&!u.user.length&&!u
      [client requestKeyframeWait];
     }else if(v.liveLayer.readyForMoreMediaData){
      [v.liveLayer enqueueSampleBuffer:sample];
-     if(!v.frames){[[NSUserDefaults standardUserDefaults]setObject:v.address.text forKey:@"lastWorkingStream"];[[NSUserDefaults standardUserDefaults]synchronize];}
+     if(!v.frames){
+      [[NSUserDefaults standardUserDefaults]setObject:v.address.text forKey:@"lastWorkingStream"];
+      [[NSUserDefaults standardUserDefaults]synchronize];
+      [[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/reverse-camera.plist" error:nil];
+     }
      v.frames++;v.lastFrame=[NSDate date];v.emptyLabel.hidden=YES;
-     if(v.frames==15)[v captureState];
+     if(v.frames==1 || v.frames==15)[v captureState];
      if((v.frames<=1 || (v.frames%15)==0) && (!v.statusUntil||[v.statusUntil timeIntervalSinceNow]<=0)){
       NSString *side=(v.channels.selectedSegmentIndex==1)?@"REAR":@"FRONT";
       v.status.text=[NSString stringWithFormat:@"%@ • RTSP H.264 • %lu frames received",side,(unsigned long)v.frames];

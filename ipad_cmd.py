@@ -77,6 +77,9 @@ def run_ssh(cmd):
     try:
         ssh_cmd = [
             'ssh',
+            '-n',
+            '-o', 'ConnectTimeout=5',
+            '-o', 'BatchMode=yes',
             '-i', r'C:\Users\Intel\AppData\Local\Temp\trd-ipad-usb\ipad_trd_key',
             '-p', str(port),
             '-o', 'StrictHostKeyChecking=no',
@@ -87,7 +90,7 @@ def run_ssh(cmd):
             'root@127.0.0.1',
             cmd
         ]
-        res = subprocess.run(ssh_cmd, capture_output=True)
+        res = subprocess.run(ssh_cmd, stdin=subprocess.DEVNULL, capture_output=True)
         if res.stdout:
             sys.stdout.buffer.write(res.stdout)
         if res.stderr:

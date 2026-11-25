@@ -2027,10 +2027,19 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @interface TRDFrontGestureEngine : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate> {
  float _baseLuma[96];
  float _prevLuma[96];
+ float _bgY48[1728];
+ float _bgCb48[1728];
+ float _bgCr48[1728];
+ uint8_t _prevY48[1728];
  BOOL _hasPrev;
+ BOOL _hasBg48;
  int _warmupFrames;
  BOOL _mustUncoverFirst;
  int _uncoveredFrames;
+ int _okStreak;
+ BOOL _okLatched;
+ int _okIdleFrames;
+ BOOL _nightExposureActive;
  CFAbsoluteTime _waveStartAt;
  int _peakMotion;
  CFAbsoluteTime _holdStartAt;
@@ -2046,6 +2055,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  float _smoothAmbient;
 }
 @property (nonatomic, strong) AVCaptureSession *session;
+@property (nonatomic, strong) AVCaptureDevice *frontDevice;
 @property (nonatomic, strong) dispatch_queue_t queue;
 @property (nonatomic, copy) void (^onWaveNext)(void);
 @property (nonatomic, copy) void (^onWavePrev)(void);
@@ -2176,14 +2186,23 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   }
   [sess commitConfiguration];
   if([front lockForConfiguration:nil]){
+   if([front isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]){
+    front.exposureMode=AVCaptureExposureModeContinuousAutoExposure;
+   }
    front.activeVideoMinFrameDuration=CMTimeMake(1,16);
-   front.activeVideoMaxFrameDuration=CMTimeMake(1,14);
+   front.activeVideoMaxFrameDuration=CMTimeMake(1,12);
    [front unlockForConfiguration];
   }
+  self.frontDevice=front;
+  _nightExposureActive=NO;
   _hasPrev=NO;
+  _hasBg48=NO;
   _warmupFrames=18;
   _mustUncoverFirst=YES;
   _uncoveredFrames=0;
+  _okStreak=0;
+  _okLatched=YES;
+  _okIdleFrames=0;
   _waveStartAt=0;
   _holdStartAt=0;
   _holdFired=NO;
@@ -2198,9 +2217,13 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    [self.session stopRunning];
   }
   _hasPrev=NO;
+  _hasBg48=NO;
   _warmupFrames=18;
   _mustUncoverFirst=YES;
   _uncoveredFrames=0;
+  _okStreak=0;
+  _okLatched=YES;
+  _okIdleFrames=0;
   _waveStartAt=0;
   _holdStartAt=0;
   _holdFired=NO;
@@ -2214,7 +2237,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  size_t h=CVPixelBufferGetHeightOfPlane(pix,0);
  size_t bpr=CVPixelBufferGetBytesPerRowOfPlane(pix,0);
  const uint8_t *base=(const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(pix,0);
- if(!base||w<24||h<16){CVPixelBufferUnlockBaseAddress(pix,kCVPixelBufferLock_ReadOnly);return;}
+ if(!base||w<48||h<36){CVPixelBufferUnlockBaseAddress(pix,kCVPixelBufferLock_ReadOnly);return;}
 
  float cur[96];
  float sumLuma=0;
@@ -2229,38 +2252,92 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    sumLuma+=v;
   }
  }
+
+ // Sample 48x36 YCbCr grid (Plane 0 Y + Plane 1 CbCr) for real 'OK' hand-ring topology & night-vision boost
+ uint8_t y48[1728], cb48[1728], cr48[1728];
+ BOOL hasUV=(CVPixelBufferGetPlaneCount(pix)>=2);
+ const uint8_t *baseUV=hasUV?(const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(pix,1):NULL;
+ size_t wUV=hasUV?CVPixelBufferGetWidthOfPlane(pix,1):0;
+ size_t hUV=hasUV?CVPixelBufferGetHeightOfPlane(pix,1):0;
+ size_t bprUV=hasUV?CVPixelBufferGetBytesPerRowOfPlane(pix,1):0;
+ int k48=0;
+ for(int gy=0;gy<36;gy++){
+  size_t py=(h*(gy*2+1))/72;
+  const uint8_t *rowY=base+py*bpr;
+  const uint8_t *rowUV=(baseUV&&hUV>=18)?(baseUV+((hUV*(gy*2+1))/72)*bprUV):NULL;
+  for(int gx=0;gx<48;gx++){
+   size_t px=(w*(gx*2+1))/96;
+   y48[k48]=rowY[px];
+   if(rowUV&&wUV>=24){
+    size_t uvx=(wUV*(gx*2+1))/96;
+    cb48[k48]=rowUV[uvx*2];
+    cr48[k48]=rowUV[uvx*2+1];
+   }else{
+    cb48[k48]=128;
+    cr48[k48]=128;
+   }
+   k48++;
+  }
+ }
  CVPixelBufferUnlockBaseAddress(pix,kCVPixelBufferLock_ReadOnly);
 
  float meanLuma=sumLuma/96.0f;
  _lastSampleAt=CFAbsoluteTimeGetCurrent();
  _frameIdx++;
- // Let front camera Auto-Exposure settle for ~1.2s after startRunning so AE ramp NEVER triggers hold!
- if(!_hasPrev || _warmupFrames > 0){
+ if(!_hasPrev || !_hasBg48 || _warmupFrames > 0){
   if(_warmupFrames > 0) _warmupFrames--;
   for(int i=0;i<96;i++){_prevLuma[i]=cur[i];_baseLuma[i]=cur[i];}
+  for(int k=0;k<1728;k++){_bgY48[k]=(float)y48[k];_bgCb48[k]=(float)cb48[k];_bgCr48[k]=(float)cr48[k];_prevY48[k]=y48[k];}
   _hasPrev=YES;
+  _hasBg48=YES;
   _smoothAmbient=meanLuma;
   return;
+ }
+
+ // Adaptive Night-Vision Gain: lower motion delta threshold in dark car cabin (lit only by iPad LCD glow!)
+ float ambEst = (_smoothAmbient > 0.0f) ? _smoothAmbient : meanLuma;
+ BOOL isNightCabin = (ambEst < 34.0f);
+ float dmThresh = isNightCabin ? MAX(5.5f, 4.0f + ambEst * 0.28f) : 16.0f;
+ float totalWThresh = isNightCabin ? MAX(58.0f, ambEst * 4.5f) : 220.0f;
+ int minWaveCells = isNightCabin ? 10 : 14;
+ int minWavePeak = isNightCabin ? 12 : 18;
+ int edgeHitMin = isNightCabin ? 3 : 5;
+
+ // Dynamically boost front-camera shutter integration time to 1/8s (125ms) in dark night cabins!
+ if((_frameIdx % 25)==0 && self.frontDevice){
+  if(isNightCabin && !_nightExposureActive){
+   if([self.frontDevice lockForConfiguration:nil]){
+    self.frontDevice.activeVideoMinFrameDuration=CMTimeMake(1,14);
+    self.frontDevice.activeVideoMaxFrameDuration=CMTimeMake(1,8);
+    [self.frontDevice unlockForConfiguration];
+    _nightExposureActive=YES;
+   }
+  }else if(ambEst > 46.0f && _nightExposureActive){
+   if([self.frontDevice lockForConfiguration:nil]){
+    self.frontDevice.activeVideoMinFrameDuration=CMTimeMake(1,16);
+    self.frontDevice.activeVideoMaxFrameDuration=CMTimeMake(1,13);
+    [self.frontDevice unlockForConfiguration];
+    _nightExposureActive=NO;
+   }
+  }
  }
 
  float baseSum=0.0f;
  for(int i=0;i<96;i++) baseSum += _baseLuma[i];
  float baseMean = baseSum / 96.0f;
+ float meanShift = meanLuma - baseMean;
 
  int motionCells=0;
- int occludedCells=0;
  int localOccluded=0;
  int leftEdgeHits=0, rightEdgeHits=0;
  float weightedX=0.0f, totalW=0.0f;
  for(int i=0;i<96;i++){
   int gx = i % 12;
   float dm=fabsf(cur[i]-_prevLuma[i]);
-  float db=fabsf(cur[i]-_baseLuma[i]);
   float localDiff=fabsf((cur[i]-meanLuma) - (_baseLuma[i]-baseMean));
-  if(dm>=16.0f)motionCells++;
-  if(db>=24.0f)occludedCells++;
-  if(localDiff>=18.0f)localOccluded++;
-  float wCell=(dm>=16.0f ? dm : 0.0f);
+  if(dm>=dmThresh)motionCells++;
+  if(localDiff>=(isNightCabin?10.0f:18.0f))localOccluded++;
+  float wCell=(dm>=dmThresh ? dm : 0.0f);
   if(wCell>0.0f){
    weightedX += ((float)gx / 11.0f) * wCell;
    totalW += wCell;
@@ -2269,21 +2346,54 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   }
   _prevLuma[i]=cur[i];
  }
- // Only adapt _baseLuma & _smoothAmbient when scene is calm and no cover/hold is active
- if(motionCells <= 3 && localOccluded <= 16 && _holdStartAt == 0){
-  for(int i=0;i<96;i++){
-   _baseLuma[i]=_baseLuma[i]*0.92f + cur[i]*0.08f;
+
+ // Build 48x36 foreground hand mask for OK-sign ('O' thumb-index loop) detection
+ uint8_t hand48[1728];
+ int handCount=0, skinFgCount=0, motion48=0;
+ int minHX=48, maxHX=-1, minHY=36, maxHY=-1;
+ float fgDiffMin = isNightCabin ? 8.0f : 14.0f;
+ float rawDiffMin = isNightCabin ? 10.0f : 20.0f;
+ for(int k=0;k<1728;k++){
+  float y=(float)y48[k], cb=(float)cb48[k], cr=(float)cr48[k];
+  int dm48=abs((int)y48[k]-(int)_prevY48[k]);
+  if(dm48 >= (isNightCabin?7:14)) motion48++;
+  _prevY48[k]=y48[k];
+  BOOL isSkin=(y>=24.0f && y<=246.0f && cr>=128.0f && cr<=186.0f && cb>=68.0f && cb<=135.0f && (cr-cb)>=9.0f);
+  BOOL wasBgSkin=(_bgY48[k]>=28.0f && _bgCr48[k]>=131.0f && _bgCr48[k]<=184.0f && _bgCb48[k]>=72.0f && _bgCb48[k]<=132.0f && (_bgCr48[k]-_bgCb48[k])>=11.0f);
+  float dyComp=fabsf((y-_bgY48[k])-meanShift);
+  float dChroma=fabsf(cr-_bgCr48[k])+fabsf(cb-_bgCb48[k]);
+  BOOL isFg=(dyComp>=fgDiffMin || dChroma>=11.0f || fabsf(y-_bgY48[k])>=rawDiffMin);
+  BOOL isHandPx=isNightCabin ? isFg : ((isFg && isSkin) || (!wasBgSkin && isSkin && dChroma>=7.0f) || (dyComp>=22.0f && isSkin));
+  hand48[k]=isHandPx?1:0;
+  if(isHandPx){
+   handCount++;
+   if(isSkin)skinFgCount++;
+   int gx=k%48, gy=k/48;
+   if(gx<minHX)minHX=gx;
+   if(gx>maxHX)maxHX=gx;
+   if(gy<minHY)minHY=gy;
+   if(gy>maxHY)maxHY=gy;
+  }
+ }
+
+ // Only adapt background models when scene is calm and no hand is raised
+ if(motionCells <= 3 && localOccluded <= 14 && handCount < 80 && _holdStartAt == 0){
+  for(int i=0;i<96;i++) _baseLuma[i]=_baseLuma[i]*0.92f + cur[i]*0.08f;
+  for(int k=0;k<1728;k++){
+   _bgY48[k]=_bgY48[k]*0.93f + (float)y48[k]*0.07f;
+   _bgCb48[k]=_bgCb48[k]*0.93f + (float)cb48[k]*0.07f;
+   _bgCr48[k]=_bgCr48[k]*0.93f + (float)cr48[k]*0.07f;
   }
   _smoothAmbient=(_smoothAmbient<0)?meanLuma:(_smoothAmbient*0.92f + meanLuma*0.08f);
  }
 
  CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();
  // Smart Cabin Auto-Brightness every ~5s when idle
- if((_frameIdx % 45)==0 && motionCells<=2 && localOccluded<=10 && _holdStartAt==0){
+ if((_frameIdx % 45)==0 && motionCells<=2 && localOccluded<=10 && handCount<70 && _holdStartAt==0){
   float norm=(_smoothAmbient-14.0f)/150.0f;
   if(norm<0.0f)norm=0.0f;
   if(norm>1.0f)norm=1.0f;
-  CGFloat targetB=0.28 + norm*0.70; // 28% night cabin .. 98% bright daylight
+  CGFloat targetB=0.28 + norm*0.70;
   dispatch_async(dispatch_get_main_queue(),^{
    CGFloat curB=[UIScreen mainScreen].brightness;
    if(curB>0.06 && fabs(curB-targetB)>=0.06){
@@ -2296,95 +2406,156 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   _waveStartAt=0;
   _holdStartAt=0;
   _holdFired=NO;
+  _okStreak=0;
+  _okLatched=YES;
+  _okIdleFrames=0;
   _mustUncoverFirst=YES;
   _uncoveredFrames=0;
   return;
  }
 
- float ambRef = (_smoothAmbient > 22.0f) ? _smoothAmbient : 56.0f;
- BOOL darkCover = (meanLuma < 25.0f) || (ambRef >= 24.0f && meanLuma < ambRef * 0.58f);
+ float ambRef = (_smoothAmbient > 10.0f) ? _smoothAmbient : meanLuma;
+ BOOL darkCover = (meanLuma < 18.0f && ambRef > 28.0f) || (ambRef >= 22.0f && meanLuma < ambRef * 0.54f);
 
- // Latch: require 8 clean uncovered idle frames before Hold/Cover can ever arm (prevents ANY repeat loop!)
  if(_mustUncoverFirst){
   if(!darkCover && motionCells <= 4 && localOccluded <= 18){
-   _uncoveredFrames++;
-   if(_uncoveredFrames >= 8){
-    _mustUncoverFirst = NO;
-    for(int i=0;i<96;i++) _baseLuma[i] = cur[i];
-    _smoothAmbient = meanLuma;
-   }
+   if(++_uncoveredFrames >= 6) _mustUncoverFirst = NO;
   } else {
    _uncoveredFrames = 0;
   }
  }
-
- if(motionCells >= 12 && _holdStartAt == 0){
-  _lastMotionEntryAt = now;
- }
- if(_holdStartAt > 0 && (now - _holdStartAt) > 2.8){
-  for(int i=0;i<96;i++) _baseLuma[i] = cur[i];
-  _smoothAmbient = meanLuma;
-  _holdStartAt = 0;
-  _holdFired = NO;
-  _mustUncoverFirst = YES;
-  _uncoveredFrames = 0;
+ if(_okLatched){
+  if(handCount < 75 && !darkCover && motionCells <= 4){
+   if(++_okIdleFrames >= 6) _okLatched = NO;
+  } else {
+   _okIdleFrames = 0;
+  }
  }
 
- // 1) Close Hand Cover (~3-10 cm over front camera bezel):
- //    - Quick cover (0.22-1.05s) -> Play/Pause
- //    - Hold cover (>= 1.10s) -> Voice Search ONCE (strictly latched until uncovered!)
- BOOL canStartCover = (!_mustUncoverFirst && darkCover && motionCells <= 16 && ((now - _lastMotionEntryAt) <= 1.25 || meanLuma < 22.0f));
- BOOL stillHoldingCover = (_holdStartAt > 0 && motionCells <= 14 && (darkCover || (meanLuma < ambRef * 0.72f && localOccluded >= 20)));
- if(_holdStartAt == 0 ? canStartCover : stillHoldingCover){
-  if(_holdStartAt == 0){
-   _holdStartAt = now;
-   _holdFired = NO;
-  } else if(!_holdFired && (now - _holdStartAt) >= 1.10){
-   _holdFired = YES;
-   _mustUncoverFirst = YES;
-   _uncoveredFrames = 0;
-   _waveStartAt = 0;
-   _peakMotion = 0;
-   _cooldownUntil = now + 6.0;
+ // 1) 'OK' HAND SIGN DETECTOR (👌 at ~12-38 cm):
+ //    Thumb + index finger form an enclosed 'O' hole surrounded in >=7 of 8 radial directions by hand pixels!
+ BOOL okFrameDetected = NO;
+ if(!_okLatched && !darkCover && handCount >= 85 && handCount <= 1180 && motion48 <= MAX(75, handCount / 2) && (isNightCabin || skinFgCount >= 55)){
+  int bboxW = (maxHX - minHX + 1), bboxH = (maxHY - minHY + 1);
+  float fillRatio = (bboxW > 4 && bboxH > 4) ? ((float)handCount / (float)(bboxW * bboxH)) : 1.0f;
+  if(bboxW >= 8 && bboxH >= 8 && fillRatio >= 0.18f && fillRatio <= 0.86f){
+   static const int rdx[8] = {1,-1,0,0,1,-1,1,-1};
+   static const int rdy[8] = {0,0,1,-1,1,1,-1,-1};
+   int ringHoleCells = 0;
+   int x0 = MAX(2, minHX + 1), x1 = MIN(45, maxHX - 1);
+   int y0 = MAX(2, minHY + 1), y1 = MIN(33, maxHY - 1);
+   for(int gy = y0; gy <= y1; gy++){
+    for(int gx = x0; gx <= x1; gx++){
+     int cIdx = gy * 48 + gx;
+     // Hole cell is either non-hand background OR distinctly darker interior shadow inside thumb-index loop
+     BOOL isHoleCandidate = (hand48[cIdx] == 0);
+     if(!isHoleCandidate){
+      int cy = (int)y48[cIdx];
+      if(gx>=3 && gx<=44 && gy>=3 && gy<=32){
+       int ringAvg = ((int)y48[gy*48+(gx-3)] + (int)y48[gy*48+(gx+3)] + (int)y48[(gy-3)*48+gx] + (int)y48[(gy+3)*48+gx]) / 4;
+       if(cy + (isNightCabin?7:13) < ringAvg) isHoleCandidate = YES;
+      }
+     }
+     if(!isHoleCandidate) continue;
+     int dirsHit = 0;
+     int firstDist[4] = {0,0,0,0};
+     for(int d = 0; d < 8; d++){
+      int hitsOnRay = 0, fDist = 0;
+      for(int st = 1; st <= 10; st++){
+       int nx = gx + rdx[d]*st, ny = gy + rdy[d]*st;
+       if(nx < 0 || nx >= 48 || ny < 0 || ny >= 36) break;
+       if(hand48[ny*48 + nx]){
+        if(!fDist) fDist = st;
+        if(++hitsOnRay >= 2) break;
+       }
+      }
+      if(hitsOnRay >= 1){
+       dirsHit++;
+       if(d < 4) firstDist[d] = fDist;
+      }
+     }
+     int spanEW = firstDist[0] + firstDist[1];
+     int spanNS = firstDist[2] + firstDist[3];
+     if(dirsHit >= 7 && spanEW >= 2 && spanEW <= 13 && spanNS >= 2 && spanNS <= 13){
+      ringHoleCells++;
+     }
+    }
+   }
+   if(ringHoleCells >= 2 && ringHoleCells <= 85){
+    okFrameDetected = YES;
+   }
+  }
+ }
+
+ if(okFrameDetected){
+  _okStreak++;
+  // Cancel any accidental wave start caused by raising the hand from the side to form 'OK'!
+  _waveStartAt = 0;
+  _peakMotion = 0;
+  if(_okStreak >= 3){
+   _okStreak = 0;
+   _okLatched = YES;
+   _okIdleFrames = 0;
+   _cooldownUntil = now + 5.0;
    void (^cb)(void) = self.onHoldVoiceSearch;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
   }
- } else if(_holdStartAt > 0){
-  double coverDur = now - _holdStartAt;
-  BOOL alreadyFired = _holdFired;
+ } else {
+  if(handCount < 60) _okStreak = 0;
+  else if(_okStreak > 0) _okStreak--;
+ }
+
+ // 2) Quick Close Cover (~3-8 cm over front camera lens, 0.20-1.25s) -> Play/Pause ONLY (never opens mic!)
+ if(motionCells >= 10 && _holdStartAt == 0){
+  _lastMotionEntryAt = now;
+ }
+ if(_holdStartAt > 0 && (now - _holdStartAt) > 2.5){
   _holdStartAt = 0;
   _holdFired = NO;
   _mustUncoverFirst = YES;
   _uncoveredFrames = 0;
-  if(!alreadyFired && coverDur >= 0.22 && coverDur < 1.10 && _peakMotion < 28){
+ }
+ BOOL canStartCover = (!_mustUncoverFirst && darkCover && motionCells <= 16 && (now - _lastMotionEntryAt) <= 1.25);
+ BOOL stillHoldingCover = (_holdStartAt > 0 && motionCells <= 14 && (darkCover || meanLuma < ambRef * 0.68f));
+ if(_holdStartAt == 0 ? canStartCover : stillHoldingCover){
+  if(_holdStartAt == 0){
+   _holdStartAt = now;
+   _holdFired = NO;
+  }
+ } else if(_holdStartAt > 0){
+  double coverDur = now - _holdStartAt;
+  _holdStartAt = 0;
+  _holdFired = NO;
+  _mustUncoverFirst = YES;
+  _uncoveredFrames = 0;
+  if(coverDur >= 0.20 && coverDur <= 1.35 && _peakMotion < 28){
    _waveStartAt = 0;
    _peakMotion = 0;
-   _cooldownUntil = now + 1.5;
+   _cooldownUntil = now + 1.4;
    void (^cb)(void) = self.onPlayPause;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
   }
  }
 
- // 2) Comfortable Hand Wave (~10-28 cm across screen: MUST cross BOTH far-left [gx<=3] AND far-right [gx>=8] edges in <=0.65s!)
- //    Sitting 1m away stays in the center and NEVER crosses both far edges in 0.65s!
- if(motionCells>=14 && totalW>220.0f){
+ // 3) Left / Right Hand Swipe (works both Day & Dark Night Cabin; ignores stationary raised hand!)
+ if(motionCells >= minWaveCells && totalW > totalWThresh){
   float cx = weightedX / totalW;
   if(_waveStartAt==0){
    _waveStartAt=now;
    _peakMotion=motionCells;
    _startCX=cx;
    _lastCX=cx;
-   _leftPeakAt=(leftEdgeHits>=5)?now:0;
-   _rightPeakAt=(rightEdgeHits>=5)?now:0;
+   _leftPeakAt=(leftEdgeHits>=edgeHitMin)?now:0;
+   _rightPeakAt=(rightEdgeHits>=edgeHitMin)?now:0;
   } else {
    if(motionCells>_peakMotion)_peakMotion=motionCells;
    _lastCX=cx;
-   if(leftEdgeHits>=5 && _leftPeakAt==0)_leftPeakAt=now;
-   if(rightEdgeHits>=5 && _rightPeakAt==0)_rightPeakAt=now;
+   if(leftEdgeHits>=edgeHitMin && _leftPeakAt==0)_leftPeakAt=now;
+   if(rightEdgeHits>=edgeHitMin && _rightPeakAt==0)_rightPeakAt=now;
   }
-  if((now-_waveStartAt)>0.70){_waveStartAt=0;_peakMotion=0;_leftPeakAt=0;_rightPeakAt=0;}
+  if((now-_waveStartAt)>0.75){_waveStartAt=0;_peakMotion=0;_leftPeakAt=0;_rightPeakAt=0;}
  }else if(_waveStartAt>0 && motionCells<=5){
   double dur=now-_waveStartAt;
   int peak=_peakMotion;
@@ -2395,7 +2566,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   _leftPeakAt=0;
   _rightPeakAt=0;
   BOOL crossedFullSpan = (lAt > 0 && rAt > 0 && fabs(rAt - lAt) >= 0.015);
-  if(dur>=0.05 && dur<=0.68 && peak>=18 && (crossedFullSpan || fabsf(deltaX)>=0.28f)){
+  // If hand stopped right in front of screen (e.g. forming 👌 OK), require full edge-to-edge span so raising a hand NEVER false-swipes!
+  BOOL handStoppedInCenter = (handCount >= 120);
+  if(dur>=0.05 && dur<=0.72 && peak>=minWavePeak && (crossedFullSpan || (!handStoppedInCenter && fabsf(deltaX)>=0.28f))){
    BOOL goNext = crossedFullSpan ? (rAt > lAt) : (deltaX > 0);
    _cooldownUntil=now+1.35;
    if(goNext){
@@ -3785,9 +3958,34 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    Dashboard *d = weakGestureSelf;
    if(!d || d.isReverseActive || d.voiceListening) return;
    AudioServicesPlaySystemSound(1113);
+   [d showGestureToast:@"👌 OK! เปิดไมค์ค้นหาเพลง 🎙️"];
    [d voiceMusicTapped];
   };
   [ge startIfEnabled];
+  // Zero-lux pitch-black night backup: 2-finger swipe Left/Right anywhere on Dashboard skips tracks!
+  UISwipeGestureRecognizer *twoSwR = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(nightTwoFingerSwipe:)];
+  twoSwR.direction = UISwipeGestureRecognizerDirectionRight;
+  twoSwR.numberOfTouchesRequired = 2;
+  [self.view addGestureRecognizer:twoSwR];
+  UISwipeGestureRecognizer *twoSwL = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(nightTwoFingerSwipe:)];
+  twoSwL.direction = UISwipeGestureRecognizerDirectionLeft;
+  twoSwL.numberOfTouchesRequired = 2;
+  [self.view addGestureRecognizer:twoSwL];
+}
+-(void)nightTwoFingerSwipe:(UISwipeGestureRecognizer *)g{
+ if(self.isReverseActive || self.voiceListening) return;
+ AudioServicesPlaySystemSound(1104);
+ if(g.direction == UISwipeGestureRecognizerDirectionRight){
+  [self miniNext];
+  [self showGestureToast:@"✌️➡️ เพลงถัดไป ⏭️"];
+ } else {
+  [self miniPrev];
+  [self showGestureToast:@"⬅️✌️ เพลงก่อนหน้า ⏮️"];
+ }
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+  notify_post("com.codex.trd.music.play");
+  TRDSendMediaRemoteExternal(0, nil);
+ });
 }
 -(BOOL)prefersStatusBarHidden{return YES;}
 -(void)rotateTo:(NSNumber *)value{[[UIDevice currentDevice]setValue:value forKey:@"orientation"];[UIViewController attemptRotationToDeviceOrientation];}

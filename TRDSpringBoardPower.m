@@ -496,27 +496,16 @@ static void TRDPerformWake(void) {
             [fsp setState:1 forSwitchIdentifier:@"com.a3tweaks.switch.bluetooth"];
         }
 
-        // 4. Launch CarDash and show welcome
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        // 4. Launch CarDash reliably via SpringBoard direct launcher + verify frontmost!
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.30 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (TRDHasLockScreenLayoutElement()) {
                 TRDDismissCoverSheetCompletely(NO);
             }
-            if (act && evtCls && [act respondsToSelector:@selector(sendEvent:toListenerWithName:)]) {
-                NSString *mode = [act respondsToSelector:@selector(currentEventMode)] ? [act currentEventMode] : @"springboard";
-                id evt = [evtCls respondsToSelector:@selector(eventWithName:mode:)] ? [evtCls eventWithName:@"libactivator.power.connected" mode:mode] : nil;
-                [act sendEvent:evt toListenerWithName:@"com.codex.cardash"];
-            }
-            Class wsCls = objc_getClass("LSApplicationWorkspace");
-            if (wsCls && [wsCls respondsToSelector:@selector(defaultWorkspace)]) {
-                id ws = [wsCls performSelector:@selector(defaultWorkspace)];
-                if ([ws respondsToSelector:@selector(openApplicationWithBundleID:)]) {
-                    [ws performSelector:@selector(openApplicationWithBundleID:) withObject:@"com.codex.cardash"];
-                }
-            }
+            TRDLaunchAppFromSpringBoard(@"com.codex.cardash", YES);
             [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"cardash://welcome"]];
             TRDWriteStatus(@"wake");
         });
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.40 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (pBKSDisplayServicesSetScreenBlanked) pBKSDisplayServicesSetScreenBlanked(NO);
             if (blMgr) {
                 if ([blMgr respondsToSelector:@selector(setBacklightFactor:source:)]) {
@@ -527,14 +516,12 @@ static void TRDPerformWake(void) {
                 }
             }
             BOOL stillLocked = (lockMgr && [lockMgr respondsToSelector:@selector(isUILocked)]) ? [lockMgr isUILocked] : NO;
-            if (stillLocked || TRDHasLockScreenLayoutElement()) {
+            NSString *frontNow = TRDCurrentFrontmostBundleID();
+            BOOL dashFront = [frontNow isEqualToString:@"com.codex.cardash"] || [frontNow isEqualToString:@"com.codex.h109viewer"];
+            if (stillLocked || TRDHasLockScreenLayoutElement() || !dashFront) {
                 TRDDismissCoverSheetCompletely(YES);
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    Class wsCls = objc_getClass("LSApplicationWorkspace");
-                    id ws = (wsCls && [wsCls respondsToSelector:@selector(defaultWorkspace)]) ? [wsCls performSelector:@selector(defaultWorkspace)] : nil;
-                    if (ws && [ws respondsToSelector:@selector(openApplicationWithBundleID:)]) {
-                        [ws performSelector:@selector(openApplicationWithBundleID:) withObject:@"com.codex.cardash"];
-                    }
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    TRDLaunchAppFromSpringBoard(@"com.codex.cardash", YES);
                     TRDWriteStatus(@"wake-verified");
                 });
             } else {
@@ -589,7 +576,8 @@ static NSTimeInterval gLastWakeAt = 0;
             UIDeviceBatteryState confirmed = [UIDevice currentDevice].batteryState;
             if (confirmed != UIDeviceBatteryStateCharging && confirmed != UIDeviceBatteryStateFull) return;
             NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-            if (!gWasCharging && (now - gLastWakeAt) > 8.0) {
+            BOOL dashAlreadyFront = [TRDCurrentFrontmostBundleID() isEqualToString:@"com.codex.cardash"];
+            if ((!gWasCharging && (now - gLastWakeAt) > 1.2) || !dashAlreadyFront) {
                 gWasCharging = YES;
                 gLastWakeAt = now;
                 TRDPerformWake();

@@ -40,10 +40,15 @@ NSString *H109CameraGatewayHost(void){
  NSString *ip=H109En0IPv4();
  if(!ip.length)return nil;
  NSString *prefix=H109CameraPrefix();
+ if([ip hasPrefix:prefix]){
+  NSArray *parts=[ip componentsSeparatedByString:@"."];
+  if(parts.count==4)return [NSString stringWithFormat:@"%@.%@.%@.1",parts[0],parts[1],parts[2]];
+  return @"192.168.169.1";
+ }
  NSDictionary *net=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));
  NSString *ssid=[net[@"SSID"]isKindOfClass:[NSString class]]?net[@"SSID"]:nil;
  BOOL camSSID=([ssid hasPrefix:@"H109Y-"]||[ssid hasPrefix:@"H108Y-"]);
- if(![ip hasPrefix:prefix]&&!camSSID)return nil;
+ if(!camSSID)return nil;
  NSArray *parts=[ip componentsSeparatedByString:@"."];
  if(parts.count==4)return [NSString stringWithFormat:@"%@.%@.%@.1",parts[0],parts[1],parts[2]];
  return @"192.168.169.1";
@@ -68,8 +73,8 @@ NSString *H109ResolvedCameraSSID(void){
 static BOOL readExact(int fd,void *p,size_t n){while(n){ssize_t k=recv(fd,p,n,0);if(k<=0){if(k<0&&errno==EINTR)continue;return NO;}p=(char *)p+k;n-=k;}return YES;}
 static BOOL sendAll(int fd,NSData *d){const char *p=d.bytes;size_t n=d.length;while(n){ssize_t k=send(fd,p,n,0);if(k<=0){if(k<0&&errno==EINTR)continue;return NO;}p+=k;n-=k;}return YES;}
 static int openTCPTimeout(NSString *host,int port,int connectMs,int rcvMs){struct addrinfo hints={0},*addresses=NULL;hints.ai_family=AF_INET;hints.ai_socktype=SOCK_STREAM;char service[16];snprintf(service,sizeof(service),"%d",port);if(getaddrinfo(host.UTF8String,service,&hints,&addresses))return -1;int result=-1;for(struct addrinfo *a=addresses;a;a=a->ai_next){int fd=socket(a->ai_family,a->ai_socktype,0);if(fd<0)continue;int one=1;setsockopt(fd,SOL_SOCKET,SO_NOSIGPIPE,&one,sizeof(one));fcntl(fd,F_SETFL,O_NONBLOCK);int err=connect(fd,a->ai_addr,a->ai_addrlen);if(err<0&&errno==EINPROGRESS){fd_set out;FD_ZERO(&out);FD_SET(fd,&out);struct timeval timeout={connectMs/1000,(connectMs%1000)*1000};err=select(fd+1,NULL,&out,NULL,&timeout);if(err>0){int e=0;socklen_t len=sizeof(e);getsockopt(fd,SOL_SOCKET,SO_ERROR,&e,&len);err=e?-1:0;}else err=-1;}if(err==0){fcntl(fd,F_SETFL,0);struct timeval rcvTimeout={rcvMs/1000,(rcvMs%1000)*1000};struct timeval sndTimeout={1,200000};setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&rcvTimeout,sizeof(rcvTimeout));setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&sndTimeout,sizeof(sndTimeout));int rcvbuf=262144;setsockopt(fd,SOL_SOCKET,SO_RCVBUF,&rcvbuf,sizeof(rcvbuf));int nodelay=1;setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,&nodelay,sizeof(nodelay));result=fd;break;}close(fd);}freeaddrinfo(addresses);return result;}
-static int openTCP(NSString *host,int port){return openTCPTimeout(host,port,1200,2500);}
-static NSDictionary *response(int fd,int first){NSMutableData *header=[NSMutableData data];if(first>=0){uint8_t c=first;[header appendBytes:&c length:1];}CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+6;while(header.length<32768){if(CFAbsoluteTimeGetCurrent()>deadline)return nil;uint8_t c;if(!readExact(fd,&c,1))return nil;[header appendBytes:&c length:1];if(header.length>=4&&!memcmp((char *)header.bytes+header.length-4,"\r\n\r\n",4))break;}NSString *text=[[NSString alloc]initWithData:header encoding:NSUTF8StringEncoding];if(!text||![text hasPrefix:@"RTSP/"])return nil;NSArray *lines=[text componentsSeparatedByString:@"\r\n"];NSArray *status=[lines[0] componentsSeparatedByString:@" "];if(status.count<2)return nil;NSMutableDictionary *r=[NSMutableDictionary dictionary];r[@"code"]=@([status[1] integerValue]);for(NSString *line in lines){NSRange colon=[line rangeOfString:@":"];if(colon.location==NSNotFound)continue;r[[[line substringToIndex:colon.location]lowercaseString]]=[[line substringFromIndex:colon.location+1]stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];}NSInteger size=[r[@"content-length"]integerValue];if(size<0||size>1048576)return nil;NSMutableData *body=[NSMutableData dataWithLength:size];if(size&&!readExact(fd,body.mutableBytes,size))return nil;r[@"body"]=[[NSString alloc]initWithData:body encoding:NSUTF8StringEncoding]?:@"";return r;}
+static int openTCP(NSString *host,int port){return openTCPTimeout(host,port,650,1400);}
+static NSDictionary *response(int fd,int first){NSMutableData *header=[NSMutableData data];if(first>=0){uint8_t c=first;[header appendBytes:&c length:1];}CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+1.8;while(header.length<32768){if(CFAbsoluteTimeGetCurrent()>deadline)return nil;uint8_t c;if(!readExact(fd,&c,1))return nil;[header appendBytes:&c length:1];if(header.length>=4&&!memcmp((char *)header.bytes+header.length-4,"\r\n\r\n",4))break;}NSString *text=[[NSString alloc]initWithData:header encoding:NSUTF8StringEncoding];if(!text||![text hasPrefix:@"RTSP/"])return nil;NSArray *lines=[text componentsSeparatedByString:@"\r\n"];NSArray *status=[lines[0] componentsSeparatedByString:@" "];if(status.count<2)return nil;NSMutableDictionary *r=[NSMutableDictionary dictionary];r[@"code"]=@([status[1] integerValue]);for(NSString *line in lines){NSRange colon=[line rangeOfString:@":"];if(colon.location==NSNotFound)continue;r[[[line substringToIndex:colon.location]lowercaseString]]=[[line substringFromIndex:colon.location+1]stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];}NSInteger size=[r[@"content-length"]integerValue];if(size<0||size>1048576)return nil;NSMutableData *body=[NSMutableData dataWithLength:size];if(size&&!readExact(fd,body.mutableBytes,size))return nil;r[@"body"]=[[NSString alloc]initWithData:body encoding:NSUTF8StringEncoding]?:@"";return r;}
 static BOOL request(int fd,NSString *method,NSString *url,int cseq,NSDictionary *headers){NSMutableString *s=[NSMutableString stringWithFormat:@"%@ %@ RTSP/1.0\r\nCSeq: %d\r\nUser-Agent: H109Viewer/0.2\r\n",method,url,cseq];for(NSString *key in headers)[s appendFormat:@"%@: %@\r\n",key,headers[key]];[s appendString:@"\r\n"];return sendAll(fd,[s dataUsingEncoding:NSUTF8StringEncoding]);}
 
 static NSData *H109ParameterSet(NSData *data){const uint8_t *p=data.bytes;NSUInteger n=data.length;if(n>=4&&p[0]==0&&p[1]==0&&p[2]==0&&p[3]==1)return [data subdataWithRange:NSMakeRange(4,n-4)];if(n>=3&&p[0]==0&&p[1]==0&&p[2]==1)return [data subdataWithRange:NSMakeRange(3,n-3)];return data;}
@@ -145,52 +150,79 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
 +(BOOL)openCameraSession:(NSString *)host{if(!host.length)return NO;NSDictionary *r=[self jsonMetadata:host path:@"/app/enterrecorder"];BOOL ok=[r[@"result"]isKindOfClass:[NSNumber class]]&&[r[@"result"]intValue]==0;return ok;}
 +(NSArray *)cameraStreamURLs:(NSString *)host{NSDictionary *r=[self jsonMetadata:host path:@"/app/getmediainfo"];id info=r[@"info"];if(![r[@"result"]isKindOfClass:[NSNumber class]]||[r[@"result"]intValue]!=0||![info isKindOfClass:[NSDictionary class]])return @[];id list=info[@"rtsps"];if(![list isKindOfClass:[NSArray class]])list=[info[@"rtsp"]isKindOfClass:[NSString class]]?@[info[@"rtsp"]]:@[];NSMutableArray *urls=[NSMutableArray array];for(id text in list){if(![text isKindOfClass:[NSString class]])continue;NSURL *u=[NSURL URLWithString:text];if(![u.scheme.lowercaseString isEqual:@"rtsp"]||![u.host isEqual:host]||u.user.length||u.password.length)continue;if(!u.path.length)u=[NSURL URLWithString:[text stringByAppendingString:@"/"]];[urls addObject:u];}return urls;}
 +(NSDictionary *)describe:(NSURL *)url{int fd=openTCP(url.host,url.port?url.port.intValue:554);if(fd<0)return nil;NSDictionary *r=nil;@try{if(request(fd,@"OPTIONS",url.absoluteString,1,@{}))response(fd,-1);if(request(fd,@"DESCRIBE",url.absoluteString,2,@{@"Accept":@"application/sdp"}))r=response(fd,-1);}@finally{close(fd);}return r;}
--(void)run:(NSURL *)url{
+ static NSMutableDictionary *s_sessionOpenedAt = nil;
+ -(void)run:(NSURL *)url{
  int fd=-1,udp=-1,rtcp=-1,sequence=1,channel=0;NSString *session=nil;BOOL playing=NO;NSString *uri=url.absoluteString;
  CFAbsoluteTime t0=CFAbsoluteTimeGetCurrent(),tDev=t0,tSwitch=t0,tTCP=t0,tPlay=t0,tFirstIDR=0;
  @try{
   if(url.user.length||![url.scheme.lowercaseString isEqual:@"rtsp"]){[self notify:@"URL RTSP ไม่ถูกต้อง หรือมีข้อมูลเข้าสู่ระบบที่ยังไม่รองรับ"];return;}
   int port=url.port?url.port.intValue:554;
   BOOL isControl=(!url.path.length||[url.path isEqual:@"/"]);
-  BOOL knownCamHost=isControl&&([url.host hasPrefix:@"192.168.169."]||[H109RTSP cameraProfile:url.host]!=nil);
+  BOOL knownCamHost=[url.host hasPrefix:@"192.168.169."]||(isControl&&[H109RTSP cameraProfile:url.host]!=nil);
   self.waitForIDR=YES;
   if(knownCamHost&&!self.stopped){
+   BOOL needEnter=YES;
+   @synchronized([H109RTSP class]){
+    if(!s_sessionOpenedAt)s_sessionOpenedAt=[NSMutableDictionary dictionary];
+    NSNumber *prevAt=s_sessionOpenedAt[url.host];
+    if(prevAt && (CFAbsoluteTimeGetCurrent()-prevAt.doubleValue)<25.0)needEnter=NO;
+   }
+   // Wake H109Y recorder/RTSP server FIRST (~50ms) so port 554 & switchcam respond on attempt 1 without 6s stall!
+   if(needEnter){
+    if([H109RTSP openCameraSession:url.host]){
+     @synchronized([H109RTSP class]){s_sessionOpenedAt[url.host]=@(CFAbsoluteTimeGetCurrent());}
+    }
+   }
    NSDictionary *device=[H109RTSP cameraDeviceInfo:url.host];
    tDev=CFAbsoluteTimeGetCurrent();
    NSInteger cur=[device[@"curcamid"]isKindOfClass:[NSNumber class]]?[device[@"curcamid"]integerValue]:-1;
    NSInteger camnum=[device[@"camnum"]isKindOfClass:[NSNumber class]]?[device[@"camnum"]integerValue]:2;
    NSInteger target=self.targetChannel;
-   if(cur<0&&[H109RTSP cameraProfile:url.host]==nil)knownCamHost=NO;
-   if(knownCamHost&&(target==0||target==1)&&target<camnum&&cur!=target){
+   if(cur<0&&!needEnter){
+    if([H109RTSP openCameraSession:url.host]){
+     @synchronized([H109RTSP class]){s_sessionOpenedAt[url.host]=@(CFAbsoluteTimeGetCurrent());}
+     device=[H109RTSP cameraDeviceInfo:url.host];
+     cur=[device[@"curcamid"]isKindOfClass:[NSNumber class]]?[device[@"curcamid"]integerValue]:-1;
+    }
+   }
+   if((target==0||target==1)&&target<camnum&&cur!=target){
     [self notify:(target==1)?@"Switching to REAR camera...":@"Switching to FRONT camera..."];
-    BOOL ok=[H109RTSP switchCamera:url.host index:target];
+    BOOL ok=[H109RTSP fastSwitchCamera:url.host index:target];
+    if(ok){
+     CFAbsoluteTime swDead=CFAbsoluteTimeGetCurrent()+0.45;
+     while(!self.stopped&&CFAbsoluteTimeGetCurrent()<swDead){
+      [NSThread sleepForTimeInterval:0.03];
+      NSDictionary *chk=[H109RTSP cameraDeviceInfo:url.host];
+      if([chk[@"curcamid"]isKindOfClass:[NSNumber class]]&&[chk[@"curcamid"]integerValue]==target){cur=target;break;}
+     }
+    }
     if(self.stopped)return;
-    NSDictionary *after=ok?nil:[H109RTSP cameraDeviceInfo:url.host];
-    NSInteger confirmed=ok?target:([after[@"curcamid"]isKindOfClass:[NSNumber class]]?[after[@"curcamid"]integerValue]:cur);
     void (^cb)(NSInteger,BOOL)=self.channelUpdated;
-    if(cb)dispatch_async(dispatch_get_main_queue(),^{if(!self.stopped)cb(confirmed,ok);});
+    if(cb)dispatch_async(dispatch_get_main_queue(),^{if(!self.stopped)cb(cur>=0?cur:target,ok);});
    }else if(cur>=0){
     void (^cb)(NSInteger,BOOL)=self.channelUpdated;
     if(cb)dispatch_async(dispatch_get_main_queue(),^{if(!self.stopped)cb(cur,YES);});
    }
+   // If bare root URL was passed (rtsp://192.168.169.1/), check /app/getmediainfo once for exact fast RTSP stream path!
+   if(isControl&&!self.stopped){
+    NSArray *reportedURLs=[H109RTSP cameraStreamURLs:url.host];
+    if(reportedURLs.count){
+     NSURL *best=reportedURLs.firstObject;
+     if(best.absoluteString.length)uri=best.absoluteString;
+    }
+   }
   }
   tSwitch=CFAbsoluteTimeGetCurrent();
   [self notify:@"Connecting to RTSP..."];
-  fd=openTCPTimeout(url.host,port,600,2000);
+  fd=openTCPTimeout(url.host,port,450,1400);
   if(fd<0&&knownCamHost&&!self.stopped){
-   [self notify:@"Opening camera preview session..."];
    [H109RTSP openCameraSession:url.host];
-   if((self.targetChannel==0||self.targetChannel==1)&&!self.stopped){
-    NSDictionary *after=[H109RTSP cameraDeviceInfo:url.host];
-    if([after[@"curcamid"]isKindOfClass:[NSNumber class]]&&[after[@"curcamid"]integerValue]!=self.targetChannel){
-     [H109RTSP switchCamera:url.host index:self.targetChannel];
-    }
-   }
-   CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+1.8;
+   @synchronized([H109RTSP class]){s_sessionOpenedAt[url.host]=@(CFAbsoluteTimeGetCurrent());}
+   CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+1.1;
    while(fd<0&&!self.stopped&&CFAbsoluteTimeGetCurrent()<deadline){
-    [NSThread sleepForTimeInterval:0.04];
+    [NSThread sleepForTimeInterval:0.03];
     if(self.stopped)break;
-    fd=openTCPTimeout(url.host,port,350,2000);
+    fd=openTCPTimeout(url.host,port,350,1400);
    }
   }
   tTCP=CFAbsoluteTimeGetCurrent();
@@ -222,7 +254,7 @@ static NSMutableSet *s_sessionOpenedHosts = nil;
    if(udp>=0&&ready>0&&FD_ISSET(udp,&reads)){uint8_t packet[65536];ssize_t n=recv(udp,packet,sizeof(packet),0);if(n>0){[self rtp:[NSData dataWithBytes:packet length:n]];lastPacket=CFAbsoluteTimeGetCurrent();}}
    if(rtcp>=0&&ready>0&&FD_ISSET(rtcp,&reads)){uint8_t drop[2048];recv(rtcp,drop,sizeof(drop),0);}
    CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();if(now-keepalive>10){request(fd,@"OPTIONS",uri,sequence++,@{@"Session":session});keepalive=now;}
-   if((!self.frameCount&&now-started>5.5)||now-lastPacket>3.0){[self notify:@"Stream stalled — reconnecting..."];break;}
+   if((!self.frameCount&&now-started>2.6)||now-lastPacket>2.6){[self notify:@"Stream stalled — reconnecting..."];break;}
   }}
  }@catch(NSException *e){[self notify:[NSString stringWithFormat:@"Invalid RTSP data: %@",e.name]];}
  @finally{if(playing&&fd>=0)request(fd,@"TEARDOWN",uri,sequence++,@{@"Session":session?:@""});@synchronized(self){_fd=-1;}if(fd>=0)close(fd);if(udp>=0)close(udp);if(rtcp>=0)close(rtcp);if(!self.stopped&&self.frameCount)[self notify:@"Live stream connection ended"];void (^completion)(void)=nil;@synchronized(self){self.runFinished=YES;completion=self.stopCompletion;self.stopCompletion=nil;}dispatch_async(dispatch_get_main_queue(),^{if(completion)completion();if(self.finished)self.finished();});}
