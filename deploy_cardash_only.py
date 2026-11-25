@@ -15,6 +15,7 @@ finally:
 
 cmd = (
     "set -e; "
+    "(killall -9 CarDash 2>/dev/null || true); "
     "cd /var/mobile/h109-build/car-dash && "
     "/usr/bin/clang-10 -arch arm64 -isysroot /var/mobile/h109-build/sdks/iPhoneOS12.4.sdk "
     "-fobjc-arc -fblocks -O1 -Wno-deprecated-declarations -Wno-arc-performSelector-leaks "
@@ -22,7 +23,6 @@ cmd = (
     "-framework AudioToolbox -framework QuartzCore -framework CoreGraphics -framework ImageIO "
     "-framework SystemConfiguration -framework CFNetwork -framework MediaPlayer -framework CoreBluetooth "
     "-framework Speech -framework MapKit -framework CoreMedia -framework CoreVideo -lc++ main.m -o CarDash.new && "
-    "(killall -9 CarDash 2>/dev/null || true); "
     "/bin/rm -f /Applications/CarDash.app/CarDash && "
     "/bin/cp CarDash.new /Applications/CarDash.app/CarDash && "
     "/bin/chmod 755 /Applications/CarDash.app/CarDash && "

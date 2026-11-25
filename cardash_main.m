@@ -2377,19 +2377,22 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  }
 
  // Only adapt background models when scene is calm and no hand is raised
- if(motionCells <= 3 && localOccluded <= 14 && handCount < 80 && _holdStartAt == 0){
-  for(int i=0;i<96;i++) _baseLuma[i]=_baseLuma[i]*0.92f + cur[i]*0.08f;
+ // Always adapt background models whenever scene has no active motion (prevents ANY freeze/deadlock after 1st OK or light change!)
+ if(motionCells <= 3 && _holdStartAt == 0 && _okStreak == 0){
+  for(int i=0;i<96;i++) _baseLuma[i]=_baseLuma[i]*0.86f + cur[i]*0.14f;
   for(int k=0;k<1728;k++){
-   _bgY48[k]=_bgY48[k]*0.93f + (float)y48[k]*0.07f;
-   _bgCb48[k]=_bgCb48[k]*0.93f + (float)cb48[k]*0.07f;
-   _bgCr48[k]=_bgCr48[k]*0.93f + (float)cr48[k]*0.07f;
+   _bgY48[k]=_bgY48[k]*0.88f + (float)y48[k]*0.12f;
+   _bgCb48[k]=_bgCb48[k]*0.88f + (float)cb48[k]*0.12f;
+   _bgCr48[k]=_bgCr48[k]*0.88f + (float)cr48[k]*0.12f;
   }
-  _smoothAmbient=(_smoothAmbient<0)?meanLuma:(_smoothAmbient*0.92f + meanLuma*0.08f);
+  if(!_mustUncoverFirst){
+   _smoothAmbient=(_smoothAmbient<0)?meanLuma:(_smoothAmbient*0.88f + meanLuma*0.12f);
+  }
  }
 
  CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();
  // Smart Cabin Auto-Brightness every ~5s when idle
- if((_frameIdx % 45)==0 && motionCells<=2 && localOccluded<=10 && handCount<70 && _holdStartAt==0){
+ if((_frameIdx % 45)==0 && motionCells<=2 && _holdStartAt==0){
   float norm=(_smoothAmbient-14.0f)/150.0f;
   if(norm<0.0f)norm=0.0f;
   if(norm>1.0f)norm=1.0f;
@@ -2407,38 +2410,27 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   _holdStartAt=0;
   _holdFired=NO;
   _okStreak=0;
-  _okLatched=YES;
-  _okIdleFrames=0;
-  _mustUncoverFirst=YES;
-  _uncoveredFrames=0;
   return;
  }
 
- float ambRef = (_smoothAmbient > 10.0f) ? _smoothAmbient : meanLuma;
- BOOL darkCover = (meanLuma < 18.0f && ambRef > 28.0f) || (ambRef >= 22.0f && meanLuma < ambRef * 0.54f);
+ float ambRef = (_smoothAmbient > 8.0f) ? _smoothAmbient : meanLuma;
+ BOOL darkCover = (ambRef >= 20.0f && meanLuma < ambRef * 0.65f) || (ambRef < 20.0f && meanLuma < ambRef * 0.55f) || (meanLuma < 14.0f && ambRef > 20.0f);
 
  if(_mustUncoverFirst){
-  if(!darkCover && motionCells <= 4 && localOccluded <= 18){
-   if(++_uncoveredFrames >= 6) _mustUncoverFirst = NO;
+  if(!darkCover){
+   if(++_uncoveredFrames >= 3) _mustUncoverFirst = NO;
   } else {
    _uncoveredFrames = 0;
   }
  }
- if(_okLatched){
-  if(handCount < 75 && !darkCover && motionCells <= 4){
-   if(++_okIdleFrames >= 6) _okLatched = NO;
-  } else {
-   _okIdleFrames = 0;
-  }
- }
 
- // 1) 'OK' HAND SIGN DETECTOR (👌 at ~12-38 cm):
- //    Thumb + index finger form an enclosed 'O' hole surrounded in >=7 of 8 radial directions by hand pixels!
+ // 1) 'OK' HAND SIGN DETECTOR (👌 at ~10-40 cm, repeatable unlimited times!):
+ //    Thumb + index finger form an 'O' loop surrounded in >=6 of 8 radial directions by raised hand pixels!
  BOOL okFrameDetected = NO;
- if(!_okLatched && !darkCover && handCount >= 85 && handCount <= 1180 && motion48 <= MAX(75, handCount / 2) && (isNightCabin || skinFgCount >= 55)){
+ if(!darkCover && handCount >= 60 && handCount <= 1320 && motion48 <= MAX(95, (handCount * 2) / 3) && (isNightCabin || skinFgCount >= 38)){
   int bboxW = (maxHX - minHX + 1), bboxH = (maxHY - minHY + 1);
   float fillRatio = (bboxW > 4 && bboxH > 4) ? ((float)handCount / (float)(bboxW * bboxH)) : 1.0f;
-  if(bboxW >= 8 && bboxH >= 8 && fillRatio >= 0.18f && fillRatio <= 0.86f){
+  if(bboxW >= 7 && bboxH >= 7 && fillRatio >= 0.15f && fillRatio <= 0.90f){
    static const int rdx[8] = {1,-1,0,0,1,-1,1,-1};
    static const int rdy[8] = {0,0,1,-1,1,1,-1,-1};
    int ringHoleCells = 0;
@@ -2447,21 +2439,18 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    for(int gy = y0; gy <= y1; gy++){
     for(int gx = x0; gx <= x1; gx++){
      int cIdx = gy * 48 + gx;
-     // Hole cell is either non-hand background OR distinctly darker interior shadow inside thumb-index loop
      BOOL isHoleCandidate = (hand48[cIdx] == 0);
-     if(!isHoleCandidate){
+     if(!isHoleCandidate && gx>=3 && gx<=44 && gy>=3 && gy<=32){
       int cy = (int)y48[cIdx];
-      if(gx>=3 && gx<=44 && gy>=3 && gy<=32){
-       int ringAvg = ((int)y48[gy*48+(gx-3)] + (int)y48[gy*48+(gx+3)] + (int)y48[(gy-3)*48+gx] + (int)y48[(gy+3)*48+gx]) / 4;
-       if(cy + (isNightCabin?7:13) < ringAvg) isHoleCandidate = YES;
-      }
+      int ringAvg = ((int)y48[gy*48+(gx-3)] + (int)y48[gy*48+(gx+3)] + (int)y48[(gy-3)*48+gx] + (int)y48[(gy+3)*48+gx]) / 4;
+      if(cy + (isNightCabin?6:10) < ringAvg || cy - (isNightCabin?8:14) > ringAvg) isHoleCandidate = YES;
      }
      if(!isHoleCandidate) continue;
-     int dirsHit = 0;
+     int dirsHit = 0, cardinalsHit = 0;
      int firstDist[4] = {0,0,0,0};
      for(int d = 0; d < 8; d++){
       int hitsOnRay = 0, fDist = 0;
-      for(int st = 1; st <= 10; st++){
+      for(int st = 1; st <= 11; st++){
        int nx = gx + rdx[d]*st, ny = gy + rdy[d]*st;
        if(nx < 0 || nx >= 48 || ny < 0 || ny >= 36) break;
        if(hand48[ny*48 + nx]){
@@ -2471,68 +2460,75 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
       }
       if(hitsOnRay >= 1){
        dirsHit++;
-       if(d < 4) firstDist[d] = fDist;
+       if(d < 4){ cardinalsHit++; firstDist[d] = fDist; }
       }
      }
      int spanEW = firstDist[0] + firstDist[1];
      int spanNS = firstDist[2] + firstDist[3];
-     if(dirsHit >= 7 && spanEW >= 2 && spanEW <= 13 && spanNS >= 2 && spanNS <= 13){
+     if(dirsHit >= 6 && cardinalsHit >= 3 && spanEW >= 2 && spanEW <= 16 && spanNS >= 2 && spanNS <= 16){
       ringHoleCells++;
      }
     }
    }
-   if(ringHoleCells >= 2 && ringHoleCells <= 85){
+   if(ringHoleCells >= 2 && ringHoleCells <= 110){
     okFrameDetected = YES;
    }
   }
  }
 
- if(okFrameDetected){
+ if(_okLatched){
+  if(!okFrameDetected){
+   if(++_okIdleFrames >= 3) _okLatched = NO;
+  } else {
+   _okIdleFrames = 0;
+  }
+ }
+
+ if(!_okLatched && okFrameDetected){
   _okStreak++;
-  // Cancel any accidental wave start caused by raising the hand from the side to form 'OK'!
   _waveStartAt = 0;
   _peakMotion = 0;
-  if(_okStreak >= 3){
+  if(_okStreak >= 2){
    _okStreak = 0;
    _okLatched = YES;
    _okIdleFrames = 0;
-   _cooldownUntil = now + 5.0;
+   _cooldownUntil = now + 3.2;
    void (^cb)(void) = self.onHoldVoiceSearch;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
   }
  } else {
-  if(handCount < 60) _okStreak = 0;
-  else if(_okStreak > 0) _okStreak--;
+  if(!okFrameDetected && _okStreak > 0) _okStreak--;
  }
 
- // 2) Quick Close Cover (~3-8 cm over front camera lens, 0.20-1.25s) -> Play/Pause ONLY (never opens mic!)
- if(motionCells >= 10 && _holdStartAt == 0){
-  _lastMotionEntryAt = now;
- }
- if(_holdStartAt > 0 && (now - _holdStartAt) > 2.5){
-  _holdStartAt = 0;
-  _holdFired = NO;
-  _mustUncoverFirst = YES;
-  _uncoveredFrames = 0;
- }
- BOOL canStartCover = (!_mustUncoverFirst && darkCover && motionCells <= 16 && (now - _lastMotionEntryAt) <= 1.25);
- BOOL stillHoldingCover = (_holdStartAt > 0 && motionCells <= 14 && (darkCover || meanLuma < ambRef * 0.68f));
- if(_holdStartAt == 0 ? canStartCover : stillHoldingCover){
+ // 2) Hand Cover (~3-12 cm over front camera lens) -> Instant Play/Pause!
+ if(!_mustUncoverFirst && darkCover){
   if(_holdStartAt == 0){
    _holdStartAt = now;
    _holdFired = NO;
+  } else if(!_holdFired && (now - _holdStartAt) >= 0.36){
+   // Fire immediately at 0.36s so user hears instant Play/Pause confirmation without guessing when to pull away!
+   _holdFired = YES;
+   _mustUncoverFirst = YES;
+   _uncoveredFrames = 0;
+   _waveStartAt = 0;
+   _peakMotion = 0;
+   _cooldownUntil = now + 1.25;
+   void (^cb)(void) = self.onPlayPause;
+   if(cb) dispatch_async(dispatch_get_main_queue(), cb);
+   return;
   }
  } else if(_holdStartAt > 0){
   double coverDur = now - _holdStartAt;
+  BOOL alreadyFired = _holdFired;
   _holdStartAt = 0;
   _holdFired = NO;
-  _mustUncoverFirst = YES;
-  _uncoveredFrames = 0;
-  if(coverDur >= 0.20 && coverDur <= 1.35 && _peakMotion < 28){
+  if(!alreadyFired && coverDur >= 0.16 && coverDur < 0.36 && _peakMotion < 34){
+   _mustUncoverFirst = YES;
+   _uncoveredFrames = 0;
    _waveStartAt = 0;
    _peakMotion = 0;
-   _cooldownUntil = now + 1.4;
+   _cooldownUntil = now + 1.25;
    void (^cb)(void) = self.onPlayPause;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
@@ -9834,10 +9830,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  });
 }
 -(void)voiceMusicTapped{
- if(self.voicePill){
-  [self.voicePill sendActionsForControlEvents:UIControlEventTouchUpInside];
- } else {
-  [self openSearchMusic];
+ if(!self.voiceListening){
+  [self toggleVoiceCommand];
  }
 }
 -(void)refreshLiveOBDDashboard{
