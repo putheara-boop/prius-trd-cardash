@@ -2499,6 +2499,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property BOOL hasPlaybackRate;
 @property BOOL youtubeSource;
 @property NSData *artworkData;
+@property NSUInteger artworkLen,artworkSig;
 @property NSUInteger artworkDecodes,metadataGeneration,commandsPending;
 @property BOOL metadataPending;
 @property double metadataRequestedAt;
@@ -5501,16 +5502,29 @@ static NSUInteger gTRDUpdateTicks=0;
  }
  self.ticks++;if(self.ticks%3==0 && !self.isReverseActive && !self.voiceListening && [UIApplication sharedApplication].applicationState==UIApplicationStateActive)[[TRDFrontGestureEngine sharedEngine] ensureRunning];if(self.ticks%60==1)[self applyDisplaySchedule];if(self.ticks%30==0)[self saveTrip];[self refreshSpeed];if(!self.mapMode && !self.focused)[self refreshTrackProgress];if(self.mapMode&&!self.carplayMode)[self updateMapCar];
  NSUInteger netStride = (self.carplayMode || self.mapMode) ? 15 : 5;
- if(self.ticks%netStride==1){NSDictionary *net=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));float level=[UIDevice currentDevice].batteryLevel;UIDeviceBatteryState power=currentPower;NSString *battery=level<0?@"—":[NSString stringWithFormat:@"%.0f%%",level*100];BOOL bt=[self.bluetooth respondsToSelector:@selector(enabled)]?[self.bluetooth enabled]:NO;
+ if(self.ticks%netStride==1){
+  float level=[UIDevice currentDevice].batteryLevel;UIDeviceBatteryState power=currentPower;NSString *battery=level<0?@"—":[NSString stringWithFormat:@"%.0f%%",level*100];BOOL bt=[self.bluetooth respondsToSelector:@selector(enabled)]?[self.bluetooth enabled]:NO;
   NSString *weatherStr=self.currentTemperature>0?[NSString stringWithFormat:@" • %.0f°C%@",self.currentTemperature,self.rainDetected?@" 🌧️":@" ☀️"]:@"";
-  NSString *newNet=[NSString stringWithFormat:@"%@ • BT %@ • %@%@%@",net[@"SSID"]?:@"No Wi-Fi",bt?@"ON":@"OFF",battery,(power==UIDeviceBatteryStateCharging||power==UIDeviceBatteryStateFull)?@" +":@"",weatherStr];
-  if(![self.network.text isEqualToString:newNet])self.network.text=newNet;
-  self.statusWiFi=net[@"SSID"]?:@"NO NETWORK";
- if(self.carplayMode){
-  NSString *cBat=[NSString stringWithFormat:@"⚡ %@",battery];if(![self.carplayBattery.text isEqualToString:cBat])self.carplayBattery.text=cBat;
-  if(![self.carplayWifi.text isEqualToString:self.statusWiFi])self.carplayWifi.text=self.statusWiFi;
- }
- self.statusPower=level<0?@"UNKNOWN":[NSString stringWithFormat:@"%@ %.0f%%",(power==UIDeviceBatteryStateCharging)?@"CHG":(power==UIDeviceBatteryStateFull)?@"FULL":@"BAT",level*100];
+  static dispatch_queue_t sWifiQueryQ=nil;
+  static dispatch_once_t wifiQOnce;
+  dispatch_once(&wifiQOnce,^{sWifiQueryQ=dispatch_queue_create("com.codex.cardash.wifiq",DISPATCH_QUEUE_SERIAL);});
+  __weak Dashboard *weakWifiSelf=self;
+  dispatch_async(sWifiQueryQ,^{
+   NSDictionary *net=CFBridgingRelease(CNCopyCurrentNetworkInfo(CFSTR("en0")));
+   NSString *ssid=[net[@"SSID"] isKindOfClass:[NSString class]]?net[@"SSID"]:nil;
+   dispatch_async(dispatch_get_main_queue(),^{
+    Dashboard *d=weakWifiSelf;
+    if(!d)return;
+    NSString *newNet=[NSString stringWithFormat:@"%@ • BT %@ • %@%@%@",ssid?:@"No Wi-Fi",bt?@"ON":@"OFF",battery,(power==UIDeviceBatteryStateCharging||power==UIDeviceBatteryStateFull)?@" +":@"",weatherStr];
+    if(![d.network.text isEqualToString:newNet])d.network.text=newNet;
+    d.statusWiFi=ssid?:@"NO NETWORK";
+    if(d.carplayMode){
+     NSString *cBat=[NSString stringWithFormat:@"⚡ %@",battery];if(![d.carplayBattery.text isEqualToString:cBat])d.carplayBattery.text=cBat;
+     if(![d.carplayWifi.text isEqualToString:d.statusWiFi])d.carplayWifi.text=d.statusWiFi;
+    }
+   });
+  });
+  self.statusPower=level<0?@"UNKNOWN":[NSString stringWithFormat:@"%@ %.0f%%",(power==UIDeviceBatteryStateCharging)?@"CHG":(power==UIDeviceBatteryStateFull)?@"FULL":@"BAT",level*100];
   if(!self.carplayMode && !self.mapMode && !self.focused){
    [self refreshCarStatus];
    [self refreshAudioRoute];
@@ -5522,11 +5536,11 @@ static NSUInteger gTRDUpdateTicks=0;
  [self applyMotionPolicy];[self refreshTrip];
  if(self.mapMode || self.carplayMode){
   self.lastMapVisibleAt=[NSProcessInfo processInfo].systemUptime;
- }else if(self.mapWebView && self.lastMapVisibleAt>0 && ([NSProcessInfo processInfo].systemUptime-self.lastMapVisibleAt)>=60.0){
+ }else if(self.mapWebView && self.lastMapVisibleAt>0 && ([NSProcessInfo processInfo].systemUptime-self.lastMapVisibleAt)>=20.0){
   self.lastMapVisibleAt=0;
   [self teardownMapWebView];
   [[NSURLCache sharedURLCache] removeAllCachedResponses];
-  [[TRDOBDClient sharedClient] obdLog:@"MEM reclaimed idle mapWebView after 60s"];
+  [[TRDOBDClient sharedClient] obdLog:@"MEM reclaimed idle mapWebView after 20s"];
  }
  if(!self.carplayMode && !self.mapMode && !self.focused){
   [self refreshDriveTripDisplay];[self refreshMini];[self refreshBrakeStatus];
@@ -5747,16 +5761,25 @@ static NSUInteger gTRDUpdateTicks=0;
   [self.driveEQ setTitleColor:[UIColor colorWithRed:0 green:.92 blue:1 alpha:1] forState:UIControlStateNormal];
  }
  id rawData=info[@"kMRMediaRemoteNowPlayingInfoArtworkData"];NSData *data=[rawData isKindOfClass:[NSData class]]&&[rawData length]<=8*1024*1024?rawData:nil;
- BOOL dataDiff=(self.artworkData==nil&&data!=nil)||(self.artworkData!=nil&&data==nil)||(self.artworkData.length!=data.length)||(![self.artworkData isEqualToData:data]);
- if(dataDiff&&(data||self.artworkData)){
-  self.artworkData=data;UIImage *image=nil;
+ NSUInteger newLen=data.length, newSig=0;
+ if(newLen>0){
+  const uint8_t *b=(const uint8_t *)data.bytes;
+  NSUInteger step=MAX((NSUInteger)1, newLen/64);
+  NSUInteger h=1469598103934665603ULL ^ newLen;
+  for(NSUInteger idx=0;idx<newLen;idx+=step){h=(h ^ b[idx]) * 1099511628211ULL;}
+  h=(h ^ b[newLen-1]) * 1099511628211ULL;
+  newSig=h;
+ }
+ BOOL dataDiff=(newLen!=self.artworkLen)||(newSig!=self.artworkSig);
+ if(dataDiff&&(newLen>0||self.artworkLen>0)){
+  self.artworkLen=newLen;self.artworkSig=newSig;self.artworkData=nil;UIImage *image=nil;
   if(data.length){CGImageSourceRef source=CGImageSourceCreateWithData((__bridge CFDataRef)data,(__bridge CFDictionaryRef)@{(__bridge NSString *)kCGImageSourceShouldCache:@NO});
    if(source){NSDictionary *options=@{(__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways:@YES,(__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize:@256,(__bridge NSString *)kCGImageSourceCreateThumbnailWithTransform:@YES};CGImageRef thumb=CGImageSourceCreateThumbnailAtIndex(source,0,(__bridge CFDictionaryRef)options);if(thumb){image=[UIImage imageWithCGImage:thumb];CGImageRelease(thumb);self.artworkDecodes++;}CFRelease(source);}}
   self.artwork.image=image;
  }
  self.artPlaceholder.hidden=self.focused||self.artwork.image!=nil;
 }
--(void)releaseArtwork{self.artwork.image=nil;self.artworkData=nil;self.artPlaceholder.hidden=self.focused;}
+-(void)releaseArtwork{self.artwork.image=nil;self.artworkData=nil;self.artworkLen=0;self.artworkSig=0;self.artPlaceholder.hidden=self.focused;}
 -(void)didReceiveMemoryWarning{[super didReceiveMemoryWarning];self.memoryWarnings++;[self releaseArtwork];[[NSURLCache sharedURLCache]removeAllCachedResponses];[self hideWelcome];[self.settingsSheet dismiss];if(!self.mapMode&&!self.carplayMode&&self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}}
 -(NSString *)trackTimeString:(double)value{if(!isfinite(value)||value<0)return @"--:--";long long n=(long long)value;return n>=3600?[NSString stringWithFormat:@"%lld:%02lld:%02lld",n/3600,n/60%60,n%60]:[NSString stringWithFormat:@"%lld:%02lld",n/60,n%60];}
 -(void)refreshTrackProgress{
@@ -7735,8 +7758,8 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  __weak Dashboard *weak=self;dispatch_async(queue,^{@autoreleasepool{char *args[]={(char *)"/usr/bin/activator",(char *)"send",(char *)identifier.UTF8String,NULL};BOOL ok=TRDRun(args[0],args,5,NULL,NULL);
  dispatch_async(dispatch_get_main_queue(),^{Dashboard *v=weak;if(!v)return;if(v.commandsPending)v.commandsPending--;if(!ok){v.notice=@"Command unavailable. Tap to retry.";v.noticeUntil=[NSDate dateWithTimeIntervalSinceNow:4];v.song.text=v.notice;}else [v refreshNowPlaying];});}});
 }
--(void)teardownMapWebView{if(self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}self.mapContainer.hidden=YES;}
--(UIWebView *)ensureMapWebView{if(!self.mapWebView){NSURLCache *cache=[NSURLCache sharedURLCache];cache.memoryCapacity=12*1024*1024;cache.diskCapacity=48*1024*1024;self.mapWebView=[[UIWebView alloc]initWithFrame:self.mapContainer.bounds];self.mapWebView.backgroundColor=[UIColor clearColor];self.mapWebView.opaque=NO;self.mapWebView.scrollView.backgroundColor=[UIColor colorWithRed:0.067 green:0.075 blue:0.10 alpha:1.0];self.mapWebView.scalesPageToFit=NO;self.mapWebView.scrollView.scrollEnabled=NO;self.mapWebView.scrollView.bounces=NO;self.mapWebView.delegate=self;[self.mapContainer addSubview:self.mapWebView];}return self.mapWebView;}
+-(void)teardownMapWebView{if(self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView loadHTMLString:@"" baseURL:nil];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}self.mapContainer.hidden=YES;}
+-(UIWebView *)ensureMapWebView{if(!self.mapWebView){NSURLCache *cache=[NSURLCache sharedURLCache];cache.memoryCapacity=2*1024*1024;cache.diskCapacity=24*1024*1024;self.mapWebView=[[UIWebView alloc]initWithFrame:self.mapContainer.bounds];self.mapWebView.backgroundColor=[UIColor clearColor];self.mapWebView.opaque=NO;self.mapWebView.scrollView.backgroundColor=[UIColor colorWithRed:0.067 green:0.075 blue:0.10 alpha:1.0];self.mapWebView.scalesPageToFit=NO;self.mapWebView.scrollView.scrollEnabled=NO;self.mapWebView.scrollView.bounces=NO;self.mapWebView.delegate=self;[self.mapContainer addSubview:self.mapWebView];}return self.mapWebView;}
 -(void)openCarPlay{if(![self authorizeMapNavigation:YES])return;[self logNavigation:@"opened CarPlay"];self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.18;if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}[self dismissLowFuelBanner];[self.settingsSheet dismiss];notify_post("com.codex.trd.network.internet.force");self.tripMode=NO;self.mapMode=NO;self.musicMode=NO;self.driveMode=NO;self.focused=NO;self.carplayMode=YES;self.carplayGridMode=NO;[self.view setNeedsLayout];[self.view layoutIfNeeded];[self ensureMapWebView];if(!self.mapWebView.request)[self loadMapHTML];else if(!self.mapWebView.loading)[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.map){window.map.invalidateSize(false);}if(!window.navActive){var sc=document.getElementById('search-container');if(sc)sc.style.display='block';var lb=document.getElementById('layer-bar');if(lb){lb.style.display='-webkit-flex';lb.style.display='flex';}}"];[self updateMapCarForce:YES];[self update];}
 -(void)toggleCarPlayGrid{self.carplayGridMode=!self.carplayGridMode;[self.view setNeedsLayout];}
 -(void)carplayTapMap{if(self.carplayGridMode){self.carplayGridMode=NO;[self.view setNeedsLayout];}else if(self.mapWebView.request && !self.mapWebView.loading){[self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.recenter)window.recenter();"];}}
@@ -8230,7 +8253,9 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 -(void)applyOfflineArtworkData:(NSData *)data title:(NSString *)title artist:(NSString *)artist{
  UIImage *img=TRDDecodeArtworkData(data);
  if(!img)return;
- self.artworkData=data;
+ self.artworkData=nil;
+ self.artworkLen=data.length;
+ self.artworkSig=data.length ^ 0xA5A5;
  self.artwork.image=img;
  self.artworkDecodes++;
  self.artPlaceholder.hidden=YES;
@@ -9364,6 +9389,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(self.isReverseActive)return;
  self.isReverseActive=YES;
  [[TRDFrontGestureEngine sharedEngine] stop];
+ if(!self.mapMode && !self.carplayMode && self.mapWebView){[self teardownMapWebView];}
+ [[NSURLCache sharedURLCache] removeAllCachedResponses];
  [self prepareForExternalAppLaunch];
  [@{@"rear": @YES, @"at": [NSDate date], @"fast": @YES} writeToFile:@"/var/mobile/codex-car/reverse-camera.plist" atomically:YES];
  notify_post("com.codex.trd.network.camera");
@@ -10297,6 +10324,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [NSObject cancelPreviousPerformRequestsWithTarget:v selector:@selector(refreshNowPlaying) object:nil];
  [v.settingsSheet dismiss];
  [v releaseArtwork];
+ [[NSURLCache sharedURLCache] removeAllCachedResponses];
+ if(!v.mapMode && !v.carplayMode && v.mapWebView){[v teardownMapWebView];}
  v.metadataGeneration++;
  v.metadataPending=NO;
  [v.audioBars stop];

@@ -457,7 +457,6 @@ if([u.scheme.lowercaseString isEqual:@"rtsp"]&&u.host.length&&!u.user.length&&!u
      if(!v.frames){
       [[NSUserDefaults standardUserDefaults]setObject:v.address.text forKey:@"lastWorkingStream"];
       [[NSUserDefaults standardUserDefaults]synchronize];
-      [[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/reverse-camera.plist" error:nil];
      }
      v.frames++;v.lastFrame=[NSDate date];v.emptyLabel.hidden=YES;
      if(v.frames==1 || v.frames==15)[v captureState];
