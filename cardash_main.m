@@ -2252,19 +2252,19 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 
  float ambEst = (_smoothAmbient > 0.0f) ? _smoothAmbient : meanLuma;
  BOOL isNightCabin = (ambEst < 30.0f);
- // Strict near-field thresholds (~5-16 cm in front of iPad) + RHD Driver-Zone filter (gx >= 3 masks out left passenger seat!)
- float dmThresh = isNightCabin ? MAX(10.0f, 6.0f + ambEst * 0.32f) : 22.0f;
- float totalWThresh = isNightCabin ? MAX(170.0f, ambEst * 6.5f) : 460.0f;
- int minWaveCells = isNightCabin ? 18 : 22;
- int minWavePeak = isNightCabin ? 22 : 26;
- int edgeHitMin = isNightCabin ? 4 : 5;
+ // Responsive near-field driver-zone thresholds (gx >= 3 masks out left passenger seat!)
+ float dmThresh = isNightCabin ? MAX(8.0f, 5.0f + ambEst * 0.28f) : 17.0f;
+ float totalWThresh = isNightCabin ? MAX(95.0f, ambEst * 4.5f) : 185.0f;
+ int minStartCells = isNightCabin ? 8 : 10;
+ int minWavePeak = isNightCabin ? 14 : 18;
+ int edgeHitMin = 3;
 
  int motionCells=0;
  int rowHitMask=0;
  int leftEdgeHits=0, rightEdgeHits=0;
  int darkCells=0;
  float ambRef = (_smoothAmbient > 8.0f) ? _smoothAmbient : meanLuma;
- float darkCellCut = MAX(15.0f, ambRef * 0.45f);
+ float darkCellCut = MAX(18.0f, ambRef * 0.52f);
  float weightedX=0.0f, totalW=0.0f;
  for(int i=0;i<96;i++){
   int gx = i % 12;
@@ -2273,7 +2273,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   float dm=fabsf(cur[i]-_prevLuma[i]);
   _prevLuma[i]=cur[i];
   // RHD Prius (steering wheel Right, Lightning port Right -> front lens on Left bezel):
-  // Columns gx = 0..2 look straight into the Left Passenger Seat — ignore them completely for swipe motion!
+  // Columns gx = 0..2 look straight into the Left Passenger Seat — ignore them for swipe motion!
   if(gx < 3) continue;
   if(dm>=dmThresh){
    motionCells++;
@@ -2282,7 +2282,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    weightedX += normDriverX * dm;
    totalW += dm;
    if(gx <= 5) leftEdgeHits++;
-   else if(gx >= 9) rightEdgeHits++;
+   else if(gx >= 8) rightEdgeHits++;
   }
  }
  int activeRows = __builtin_popcount((unsigned int)rowHitMask);
@@ -2302,29 +2302,29 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   return;
  }
 
- // True close palm cover (~2-6 cm directly over camera lens): >= 72/96 cells dark simultaneously
- BOOL darkCover = (ambRef >= 20.0f && darkCells >= 72 && meanLuma < ambRef * 0.44f) || (darkCells >= 78 && meanLuma < 14.0f && ambRef > 20.0f);
+ // Close palm cover (~2-8 cm directly over camera lens): >= 54/96 cells dark simultaneously
+ BOOL darkCover = (ambRef >= 18.0f && darkCells >= 54 && meanLuma < ambRef * 0.54f) || (darkCells >= 64 && meanLuma < 15.0f && ambRef > 18.0f);
 
  if(_mustUncoverFirst){
-  if(!darkCover && darkCells < 40){
-   if(++_uncoveredFrames >= 5) _mustUncoverFirst = NO;
+  if(!darkCover && darkCells < 38){
+   if(++_uncoveredFrames >= 4) _mustUncoverFirst = NO;
   } else {
    _uncoveredFrames = 0;
   }
  }
 
- // 1) Close Hand Cover (~2-6 cm over front camera) -> Play/Pause ONLY (NEVER opens mic / Voice Search!)
+ // 1) Close Hand Cover (~2-8 cm over front camera) -> Play/Pause ONLY (NEVER opens mic / Voice Search!)
  if(!_mustUncoverFirst && darkCover){
   if(_holdStartAt == 0){
    _holdStartAt = now;
    _holdFired = NO;
-  } else if(!_holdFired && (now - _holdStartAt) >= 0.42){
+  } else if(!_holdFired && (now - _holdStartAt) >= 0.32){
    _holdFired = YES;
    _mustUncoverFirst = YES;
    _uncoveredFrames = 0;
    _waveStartAt = 0;
    _peakMotion = 0;
-   _cooldownUntil = now + 1.8;
+   _cooldownUntil = now + 1.5;
    void (^cb)(void) = self.onPlayPause;
    if(cb) dispatch_async(dispatch_get_main_queue(), cb);
    return;
@@ -2334,8 +2334,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   _holdFired = NO;
  }
 
- // 2) Near-Field Driver-Side Hand Swipe (spans >= 5/8 vertical rows across gx=3..11) -> Prev / Next Track ONLY!
- if(motionCells >= minWaveCells && activeRows >= 5 && totalW > totalWThresh){
+ // 2) Near-Field Driver-Side Hand Swipe (gx=3..11) -> Prev / Next Track ONLY!
+ if(motionCells >= minStartCells && activeRows >= 3 && totalW > totalWThresh){
   float cx = weightedX / totalW;
   if(_waveStartAt==0){
    _waveStartAt=now;
@@ -2350,8 +2350,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
    if(leftEdgeHits>=edgeHitMin && _leftPeakAt==0)_leftPeakAt=now;
    if(rightEdgeHits>=edgeHitMin && _rightPeakAt==0)_rightPeakAt=now;
   }
-  if((now-_waveStartAt)>0.62){_waveStartAt=0;_peakMotion=0;_leftPeakAt=0;_rightPeakAt=0;}
- }else if(_waveStartAt>0 && motionCells<=4){
+  if((now-_waveStartAt)>0.68){_waveStartAt=0;_peakMotion=0;_leftPeakAt=0;_rightPeakAt=0;}
+ }else if(_waveStartAt>0 && motionCells<=5){
   double dur=now-_waveStartAt;
   int peak=_peakMotion;
   float deltaX=_lastCX - _startCX;
@@ -2360,10 +2360,10 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   _peakMotion=0;
   _leftPeakAt=0;
   _rightPeakAt=0;
-  BOOL crossedFullSpan = (lAt > 0 && rAt > 0 && fabs(rAt - lAt) >= 0.025);
-  if(dur>=0.07 && dur<=0.58 && peak>=minWavePeak && crossedFullSpan && fabsf(deltaX)>=0.34f){
-   BOOL goNext = (rAt > lAt);
-   _cooldownUntil=now+1.85;
+  BOOL crossedFullSpan = (lAt > 0 && rAt > 0 && fabs(rAt - lAt) >= 0.018);
+  if(dur>=0.05 && dur<=0.65 && peak>=minWavePeak && (crossedFullSpan || fabsf(deltaX)>=0.28f)){
+   BOOL goNext = crossedFullSpan ? (rAt > lAt) : (deltaX > 0);
+   _cooldownUntil=now+1.55;
    if(goNext){
     void (^cb)(void)=self.onWaveNext;
     if(cb)dispatch_async(dispatch_get_main_queue(),cb);
