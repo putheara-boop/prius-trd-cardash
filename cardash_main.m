@@ -3447,18 +3447,18 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 
   UILabel *ecoH = [[UILabel alloc] initWithFrame:CGRectMake(10, 6, 214, 22)];
   ecoH.tag = 501;
-  ecoH.font = [UIFont boldSystemFontOfSize:15.0];
+  ecoH.font = [UIFont boldSystemFontOfSize:14.0];
   ecoH.adjustsFontSizeToFitWidth = YES;
-  ecoH.minimumScaleFactor = 0.78;
+  ecoH.minimumScaleFactor = 0.88;
   ecoH.textColor = [UIColor colorWithRed:.35 green:.95 blue:.50 alpha:1];
   ecoH.text = @"🌱 AI ECO COACH  •  ♻️ +14 Wh";
   [self.homeAiEcoCard addSubview:ecoH];
 
   UILabel *ecoS = [[UILabel alloc] initWithFrame:CGRectMake(10, 29, 214, 25)];
   ecoS.tag = 502;
-  ecoS.font = [UIFont boldSystemFontOfSize:17.5];
+  ecoS.font = [UIFont boldSystemFontOfSize:16.0];
   ecoS.adjustsFontSizeToFitWidth = YES;
-  ecoS.minimumScaleFactor = 0.78;
+  ecoS.minimumScaleFactor = 0.88;
   ecoS.textColor = [UIColor whiteColor];
   ecoS.text = @"ECO 92 / 100  [ GRADE A+ ]";
   [self.homeAiEcoCard addSubview:ecoS];
@@ -3466,9 +3466,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   UILabel *ecoD = [[UILabel alloc] initWithFrame:CGRectMake(10, 54, 214, 118)];
   ecoD.tag = 503;
   ecoD.numberOfLines = 4;
-  ecoD.font = [UIFont boldSystemFontOfSize:15.0];
+  ecoD.font = [UIFont boldSystemFontOfSize:14.0];
   ecoD.adjustsFontSizeToFitWidth = YES;
-  ecoD.minimumScaleFactor = 0.76;
+  ecoD.minimumScaleFactor = 0.88;
   ecoD.textColor = [UIColor whiteColor];
   ecoD.text = @"• HYBRID SYSTEM: 100% READY\n• THROTTLE: นุ่มนวล ประหยัดสูงสุด\n• REGEN BRAKING: ชาร์จไฟดีเยี่ยม\n• ECB BRAKE: แรงดันเบรกปกติ";
   [self.homeAiEcoCard addSubview:ecoD];
@@ -3483,9 +3483,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   UILabel *tRow1 = [[UILabel alloc] initWithFrame:CGRectMake(10, 8, 214, 52)];
   tRow1.tag = 601;
   tRow1.numberOfLines = 2;
-  tRow1.font = [UIFont boldSystemFontOfSize:15.5];
+  tRow1.font = [UIFont boldSystemFontOfSize:14.0];
   tRow1.adjustsFontSizeToFitWidth = YES;
-  tRow1.minimumScaleFactor = 0.76;
+  tRow1.minimumScaleFactor = 0.88;
   tRow1.textColor = [UIColor whiteColor];
   tRow1.text = @"🌡️ ENGINE COOLANT : 88 °C\n     น้ำหล่อเย็นเครื่องยนต์ (ปกติ)";
   [self.homeThermalsCard addSubview:tRow1];
@@ -3493,9 +3493,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   UILabel *tRow2 = [[UILabel alloc] initWithFrame:CGRectMake(10, 66, 214, 52)];
   tRow2.tag = 602;
   tRow2.numberOfLines = 2;
-  tRow2.font = [UIFont boldSystemFontOfSize:15.5];
+  tRow2.font = [UIFont boldSystemFontOfSize:14.0];
   tRow2.adjustsFontSizeToFitWidth = YES;
-  tRow2.minimumScaleFactor = 0.76;
+  tRow2.minimumScaleFactor = 0.88;
   tRow2.textColor = [UIColor colorWithRed:0.65 green:0.94 blue:1.0 alpha:1];
   tRow2.text = @"❄️ CABIN A/C : 24.5 °C\n     INVERTER : 42 °C (อินเวอร์เตอร์)";
   [self.homeThermalsCard addSubview:tRow2];
@@ -3503,9 +3503,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   UILabel *tRow3 = [[UILabel alloc] initWithFrame:CGRectMake(10, 124, 214, 52)];
   tRow3.tag = 603;
   tRow3.numberOfLines = 2;
-  tRow3.font = [UIFont boldSystemFontOfSize:15.5];
+  tRow3.font = [UIFont boldSystemFontOfSize:14.0];
   tRow3.adjustsFontSizeToFitWidth = YES;
-  tRow3.minimumScaleFactor = 0.76;
+  tRow3.minimumScaleFactor = 0.88;
   tRow3.textColor = [UIColor colorWithRed:.35 green:.96 blue:.52 alpha:1];
   tRow3.text = @"🔋 AUX 12V BATTERY : 13.84 V\n     แบตเตอรี่ 12V ชาร์จไฟปกติ";
   [self.homeThermalsCard addSubview:tRow3];
@@ -4527,9 +4527,9 @@ static NSUInteger gTRDUpdateTicks=0;
       [self.driveClockCard addSubview:cBig];
       UILabel *cSub = [[UILabel alloc] initWithFrame:CGRectMake(8, 62, rightW - 36, 26)];
       cSub.tag = 802;
-      cSub.font = [UIFont boldSystemFontOfSize:15.5];
+      cSub.font = [UIFont boldSystemFontOfSize:14.0];
       cSub.adjustsFontSizeToFitWidth = YES;
-      cSub.minimumScaleFactor = 0.80;
+      cSub.minimumScaleFactor = 0.88;
       cSub.textColor = [UIColor colorWithRed:0.55 green:0.92 blue:1.0 alpha:1];
       cSub.textAlignment = NSTextAlignmentCenter;
       cSub.text = @"❄️ ห้องโดยสาร 24.0°C • ปกติ";
@@ -4539,7 +4539,7 @@ static NSUInteger gTRDUpdateTicks=0;
     cBig.frame = CGRectMake(8, 10, rightW - 36, 48);
     cBig.text = [self.clockFormat stringFromDate:[NSDate date]];
     UILabel *cSub = (UILabel *)[self.driveClockCard viewWithTag:802];
-    if (cSub) { cSub.frame = CGRectMake(8, 62, rightW - 36, 26); cSub.font = [UIFont boldSystemFontOfSize:15.5]; }
+    if (cSub) { cSub.frame = CGRectMake(8, 62, rightW - 36, 26); cSub.font = [UIFont boldSystemFontOfSize:14.0]; }
 
     // Right Card 2: Hybrid Traction Battery
     self.driveBatteryCard.hidden = NO;
@@ -4548,9 +4548,9 @@ static NSUInteger gTRDUpdateTicks=0;
     if (!bH) {
       bH = [[UILabel alloc] initWithFrame:CGRectMake(12, 8, rightW - 44, 22)];
       bH.tag = 811;
-      bH.font = [UIFont boldSystemFontOfSize:14.5];
+      bH.font = [UIFont boldSystemFontOfSize:14.0];
       bH.adjustsFontSizeToFitWidth = YES;
-      bH.minimumScaleFactor = 0.80;
+      bH.minimumScaleFactor = 0.88;
       bH.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
       bH.text = @"⚡ แบตเตอรี่ไฮบริด (HV SOC)";
       [self.driveBatteryCard addSubview:bH];
@@ -4569,21 +4569,21 @@ static NSUInteger gTRDUpdateTicks=0;
       UILabel *bS = [[UILabel alloc] initWithFrame:CGRectMake(12, 56, rightW - 44, 46)];
       bS.tag = 812;
       bS.numberOfLines = 2;
-      bS.font = [UIFont boldSystemFontOfSize:15.5];
+      bS.font = [UIFont boldSystemFontOfSize:14.0];
       bS.adjustsFontSizeToFitWidth = YES;
-      bS.minimumScaleFactor = 0.78;
+      bS.minimumScaleFactor = 0.88;
       bS.textColor = [UIColor colorWithRed:.35 green:.98 blue:.55 alpha:1];
       bS.text = @"--% (WAITING ECU)\nแรงดัน: -- V  •  -- A";
       [self.driveBatteryCard addSubview:bS];
     }
     bH.text = @"⚡ แบตเตอรี่ไฮบริด (HV SOC)";
-    bH.font = [UIFont boldSystemFontOfSize:14.5];
+    bH.font = [UIFont boldSystemFontOfSize:14.0];
     bH.textColor = [UIColor colorWithRed:0 green:.90 blue:1 alpha:1];
     UILabel *bS = (UILabel *)[self.driveBatteryCard viewWithTag:812];
     if (bS) {
       bS.frame = CGRectMake(12, 56, rightW - 44, 46);
       bS.numberOfLines = 2;
-      bS.font = [UIFont boldSystemFontOfSize:15.5];
+      bS.font = [UIFont boldSystemFontOfSize:14.0];
     }
 
     // Right Card 3: Interactive TRIP A / TRIP B / TRIP C Card (Expanded & Multi-Column!)
@@ -4634,18 +4634,18 @@ static NSUInteger gTRDUpdateTicks=0;
 
         UILabel *rL = [[UILabel alloc] initWithFrame:CGRectMake(14, ry, 108, 33)];
         rL.tag = 871 + r;
-        rL.font = [UIFont boldSystemFontOfSize:14.5];
+        rL.font = [UIFont boldSystemFontOfSize:14.0];
         rL.adjustsFontSizeToFitWidth = YES;
-        rL.minimumScaleFactor = 0.78;
+        rL.minimumScaleFactor = 0.88;
         rL.textColor = [UIColor colorWithWhite:0.90 alpha:1];
         rL.text = rTitles[r];
         [self.driveTripCard addSubview:rL];
 
         UILabel *rV = [[UILabel alloc] initWithFrame:CGRectMake(122, ry, tcW - 134, 33)];
         rV.tag = 851 + r;
-        rV.font = [UIFont boldSystemFontOfSize:17.5];
+        rV.font = [UIFont boldSystemFontOfSize:16.0];
         rV.adjustsFontSizeToFitWidth = YES;
-        rV.minimumScaleFactor = 0.78;
+        rV.minimumScaleFactor = 0.88;
         rV.textAlignment = NSTextAlignmentRight;
         rV.textColor = (r == 2) ? [UIColor colorWithRed:0.35 green:0.98 blue:0.55 alpha:1] : [UIColor whiteColor];
         [self.driveTripCard addSubview:rV];
@@ -5269,9 +5269,9 @@ static NSUInteger gTRDUpdateTicks=0;
     UILabel *mlLbl = (UILabel *)[mCard viewWithTag:708];
     if (mlLbl) {
       mlLbl.frame = CGRectMake(10, 6, rightW - 36, 166);
-      mlLbl.font = [UIFont monospacedDigitSystemFontOfSize:15.0 weight:UIFontWeightBold];
+      mlLbl.font = [UIFont monospacedDigitSystemFontOfSize:14.0 weight:UIFontWeightSemibold];
       mlLbl.adjustsFontSizeToFitWidth = YES;
-      mlLbl.minimumScaleFactor = 0.76;
+      mlLbl.minimumScaleFactor = 0.88;
     }
 
     // Right Card 3: GPS Trip Computer & Range (Y = topY + 426, H = 186, exact mirror of homeThermalsCard!)
@@ -5316,9 +5316,9 @@ static NSUInteger gTRDUpdateTicks=0;
     if (tbLbl) {
       tbLbl.frame = CGRectMake(10, 38, rightW - 36, 142);
       tbLbl.numberOfLines = 6;
-      tbLbl.font = [UIFont monospacedDigitSystemFontOfSize:15.0 weight:UIFontWeightBold];
+      tbLbl.font = [UIFont monospacedDigitSystemFontOfSize:14.0 weight:UIFontWeightSemibold];
       tbLbl.adjustsFontSizeToFitWidth = YES;
-      tbLbl.minimumScaleFactor = 0.76;
+      tbLbl.minimumScaleFactor = 0.88;
     }
     [self refreshDriveTripDisplay];
 
