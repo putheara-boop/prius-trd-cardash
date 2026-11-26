@@ -9886,7 +9886,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     NSString *brkState = obd.brakeFluidNormal ? @"แรงดันเบรกปกติ" : @"⚠️ ตรวจเช็กระบบเบรก";
     NSString *t = [NSString stringWithFormat:@"• HYBRID: %@\n• THROTTLE: %@\n• REGEN: %@\n• แตะการ์ดเพื่อสลับ Widget ▸", obd.isConnected ? @"LIVE OBD2" : @"STANDBY", thrState, regState];
     (void)brkState;
-    if(![ecoD.text isEqualToString:t]) ecoD.text = t;
+    if(![ecoD.text isEqualToString:t]){
+     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+     ps.lineSpacing = 8.0;
+     ecoD.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor colorWithWhite:0.94 alpha:1], NSParagraphStyleAttributeName: ps}];
+    }
    }
   } else if(wMode == 1){
    NSString *a7State = @"ปกติ (เย็น)";
@@ -9906,7 +9910,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
    }
    if(ecoD){
     NSString *t = [NSString stringWithFormat:@"• แบต HV: %.1f°C (พัดลมดูด %.0f°C)\n• มอเตอร์ MG2: %.0f°C • 12V: %.2fV\n• ชิป A7: %@\n• แตะการ์ดเพื่อสลับ Widget ▸", obd.hvBatteryTempC, obd.hvIntakeTempC, obd.mg2TempC, obd.auxBatteryVoltage, a7State];
-    if(![ecoD.text isEqualToString:t]) ecoD.text = t;
+    if(![ecoD.text isEqualToString:t]){
+     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+     ps.lineSpacing = 8.0;
+     ecoD.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor colorWithWhite:0.94 alpha:1], NSParagraphStyleAttributeName: ps}];
+    }
    }
   } else {
    if(ecoH){
@@ -9929,19 +9937,22 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   UILabel *tRow1 = (UILabel *)[self.homeThermalsCard viewWithTag:601];
   UILabel *tRow2 = (UILabel *)[self.homeThermalsCard viewWithTag:602];
   UILabel *tRow3 = (UILabel *)[self.homeThermalsCard viewWithTag:603];
+  NSMutableParagraphStyle *tps = [[NSMutableParagraphStyle alloc] init];
+  tps.lineSpacing = 6.0;
+  UIFont *tFont = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
   if(tRow1){
    NSString *ectStatus = (obd.coolantTempC >= 98.0) ? @"สูง" : (obd.coolantTempC >= 40.0) ? @"ปกติ" : @"อุ่นเครื่อง";
    NSString *t = [NSString stringWithFormat:@"🌡️ ENGINE COOLANT : %.0f °C\n     น้ำหล่อเย็น (%@) • RPM %ld", obd.coolantTempC, ectStatus, (long)obd.engineRPM];
-   if(![tRow1.text isEqualToString:t]) tRow1.text = t;
+   if(![tRow1.text isEqualToString:t]) tRow1.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: tFont, NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: tps}];
   }
   if(tRow2){
    NSString *t = [NSString stringWithFormat:@"❄️ CABIN A/C : %.1f°C • EXT %.0f°C\n     INV : %.0f°C • HV AIR %.1f°C", obd.cabinTempC, obd.exteriorTempC, obd.inverterTempC, obd.hvIntakeTempC];
-   if(![tRow2.text isEqualToString:t]) tRow2.text = t;
+   if(![tRow2.text isEqualToString:t]) tRow2.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: tFont, NSForegroundColorAttributeName: [UIColor colorWithRed:0.65 green:0.94 blue:1.0 alpha:1], NSParagraphStyleAttributeName: tps}];
   }
   if(tRow3){
    NSString *auxMsg = (obd.auxBatteryVoltage >= 13.4) ? @"ระบบ DC-DC ชาร์จไฟ 12V ปกติ" : (obd.auxBatteryVoltage >= 12.1) ? @"ไฟ 12V สแตนด์บายปกติ" : @"⚠️ แบตเตอรี่ 12V ต่ำ";
    NSString *t = [NSString stringWithFormat:@"🔋 AUX 12V BATTERY : %.2f V\n     %@", obd.auxBatteryVoltage, auxMsg];
-   if(![tRow3.text isEqualToString:t]) tRow3.text = t;
+   if(![tRow3.text isEqualToString:t]) tRow3.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: tFont, NSForegroundColorAttributeName: [UIColor colorWithRed:.35 green:.96 blue:.52 alpha:1], NSParagraphStyleAttributeName: tps}];
   }
  }
 
