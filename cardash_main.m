@@ -3701,23 +3701,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   UISwipeGestureRecognizer *gridSwR=[[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(homePage)];gridSwR.direction=UISwipeGestureRecognizerDirectionRight;gridSwR.delegate=self;gridSwR.cancelsTouchesInView=NO;gridSwR.delaysTouchesBegan=NO;[self.carplayAppGrid addGestureRecognizer:gridSwR];
   self.edgeR=[[UIScreenEdgePanGestureRecognizer alloc]initWithTarget:self action:@selector(handleEdgePan:)];self.edgeR.edges=UIRectEdgeLeft;self.edgeR.delegate=self;self.edgeR.cancelsTouchesInView=NO;self.edgeR.delaysTouchesBegan=NO;[self.view addGestureRecognizer:self.edgeR];
  self.returnTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(leaveClock)];self.returnTap.enabled=NO;self.returnTap.cancelsTouchesInView=NO;self.returnTap.delegate=self;[self.view addGestureRecognizer:self.returnTap];[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(ensureActiveRunLoopHealth) name:UIApplicationDidBecomeActiveNotification object:nil];[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(ensureActiveRunLoopHealth) name:UIApplicationWillEnterForegroundNotification object:nil];[UIDevice currentDevice].batteryMonitoringEnabled=YES;UIDeviceBatteryState initBat=[UIDevice currentDevice].batteryState;self.isCarSessionActive=(initBat==UIDeviceBatteryStateCharging||initBat==UIDeviceBatteryStateFull);[[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(batteryStateChanged:) name:UIDeviceBatteryStateDidChangeNotification object:nil];dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);Class manager=NSClassFromString(@"BluetoothManager");if([manager respondsToSelector:@selector(sharedInstance)])self.bluetooth=[manager performSelector:@selector(sharedInstance)];dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",RTLD_LAZY);[self update];NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];BOOL skipWelcome=[ud boolForKey:@"TRDSkipNextLaunchWelcome"];BOOL sessionWelcomeShown=[ud boolForKey:@"TRDWelcomeShownForSession"];NSTimeInterval lastActive=[ud doubleForKey:@"TRDLastActiveTimestamp"];NSTimeInterval nowTs=[[NSDate date] timeIntervalSince1970];BOOL recentSession=(lastActive>0&&(nowTs-lastActive)<1800);if(skipWelcome){[ud setBool:NO forKey:@"TRDSkipNextLaunchWelcome"];[ud synchronize];self.didShowWelcome=YES;}else if((self.isCarSessionActive&&sessionWelcomeShown)||recentSession){self.didShowWelcome=YES;}if(!self.didShowWelcome){self.didShowWelcome=YES;if(self.isCarSessionActive){[ud setBool:YES forKey:@"TRDWelcomeShownForSession"];}[ud setDouble:nowTs forKey:@"TRDLastActiveTimestamp"];[ud synchronize];[self showWelcome];}
-  [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
-  MPRemoteCommandCenter *rCenter = [MPRemoteCommandCenter sharedCommandCenter];
-  [rCenter.nextTrackCommand removeTarget:nil];
-  [rCenter.previousTrackCommand removeTarget:nil];
-  [rCenter.togglePlayPauseCommand removeTarget:nil];
-  [rCenter.playCommand removeTarget:nil];
-  [rCenter.pauseCommand removeTarget:nil];
-  [rCenter.nextTrackCommand addTarget:self action:@selector(carRemoteNext:)];
-  [rCenter.previousTrackCommand addTarget:self action:@selector(carRemotePrev:)];
-  [rCenter.togglePlayPauseCommand addTarget:self action:@selector(carRemoteToggle:)];
-  [rCenter.playCommand addTarget:self action:@selector(carRemotePlay:)];
-  [rCenter.pauseCommand addTarget:self action:@selector(carRemotePause:)];
-  rCenter.nextTrackCommand.enabled = YES;
-  rCenter.previousTrackCommand.enabled = YES;
-  rCenter.togglePlayPauseCommand.enabled = YES;
-  rCenter.playCommand.enabled = YES;
-  rCenter.pauseCommand.enabled = YES;
+  // Do NOT claim MPRemoteCommandCenter / NowPlaying at launch when audioNINJA/YouTube owns Bluetooth AVRCP!
+  // Only claim remote control when CarDash's own radioPlayer (Offline/Radio) is actively playing.
+  [self setCarDashRemoteControlEnabled:NO];
 
   __weak typeof(self) weakGestureSelf = self;
   TRDFrontGestureEngine *ge = [TRDFrontGestureEngine sharedEngine];
@@ -8256,6 +8242,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  return image ?: [UIImage imageWithData:data];
 }
 -(void)applyOfflineArtworkData:(NSData *)data title:(NSString *)title artist:(NSString *)artist{
+ [self setCarDashRemoteControlEnabled:YES];
  UIImage *img=TRDDecodeArtworkData(data);
  if(!img)return;
  self.artworkData=nil;
@@ -8461,7 +8448,36 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 -(void)dismissSourceMenu{[self.settingsSheet dismiss];[self dismissViewControllerAnimated:NO completion:nil];}
 -(void)testMedia:(NSNumber *)index{NSInteger i=index.integerValue;if(i>=0&&i<3)[(UIButton *)[self.controls viewWithTag:20+i] sendActionsForControlEvents:UIControlEventTouchUpInside];}
 -(void)capture{UIView *surface=self.view;UIGraphicsBeginImageContextWithOptions(surface.bounds.size,YES,1);[surface drawViewHierarchyInRect:surface.bounds afterScreenUpdates:YES];NSData *png=UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext());UIGraphicsEndImageContext();[png writeToFile:@"/var/mobile/h109-build/cardash.png" atomically:YES];UIView *hitCenter=[surface hitTest:CGPointMake(CGRectGetMidX(surface.bounds),CGRectGetMidY(surface.bounds)) withEvent:nil];UIView *dockLast=self.navButtons.lastObject;UIView *hitDock=dockLast?[surface hitTest:[surface convertPoint:CGPointMake(CGRectGetMidX(dockLast.bounds),CGRectGetMidY(dockLast.bounds)) fromView:dockLast] withEvent:nil]:nil;UIView *playBtn=[self.controls viewWithTag:21];UIView *hitPlay=playBtn?[surface hitTest:[surface convertPoint:CGPointMake(CGRectGetMidX(playBtn.bounds),CGRectGetMidY(playBtn.bounds)) fromView:playBtn] withEvent:nil]:nil;NSTimeInterval uptime=[NSProcessInfo processInfo].systemUptime;NSDictionary *report=@{@"appState":@([UIApplication sharedApplication].applicationState),@"viewInteraction":@(surface.userInteractionEnabled),@"windowInteraction":@(surface.window.userInteractionEnabled),@"ignoringEvents":@([UIApplication sharedApplication].isIgnoringInteractionEvents),@"featureBannerVisible":@(self.featureExplanationBanner!=nil),@"tripSummaryVisible":@(self.tripSummaryCard!=nil),@"lowFuelVisible":@(self.lowFuelBanner!=nil),@"navGuardRemaining":@(MAX(0.0,self.navGuardUntil-uptime)),@"ticks":@(gTRDUpdateTicks),@"lastTouchInfo":gTRDLastTouchInfo?:@"none",@"hitCenter":NSStringFromClass([hitCenter class])?:@"nil",@"hitDockSettings":NSStringFromClass([hitDock class])?:@"nil",@"hitPlay":NSStringFromClass([hitPlay class])?:@"nil",@"driveTripText":self.driveTripButton.currentTitle?:@"",@"driveTripVisible":@(!self.driveTripButton.hidden),@"driveTripFrame":NSStringFromCGRect(self.driveTripButton.frame),@"driveCameraVisible":@(!self.driveCameraButton.hidden),@"driveCameraFrame":NSStringFromCGRect(self.driveCameraButton.frame),@"driveCameraActions":[self.driveCameraButton actionsForTarget:self forControlEvent:UIControlEventTouchUpInside]?:@[],@"audioOutput":self.audioOutput?:@"UNKNOWN",@"audioDevice":self.audioDevice?:@"",@"outputVolume":@(self.outputVolume),@"songVisible":@(!self.song.hidden),@"mapMode":@(self.mapMode),@"tripMode":@(self.tripMode),@"tripRunning":@(self.trip.running),@"tripSummary":[self.trip summary],@"tripState":self.tripView.state.text?:@"",@"miniVisible":@(!self.miniPlayer.hidden),@"miniTitle":self.miniPlayer.title.text?:@"",@"miniArtist":self.miniPlayer.artist.text?:@"",@"miniIcon":@(self.miniPlayer.icon.kind),@"musicHoldCount":@(((UIView *)self.navButtons[1]).gestureRecognizers.count),@"calmDrive":@(self.calmDrive),@"carLink":self.statusCar?:@"UNKNOWN",@"wifiSSID":self.statusWiFi?:@"NO NETWORK",@"powerState":self.statusPower?:@"UNKNOWN",@"gpsLive":@(self.gpsLive),@"navLabels":[self.navButtons valueForKey:@"accessibilityLabel"],@"youtubeSource":@(self.youtubeSource),@"commandsPending":@(self.commandsPending),@"metadataPending":@(self.metadataPending),@"artworkDecodes":@(self.artworkDecodes),@"artworkPixels":@(self.artwork.image?MAX(CGImageGetWidth(self.artwork.image.CGImage),CGImageGetHeight(self.artwork.image.CGImage)):0),@"memoryWarnings":@(self.memoryWarnings),@"gpsAccuracy":@(self.gps.desiredAccuracy),@"timerActive":@(self.timer!=nil&&[self.timer isValid]),@"meterActive":@(self.audioBars.refreshTimer!=nil),@"settingsTitle":self.settingsSheet.title?:@"",@"settingsActions":[self.settingsSheet.actions valueForKey:@"title"]?:@[],@"playbackKnown":@(self.hasPlaybackRate),@"transportIcon":@(((DashIcon *)[[self.controls viewWithTag:21]viewWithTag:105]).kind),@"settingsVisible":@(self.settingsSheet!=nil),@"theme":@(TRDTheme),@"displayMode":@(self.displayMode),@"welcomeVisible":@(self.welcome!=nil),@"mediaRate":@(self.mediaRate),@"bounds":NSStringFromCGRect(self.view.bounds),@"navFrame":NSStringFromCGRect(self.navigation.frame),@"musicMode":@(self.musicMode),@"navigationVisible":@(!self.navigation.hidden),@"trackTime":self.trackTime.text?:@"",@"trackProgress":@(self.trackProgress.progress),@"wheelAnimating":@(self.driveCar.wheelTimer!=nil),@"wheelAngle":@(self.driveCar.angle),@"autoDriveSuppressed":@(self.autoDriveSuppressed),@"driveMode":@(self.driveMode),@"audioState":self.audioBars.state?:@"",@"audioRMS":@(self.audioBars.rms),@"carStatus":self.carStatus.text?:@"",@"hasArtwork":@(self.artwork.image!=nil),@"artist":self.artist.text?:@"",@"nightMode":@(self.nightMode),@"brightness":@([UIScreen mainScreen].brightness),@"speed":self.speed.text?:@"",@"gps":self.gpsStatus.text?:@"",@"clock":self.clock.text?:@"",@"date":self.date.text?:@"",@"network":self.network.text?:@"",@"song":self.song.text?:@"",@"focused":@(self.focused),@"clockHudVisible":@(!self.clockHud.hidden),@"clockHudSpeed":((UILabel *)[self.clockHud viewWithTag:402]).text?:@"",@"clockHudGps":((UILabel *)[self.clockHud viewWithTag:405]).text?:@"",@"clockHudTrip":((UILabel *)[self.clockHud viewWithTag:407]).text?:@"",@"sourceBadge":self.sourceBadge.text?:@"",@"driveEQTitle":self.driveEQ.currentTitle?:@"",@"lastAction":self.lastAction?:@""};[report writeToFile:@"/var/mobile/h109-build/cardash-state.plist" atomically:YES];}
--(BOOL)canBecomeFirstResponder{return YES;}
+-(void)setCarDashRemoteControlEnabled:(BOOL)on{
+ MPRemoteCommandCenter *rCenter = [MPRemoteCommandCenter sharedCommandCenter];
+ [rCenter.nextTrackCommand removeTarget:nil];
+ [rCenter.previousTrackCommand removeTarget:nil];
+ [rCenter.togglePlayPauseCommand removeTarget:nil];
+ [rCenter.playCommand removeTarget:nil];
+ [rCenter.pauseCommand removeTarget:nil];
+ if(on){
+  [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
+  [rCenter.nextTrackCommand addTarget:self action:@selector(carRemoteNext:)];
+  [rCenter.previousTrackCommand addTarget:self action:@selector(carRemotePrev:)];
+  [rCenter.togglePlayPauseCommand addTarget:self action:@selector(carRemoteToggle:)];
+  [rCenter.playCommand addTarget:self action:@selector(carRemotePlay:)];
+  [rCenter.pauseCommand addTarget:self action:@selector(carRemotePause:)];
+  rCenter.nextTrackCommand.enabled = YES;
+  rCenter.previousTrackCommand.enabled = YES;
+  rCenter.togglePlayPauseCommand.enabled = YES;
+  rCenter.playCommand.enabled = YES;
+  rCenter.pauseCommand.enabled = YES;
+ } else {
+  rCenter.nextTrackCommand.enabled = NO;
+  rCenter.previousTrackCommand.enabled = NO;
+  rCenter.togglePlayPauseCommand.enabled = NO;
+  rCenter.playCommand.enabled = NO;
+  rCenter.pauseCommand.enabled = NO;
+  [[UIApplication sharedApplication] endReceivingRemoteControlEvents];
+  [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = nil;
+ }
+}
+-(BOOL)canBecomeFirstResponder{return self.radioPlayer!=nil;}
 -(MPRemoteCommandHandlerStatus)carRemoteNext:(id)event{
  if(self.radioPlayer){if(self.offlinePlaybackActive)[self nextOfflineTrack];return MPRemoteCommandHandlerStatusSuccess;}
  static NSTimeInterval lastNext=0;
