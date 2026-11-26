@@ -1224,6 +1224,12 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         self.activeCANHeader = @"7DF";
         self.connectionStatus = @"OBD adapter ready; polling Prius CAN";
         [self obdLog:@"OBD init complete; all setup commands acknowledged; starting Prius CAN polling"];
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"TRDPendingReverseBeepWrite"]) {
+            BOOL wantSingle = ([[NSUserDefaults standardUserDefaults] integerForKey:@"TRDReverseBeepMode"] == 1);
+            [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"TRDPendingReverseBeepWrite"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            [self setPriusReverseSingleBeep:wantSingle];
+        }
         [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDConnectionStateChangedNotification object:self];
         [self scheduleImmediatePoll];
         return;
@@ -2314,8 +2320,31 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     return YES;
 }
 
+- (void)simulateDemoPriusDTCs {
+    [self.mutableDetectedDTCs removeAllObjects];
+    NSArray *demo = @[
+        @"P0A80 [HV] — แบตเตอรี่ไฮบริดเสื่อมสภาพ / แรงดันบล็อกต่างกันเกินเกณฑ์",
+        @"P0A93 [HV] — ปั๊มน้ำระบายความร้อนอินเวอร์เตอร์ทำงานผิดปกติ (ควรจอดพักทันที)",
+        @"C1259 [ABS] — ระบบเบรกไฮบริด Regen Malfunction (สัมพันธ์กับระบบไฮบริด)"
+    ];
+    [self.mutableDetectedDTCs addObjectsFromArray:demo];
+    self.detectedDTCs = [self.mutableDetectedDTCs copy];
+    self.dtcScanInProgress = NO;
+    self.lastDTCScanTimeText = @"โหมดจำลองทดสอบ (Demo)";
+    [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+}
+
 - (BOOL)clearAllPriusDTCs {
-    if (!self.isConnected || !self.obdInitialized) return NO;
+    if (!self.isConnected || !self.obdInitialized) {
+        if (self.detectedDTCs.count > 0) {
+            [self.mutableDetectedDTCs removeAllObjects];
+            self.detectedDTCs = @[];
+            self.lastDTCScanTimeText = @"เคลียร์รหัสจำลองแล้ว";
+            [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+            return YES;
+        }
+        return NO;
+    }
     // Safety lock: ONLY clear DTCs when car is stationary (0 km/h) and in Park (P)!
     if (self.currentSpeedKmh >= 1.0 || ![self.currentGear isEqualToString:@"P"]) {
         return NO;
@@ -2343,12 +2372,21 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 }
 
 - (BOOL)setPriusReverseSingleBeep:(BOOL)singleBeep {
-    if (!self.isConnected || !self.obdInitialized) return NO;
-    NSString *cmd = singleBeep ? @"3BAC40" : @"3BAC00";
     self.reverseBeepMode = singleBeep ? 1 : 0;
-    self.reverseBeepStatusText = singleBeep ? @"ดังติ๊ดเดียว (Single Beep)" : @"ดังต่อเนื่อง (โรงงาน)";
-    [[NSUserDefaults standardUserDefaults] setInteger:self.reverseBeepMode forKey:@"TRDReverseBeepMode"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+    self.reverseBeepStatusText = singleBeep
+        ? (self.isConnected ? @"ดังติ๊ดเดียว (Single Beep)" : @"ตั้งล่วงหน้า: ดังติ๊ดเดียว (ซิงก์อัตโนมัติเมื่อต่อรถ)")
+        : (self.isConnected ? @"ดังต่อเนื่อง (โรงงาน)" : @"ตั้งล่วงหน้า: ดังต่อเนื่อง (ซิงก์อัตโนมัติเมื่อต่อรถ)");
+    NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+    [ud setInteger:self.reverseBeepMode forKey:@"TRDReverseBeepMode"];
+    if (!self.isConnected || !self.obdInitialized) {
+        [ud setBool:YES forKey:@"TRDPendingReverseBeepWrite"];
+        [ud synchronize];
+        [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+        return NO;
+    }
+    [ud setBool:NO forKey:@"TRDPendingReverseBeepWrite"];
+    [ud synchronize];
+    NSString *cmd = singleBeep ? @"3BAC40" : @"3BAC00";
     [self.pendingBodyCommands addObjectsFromArray:@[@"ATSH 7C0", cmd, @"21AC", @"ATSH 7DF"]];
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
     return YES;

@@ -10328,24 +10328,33 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  NSString *msg=[NSString stringWithFormat:@"SOC %.1f%% • ΔV %.2fV • HV %.1f°C • 🌀 %@\n🌡️ ECT %.0f°C • ⚡ INV %.0f°C (%@) • 🔋 12V %.2fV",
                obd.hybridBatterySOC, liveDV, obd.hvBatteryTempC, fanTag, obd.coolantTempC, obd.inverterTempC, pmpTag, obd.auxBatteryVoltage];
  TRDSettingsMenu *m=[self settingsMenu:@"🔋 ระบบไฮบริด & พัดลมแบตอัจฉริยะ (7E2)" message:msg];
- [m addAction:[TRDSettingAction actionWithTitle:obd.autoHVFanBoostEnabled?@"🌀 พัดลมแบตอัตโนมัติ (เร่งเมื่อ ≥37°C): ON":@"🌀 พัดลมแบตอัตโนมัติ (เร่งเมื่อ ≥37°C): OFF" style:0 handler:^(TRDSettingAction *a){
+ [m addAction:[TRDSettingAction actionWithTitle:obd.autoHVFanBoostEnabled?@"✓ 🌀 พัดลมแบตอัตโนมัติ (เร่งเมื่อ ≥37°C): ON":@"🌀 พัดลมแบตอัตโนมัติ (เร่งเมื่อ ≥37°C): OFF" style:0 handler:^(TRDSettingAction *a){
   [obd setManualHVFanSpeed:0];
-  [obd setAutoHVFanBoostEnabled:!obd.autoHVFanBoostEnabled];
+  BOOL nextOn = !obd.autoHVFanBoostEnabled;
+  [obd setAutoHVFanBoostEnabled:nextOn];
+  [self showVoiceToast:(nextOn ? @"✅ เปิดระบบพัดลมแบตอัจฉริยะอัตโนมัติแล้วครับ" : @"⏸️ ปิดพัดลมอัจฉริยะ (ใช้ค่าโรงงานเดิม)") color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:2.4];
   [self openHybridDiagnosticsMenu];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:(obd.manualHVFanSpeed==6)?@"✓ ❄️ บังคับพัดลมแบตแรงสุด เบอร์ 6 (MAX COOL)":@"❄️ บังคับพัดลมแบตแรงสุด เบอร์ 6 (MAX COOL)" style:0 handler:^(TRDSettingAction *a){
-  [obd setManualHVFanSpeed:(obd.manualHVFanSpeed==6)?0:6];
+ [m addAction:[TRDSettingAction actionWithTitle:(obd.manualHVFanSpeed==6)?@"✓ ❄️ บังคับพัดลมแบตแรงสุด เบอร์ 6 (แตะยกเลิก)":@"❄️ บังคับพัดลมแบตแรงสุด เบอร์ 6 (MAX COOL)" style:0 handler:^(TRDSettingAction *a){
+  NSInteger nextSpd = (obd.manualHVFanSpeed==6)?0:6;
+  [obd setManualHVFanSpeed:nextSpd];
+  [self showVoiceToast:(nextSpd==6 ? (obd.isConnected ? @"❄️ สั่งเร่งพัดลมแบตเบอร์ 6 สูงสุดแล้ว!" : @"❄️ ตั้งพัดลมเบอร์ 6 ล่วงหน้าแล้ว (ทำงานทันทีเมื่อต่อ OBD2)") : @"🌀 กลับสู่โหมดพัดลมอัตโนมัติแล้วครับ") color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:2.6];
   [self openHybridDiagnosticsMenu];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:(obd.manualHVFanSpeed==4)?@"✓ 🌬️ บังคับพัดลมแบตระดับกลาง เบอร์ 4":@"🌬️ บังคับพัดลมแบตระดับกลาง เบอร์ 4" style:0 handler:^(TRDSettingAction *a){
-  [obd setManualHVFanSpeed:(obd.manualHVFanSpeed==4)?0:4];
+ [m addAction:[TRDSettingAction actionWithTitle:(obd.manualHVFanSpeed==4)?@"✓ 🌬️ บังคับพัดลมแบตระดับกลาง เบอร์ 4 (แตะยกเลิก)":@"🌬️ บังคับพัดลมแบตระดับกลาง เบอร์ 4" style:0 handler:^(TRDSettingAction *a){
+  NSInteger nextSpd = (obd.manualHVFanSpeed==4)?0:4;
+  [obd setManualHVFanSpeed:nextSpd];
+  [self showVoiceToast:(nextSpd==4 ? (obd.isConnected ? @"🌬️ สั่งเร่งพัดลมแบตเบอร์ 4 แล้วครับ" : @"🌬️ ตั้งพัดลมเบอร์ 4 ล่วงหน้าแล้ว (ทำงานทันทีเมื่อต่อ OBD2)") : @"🌀 กลับสู่โหมดพัดลมอัตโนมัติแล้วครับ") color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:2.6];
   [self openHybridDiagnosticsMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔍 สแกน / วิเคราะห์โค้ดไฟโชว์ (PRIUS DTC ไทย)" style:0 handler:^(TRDSettingAction *a){
+  [self openDTCScannerMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔕 ตั้งเสียงถอยหลังเรือนไมล์ (ติ๊ดเดียว / ต่อเนื่อง)" style:0 handler:^(TRDSettingAction *a){
+  [self openReverseBeepMenu];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"📈 ดูประวัติความร้อน & สุขภาพแบตสะสมบนเครื่อง" style:0 handler:^(TRDSettingAction *a){
   [self openHVThermalHistoryMenu];
- }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🔍 สแกน / วิเคราะห์โค้ดไฟโชว์ (DTC ไทย)" style:0 handler:^(TRDSettingAction *a){
-  [self openDTCScannerMenu];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🔙 ปิดหน้าต่าง" style:0 handler:^(TRDSettingAction *a){
   [self.settingsSheet dismiss];
@@ -10397,15 +10406,21 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
    [self showFeatureExplanation:@"🔍 คำวิเคราะห์รหัสปัญหา (PRIUS DTC)" body:[NSString stringWithFormat:@"%@\n\nคำแนะนำเบื้องต้น:\n• หากเป็นรหัสระบบน้ำหล่อเย็น/ปั๊มน้ำ (P0A93, P261B) ควรจอดพักห้ามฝืนขับต่อเพื่อป้องกันเครื่อง/อินเวอร์เตอร์ร้อนจัด\n• ระบบบันทึกประวัตินี้เก็บไว้ในเครื่องให้ช่างตรวจสอบย้อนหลังได้ตลอดครับ", lineCopy]];
   }]];
  }
- [m addAction:[TRDSettingAction actionWithTitle:@"🔎 เริ่มสแกนโค้ดทุกกล่อง (เครื่องยนต์ + ไฮบริด + ABS)" style:0 handler:^(TRDSettingAction *a){
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔎 เริ่มสแกนโค้ดจริงจากรถ (เครื่องยนต์ + ไฮบริด + ABS)" style:0 handler:^(TRDSettingAction *a){
   if([obd scanAllPriusDTCs]){
+   [self showVoiceToast:@"🔎 กำลังสแกนกล่อง 7E0 / 7E2 / 7B0..." color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:2.2];
    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
     [self openDTCScannerMenu];
    });
+   [self openDTCScannerMenu];
+  }else{
+   [obd ensureConnectedOrScan];
+   [self showFeatureExplanation:@"📡 รอเชื่อมต่อกล่อง OBD2 ในรถ (vLinker MC+)" body:@"ปุ่มสแกนทำงานปกติครับ! ตอนนี้ iPad ยังไม่ได้จับคู่สัญญาณกับกล่อง OBD2 ในรถ\n\n• เมื่อนำเครื่องไปเปิดสวิตช์รถ Prius (IG-ON หรือ READY) ระบบจะเชื่อมต่ออัตโนมัติ แล้วกดสแกนโค้ดจริงได้ทันที\n• หากต้องการทดลองดูตัวอย่างการวิเคราะห์โค้ดภาษาไทยตอนนี้ กดปุ่ม '🧪 ทดลองจำลองสแกนโค้ดตัวอย่าง' ในเมนูได้เลยครับ"];
   }
-  [self openDTCScannerMenu];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"🔄 รีเฟรชผลสแกนล่าสุด" style:0 handler:^(TRDSettingAction *a){
+ [m addAction:[TRDSettingAction actionWithTitle:@"🧪 ทดลองจำลองสแกนโค้ดตัวอย่าง (ทดสอบดูคำแปลไทย)" style:0 handler:^(TRDSettingAction *a){
+  [obd simulateDemoPriusDTCs];
+  [self showVoiceToast:@"🧪 โหลดตัวอย่างโค้ด Prius 3 รายการแล้ว แตะที่รหัสเพื่อดูคำวิเคราะห์ครับ" color:[UIColor colorWithRed:1.0 green:0.82 blue:0.28 alpha:1.0] autoHide:3.0];
   [self openDTCScannerMenu];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🧹 ลบโค้ดไฟโชว์ (ต้องจอดนิ่งเกียร์ P เท่านั้น)" style:0 handler:^(TRDSettingAction *a){
@@ -10452,32 +10467,24 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  NSString *msg = [NSString stringWithFormat:@"สถานะปัจจุบัน: %@ • ปรับเฉพาะเสียงติ๊ดเรือนไมล์รถ (7C0)\nเสียงเซนเซอร์กะระยะกันชนท้ายยังคงดังเตือนปกติ 100%% ไม่ถูกรบกวนครับ", curTxt];
  TRDSettingsMenu *m=[self settingsMenu:@"🔕 ตั้งค่าเสียงติ๊ดเกียร์ถอยหลัง (PRIUS 7C0)" message:msg];
  [m addAction:[TRDSettingAction actionWithTitle:(obd.reverseBeepMode==1)?@"✓ 🔕 ดังติ๊ดเดียวตอนเข้าเกียร์ R (แนะนำ • ฟังเซนเซอร์ถอยชัด)":@"🔕 ตั้งให้ดังติ๊ดเดียวตอนเข้าเกียร์ R (แนะนำ • ฟังเซนเซอร์ถอยชัด)" style:0 handler:^(TRDSettingAction *a){
-  if(!obd.isConnected){
-   [[NSUserDefaults standardUserDefaults] setInteger:1 forKey:@"TRDReverseBeepMode"];
-   [[NSUserDefaults standardUserDefaults] synchronize];
-  }else{
-   [obd setPriusReverseSingleBeep:YES];
-  }
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.8*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
-   [self openReverseBeepMenu];
-  });
+  BOOL sentNow = [obd setPriusReverseSingleBeep:YES];
+  [self showVoiceToast:(sentNow ? @"✅ ตั้งเรือนไมล์รถ & iPad ให้ดังติ๊ดเดียวแล้วครับ!" : @"✅ บันทึกโหมดติ๊ดเดียวแล้ว (จะซิงก์เข้าเรือนไมล์รถอัตโนมัติทันทีที่ต่อ OBD2)") color:[UIColor colorWithRed:0.25 green:0.98 blue:0.55 alpha:1.0] autoHide:3.0];
+  [self openReverseBeepMenu];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:(obd.reverseBeepMode==0)?@"✓ 🔔 ดังติ๊ดต่อเนื่องตลอดเวลา (ค่าโรงงานเดิม)":@"🔔 คืนค่าให้ดังติ๊ดต่อเนื่องตลอดเวลา (ค่าโรงงานเดิม)" style:0 handler:^(TRDSettingAction *a){
-  if(!obd.isConnected){
-   [[NSUserDefaults standardUserDefaults] setInteger:0 forKey:@"TRDReverseBeepMode"];
-   [[NSUserDefaults standardUserDefaults] synchronize];
-  }else{
-   [obd setPriusReverseSingleBeep:NO];
-  }
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.8*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
-   [self openReverseBeepMenu];
-  });
+  BOOL sentNow = [obd setPriusReverseSingleBeep:NO];
+  [self showVoiceToast:(sentNow ? @"✅ คืนค่าเสียงถอยหลังต่อเนื่องตามโรงงานแล้วครับ" : @"✅ บันทึกค่าต่อเนื่องแล้ว (จะซิงก์เข้าเรือนไมล์รถอัตโนมัติเมื่อต่อ OBD2)") color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:3.0];
+  [self openReverseBeepMenu];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🔎 อ่านค่าปัจจุบันจากกล่องเรือนไมล์รถ (7C0 21AC)" style:0 handler:^(TRDSettingAction *a){
-  [obd queryPriusReverseBeepMode];
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
-   [self openReverseBeepMenu];
-  });
+  if([obd queryPriusReverseBeepMode]){
+   [self showVoiceToast:@"🔎 กำลังอ่านค่าเสียงถอยจากกล่องเรือนไมล์ 7C0..." color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:2.0];
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+    [self openReverseBeepMenu];
+   });
+  }else{
+   [self showFeatureExplanation:@"📡 รอเชื่อมต่อกล่อง OBD2 ในรถ" body:@"การอ่านค่าปัจจุบันจากเรือนไมล์รถ (7C0 21AC) ต้องเปิดสวิตช์รถและเชื่อม vLinker MC+ ก่อนครับ\n\nแต่คุณสามารถกดเลือก '🔕 ตั้งให้ดังติ๊ดเดียว' ไว้ล่วงหน้าได้เลย ระบบจะส่งคำสั่งเข้าเรือนไมล์รถให้อัตโนมัติทันทีที่เปิดรถครับ!"];
+  }
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"↩️ กลับหน้า CAR SETTINGS" style:0 handler:^(TRDSettingAction *a){
   [self carSettings];

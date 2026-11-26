@@ -122,6 +122,7 @@ extern NSString * const TRDOBDGearChangedNotification;
 - (void)setAutoHVFanBoostEnabled:(BOOL)enabled;
 - (void)setManualHVFanSpeed:(NSInteger)speed;
 - (BOOL)scanAllPriusDTCs;
+- (void)simulateDemoPriusDTCs;
 - (BOOL)clearAllPriusDTCs;
 - (BOOL)queryPriusReverseBeepMode;
 - (BOOL)setPriusReverseSingleBeep:(BOOL)singleBeep;
