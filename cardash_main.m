@@ -1154,18 +1154,18 @@ static UIImage *TRDCropRealWheelFromPrius(UIImage *carImg, CGFloat normX, CGFloa
     self.gearBadge.layer.cornerRadius = 6;
     self.gearBadge.layer.borderWidth = 1.2;
     self.gearBadge.layer.borderColor = [UIColor colorWithRed:0.2 green:0.85 blue:0.45 alpha:0.8].CGColor;
-    UILabel *gl = [[UILabel alloc] initWithFrame:CGRectMake(4, 1, 22, 24)];
+    UILabel *gl = [[UILabel alloc] initWithFrame:CGRectMake(5, 1, 20, 20)];
     gl.tag = 101;
-    gl.font = [UIFont boldSystemFontOfSize:19.0];
+    gl.font = [UIFont boldSystemFontOfSize:14.5];
     gl.textAlignment = NSTextAlignmentCenter;
     gl.textColor = [UIColor whiteColor];
     gl.text = @"P";
     [self.gearBadge addSubview:gl];
-    UILabel *gw = [[UILabel alloc] initWithFrame:CGRectMake(26, 2, 56, 22)];
+    UILabel *gw = [[UILabel alloc] initWithFrame:CGRectMake(25, 2, 62, 18)];
     gw.tag = 102;
-    gw.font = [UIFont boldSystemFontOfSize:14.5];
+    gw.font = [UIFont boldSystemFontOfSize:11.5];
     gw.adjustsFontSizeToFitWidth = YES;
-    gw.minimumScaleFactor = 0.65;
+    gw.minimumScaleFactor = 0.70;
     gw.textAlignment = NSTextAlignmentCenter;
     gw.textColor = [UIColor colorWithRed:0.35 green:0.98 blue:0.55 alpha:1];
     gw.text = @"PARK";
@@ -1174,12 +1174,12 @@ static UIImage *TRDCropRealWheelFromPrius(UIImage *carImg, CGFloat normX, CGFloa
     
     self.speedLimitBadge = [UIButton buttonWithType:UIButtonTypeCustom];
     self.speedLimitBadge.backgroundColor = [UIColor colorWithRed:0.85 green:0.05 blue:0.10 alpha:0.18];
-    self.speedLimitBadge.layer.cornerRadius = 13;
-    self.speedLimitBadge.layer.borderWidth = 2;
+    self.speedLimitBadge.layer.cornerRadius = 12;
+    self.speedLimitBadge.layer.borderWidth = 1.8;
     self.speedLimitBadge.layer.borderColor = [UIColor colorWithRed:0.95 green:0.10 blue:0.15 alpha:0.9].CGColor;
     [self.speedLimitBadge setTitle:@"90" forState:UIControlStateNormal];
     [self.speedLimitBadge setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.speedLimitBadge.titleLabel.font = [UIFont boldSystemFontOfSize:12];
+    self.speedLimitBadge.titleLabel.font = [UIFont boldSystemFontOfSize:11];
     [self addSubview:self.speedLimitBadge];
   }
   return self;
@@ -1192,24 +1192,30 @@ static UIImage *TRDCropRealWheelFromPrius(UIImage *carImg, CGFloat normX, CGFloa
   self.speedLabel.adjustsFontSizeToFitWidth = YES;
   self.speedLabel.minimumScaleFactor = 0.72;
   if (self.driveStyle) {
+    self.speedLimitBadge.layer.cornerRadius = 15;
     self.speedLimitBadge.frame = CGRectMake(w - 36, 4, 30, 30);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:86] ?: [UIFont boldSystemFontOfSize:86];
-    self.speedLabel.frame = CGRectMake(24, 46, w - 58, 86);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:76] ?: [UIFont boldSystemFontOfSize:76];
+    self.speedLabel.frame = CGRectMake(24, 52, w - 58, 76);
     self.gearBadge.hidden = YES;
-    self.unitLabel.frame = CGRectMake(24, 134, w - 58, 20);
+    self.unitLabel.frame = CGRectMake(24, 132, w - 58, 20);
     self.unitLabel.font = [UIFont boldSystemFontOfSize:12.0];
     self.unitLabel.text = @"km/h  •  GPS";
   } else {
-    self.speedLimitBadge.frame = CGRectMake(w - 30, 8, 28, 28);
-    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:108] ?: [UIFont boldSystemFontOfSize:108];
-    self.speedLabel.frame = CGRectMake(8, 8, w - 16, 98);
-    self.gearBadge.hidden = NO;
-    self.gearBadge.frame = CGRectMake(8, h - 28, 86, 26);
-    self.unitLabel.frame = CGRectMake(98, h - 25, w - 104, 20);
-    self.unitLabel.font = [UIFont boldSystemFontOfSize:12.0];
+    self.speedLimitBadge.layer.cornerRadius = 12;
+    self.speedLimitBadge.frame = CGRectMake(w - 28, 3, 24, 24);
+    self.speedLabel.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:56] ?: [UIFont boldSystemFontOfSize:56];
+    self.speedLabel.frame = CGRectMake(44, 34, w - 88, 46);
+    self.unitLabel.frame = CGRectMake(52, 80, w - 104, 13);
+    self.unitLabel.font = [UIFont boldSystemFontOfSize:10.5];
     self.unitLabel.adjustsFontSizeToFitWidth = YES;
     self.unitLabel.minimumScaleFactor = 0.85;
-    self.unitLabel.text = @"KM / H • DYNAMICS";
+    self.unitLabel.text = @"KM / H";
+    self.gearBadge.hidden = NO;
+    self.gearBadge.frame = CGRectMake((w - 92.0) / 2.0, h - 25.0, 92.0, 22.0);
+    UILabel *gl = (UILabel *)[self.gearBadge viewWithTag:101];
+    UILabel *gw = (UILabel *)[self.gearBadge viewWithTag:102];
+    if (gl) gl.frame = CGRectMake(5, 1, 20, 20);
+    if (gw) gw.frame = CGRectMake(25, 2, 62, 18);
   }
 }
 
@@ -1227,13 +1233,30 @@ static UIImage *TRDCropRealWheelFromPrius(UIImage *carImg, CGFloat normX, CGFloa
   UILabel *gl = (UILabel *)[self.gearBadge viewWithTag:101];
   UILabel *gw = (UILabel *)[self.gearBadge viewWithTag:102];
   if (gl) gl.text = gear ?: @"D";
-  if (gw) {
-    if ([gear isEqualToString:@"P"]) gw.text = @"PARK";
-    else if ([gear isEqualToString:@"R"]) gw.text = @"REVERSE";
-    else if ([gear isEqualToString:@"N"]) gw.text = @"NEUTRAL";
-    else if ([gear isEqualToString:@"B"]) gw.text = @"BRAKE";
-    else gw.text = @"DRIVE";
+  UIColor *accentCol = [UIColor colorWithRed:0.25 green:0.92 blue:1.0 alpha:1.0];
+  UIColor *bgCol = [UIColor colorWithRed:0.02 green:0.14 blue:0.20 alpha:0.95];
+  if ([gear isEqualToString:@"P"]) {
+    if (gw) gw.text = @"PARK";
+    accentCol = [UIColor colorWithRed:0.30 green:0.95 blue:0.52 alpha:1.0];
+    bgCol = [UIColor colorWithRed:0.02 green:0.18 blue:0.10 alpha:0.95];
+  } else if ([gear isEqualToString:@"R"]) {
+    if (gw) gw.text = @"REVERSE";
+    accentCol = [UIColor colorWithRed:1.0 green:0.36 blue:0.36 alpha:1.0];
+    bgCol = [UIColor colorWithRed:0.22 green:0.04 blue:0.05 alpha:0.95];
+  } else if ([gear isEqualToString:@"N"]) {
+    if (gw) gw.text = @"NEUTRAL";
+    accentCol = [UIColor colorWithRed:1.0 green:0.82 blue:0.28 alpha:1.0];
+    bgCol = [UIColor colorWithRed:0.18 green:0.14 blue:0.03 alpha:0.95];
+  } else if ([gear isEqualToString:@"B"]) {
+    if (gw) gw.text = @"BRAKE";
+    accentCol = [UIColor colorWithRed:0.65 green:0.78 blue:1.0 alpha:1.0];
+    bgCol = [UIColor colorWithRed:0.06 green:0.10 blue:0.22 alpha:0.95];
+  } else {
+    if (gw) gw.text = @"DRIVE";
   }
+  if (gw) gw.textColor = accentCol;
+  self.gearBadge.backgroundColor = bgCol;
+  self.gearBadge.layer.borderColor = [accentCol colorWithAlphaComponent:0.80].CGColor;
 }
 
 - (void)drawRect:(CGRect)rect {
@@ -1323,66 +1346,74 @@ static UIImage *TRDCropRealWheelFromPrius(UIImage *carImg, CGFloat normX, CGFloa
     }
     [@"⛽" drawAtPoint:CGPointMake(center.x + radius - 6.0, center.y + radius * 0.42) withAttributes:@{NSFontAttributeName:[UIFont systemFontOfSize:9.5]}];
   } else {
-    CGPoint center = CGPointMake(w / 2.0, h - 24);
-    CGFloat radius = MIN(w / 2.0 - 30, h - 42);
-    CGFloat startAngle = M_PI * 0.96;
-    CGFloat endAngle = M_PI * 2.04;
+    CGPoint center = CGPointMake(w / 2.0, h - 22.0);
+    CGFloat radius = MIN(w / 2.0 - 38.0, h - 52.0);
+    CGFloat startAngle = M_PI * 0.98;
+    CGFloat endAngle = M_PI * 2.02;
     CGFloat totalAngle = endAngle - startAngle;
+    CGFloat maxDialKmh = 160.0;
 
-    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.08 green:0.14 blue:0.20 alpha:0.85].CGColor);
+    // Subtle dark inner dome for crisp contrast around digital speed
+    CGContextSetFillColorWithColor(ctx, [UIColor colorWithRed:0.018 green:0.032 blue:0.052 alpha:0.65].CGColor);
+    CGContextAddArc(ctx, center.x, center.y, radius - 4.0, startAngle, endAngle, 0);
+    CGContextClosePath(ctx);
+    CGContextFillPath(ctx);
+
+    CGContextSetLineCap(ctx, kCGLineCapRound);
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.10 green:0.18 blue:0.26 alpha:0.90].CGColor);
     CGContextSetLineWidth(ctx, 4.5);
     CGContextAddArc(ctx, center.x, center.y, radius, startAngle, endAngle, 0);
     CGContextStrokePath(ctx);
     
-    CGFloat ratio = MIN(MAX(self.speed / 180.0, 0.0), 1.0);
-    if (ratio > 0.01) {
+    CGFloat ratio = MIN(MAX(self.speed / maxDialKmh, 0.0), 1.0);
+    if (ratio > 0.008) {
       CGFloat currentAngle = startAngle + totalAngle * ratio;
-      CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:0.95].CGColor);
+      CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.0 green:0.88 blue:1.0 alpha:0.98].CGColor);
       CGContextSetLineWidth(ctx, 5.5);
       CGContextAddArc(ctx, center.x, center.y, radius, startAngle, currentAngle, 0);
       CGContextStrokePath(ctx);
     }
     
-    NSArray *ticks = @[@0, @30, @60, @80, @100, @120, @140, @160];
-    UIFont *font = [UIFont boldSystemFontOfSize:11.0];
-    NSDictionary *textAttrs = @{NSFontAttributeName: font, NSForegroundColorAttributeName: [UIColor colorWithWhite:0.92 alpha:1.0]};
+    UIFont *font = [UIFont boldSystemFontOfSize:10.0];
+    NSDictionary *textAttrs = @{NSFontAttributeName: font, NSForegroundColorAttributeName: [UIColor colorWithWhite:0.88 alpha:0.96]};
     
-    for (NSNumber *num in ticks) {
-      CGFloat val = [num doubleValue];
-      CGFloat tRatio = val / 180.0;
+    for (NSInteger valInt = 0; valInt <= 160; valInt += 20) {
+      CGFloat val = (CGFloat)valInt;
+      CGFloat tRatio = val / maxDialKmh;
       CGFloat angle = startAngle + totalAngle * tRatio;
+      BOOL isMajor = (valInt % 40 == 0);
       
-      CGFloat tickInner = radius - 6.0;
-      CGFloat tickOuter = radius + 2.0;
+      CGFloat tickInner = radius - (isMajor ? 6.5 : 4.0);
+      CGFloat tickOuter = radius + (isMajor ? 2.0 : 1.0);
       CGFloat x1 = center.x + tickInner * cos(angle);
       CGFloat y1 = center.y + tickInner * sin(angle);
       CGFloat x2 = center.x + tickOuter * cos(angle);
       CGFloat y2 = center.y + tickOuter * sin(angle);
       
-      CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithRed:0.3 green:0.55 blue:0.75 alpha:0.65].CGColor);
-      CGContextSetLineWidth(ctx, 1.5);
+      CGContextSetStrokeColorWithColor(ctx, isMajor
+        ? [UIColor colorWithRed:0.38 green:0.68 blue:0.88 alpha:0.82].CGColor
+        : [UIColor colorWithRed:0.24 green:0.44 blue:0.60 alpha:0.50].CGColor);
+      CGContextSetLineWidth(ctx, isMajor ? 1.6 : 1.1);
       CGContextMoveToPoint(ctx, x1, y1);
       CGContextAddLineToPoint(ctx, x2, y2);
       CGContextStrokePath(ctx);
       
-      if (val == 0 || val == 60 || val == 100 || val == 140) {
-        NSString *str = [NSString stringWithFormat:@"%.0f", val];
+      if (isMajor) {
+        NSString *str = [NSString stringWithFormat:@"%ld", (long)valInt];
         CGSize sz = [str sizeWithAttributes:textAttrs];
-        CGFloat tx = 0, ty = 0;
-        if (val == 0) {
-          tx = center.x - radius - 17.0;
-          ty = center.y - 15.0;
-        } else if (val == 60) {
-          tx = center.x + (radius + 11.0) * cos(angle) - sz.width - 2.0;
-          ty = center.y + (radius + 9.0) * sin(angle) - sz.height / 2.0 - 2.0;
-        } else if (val == 100) {
-          tx = center.x + (radius + 11.0) * cos(angle) + 2.0;
-          ty = center.y + (radius + 9.0) * sin(angle) - sz.height / 2.0 - 2.0;
-        } else if (val == 140) {
-          tx = center.x + (radius + 10.0) * cos(angle) + 2.0;
-          ty = center.y + (radius + 9.0) * sin(angle) - sz.height / 2.0 + 3.0;
+        CGFloat labelR = radius + 12.0;
+        CGFloat lx = center.x + labelR * cos(angle) - sz.width / 2.0;
+        CGFloat ly = center.y + labelR * sin(angle) - sz.height / 2.0;
+        if (valInt == 0) {
+          lx -= 3.0;
+          ly -= 3.0;
+        } else if (valInt == 160) {
+          lx += 3.0;
+          ly -= 3.0;
+        } else if (valInt == 80) {
+          ly -= 1.0;
         }
-        [str drawAtPoint:CGPointMake(tx, ty) withAttributes:textAttrs];
+        [str drawAtPoint:CGPointMake(lx, ly) withAttributes:textAttrs];
       }
     }
   }
@@ -4985,8 +5016,8 @@ static NSUInteger gTRDUpdateTicks=0;
     for (int i = 0; i < self.gearButtons.count; i++) {
       UIButton *gb = self.gearButtons[i];
       gb.hidden = NO;
-      gb.frame = CGRectMake(leftX + 18 + i*(gw + 5), topY + 158, gw, 28);
-      gb.titleLabel.font = [UIFont boldSystemFontOfSize:16.0];
+      gb.frame = CGRectMake(leftX + 18 + i*(gw + 5), topY + 160, gw, 26);
+      gb.titleLabel.font = [UIFont boldSystemFontOfSize:15.5];
     }
 
     self.hybridEcoBar.hidden = YES;
@@ -4995,7 +5026,7 @@ static NSUInteger gTRDUpdateTicks=0;
       UIButton *mb = self.driveModePills[i];
       if (i == 1) {
         mb.hidden = NO;
-        mb.frame = CGRectMake(leftX + 18, topY + 192, leftW - 36, 28);
+        mb.frame = CGRectMake(leftX + 18, topY + 193, leftW - 36, 28);
         NSString *mName = (TRDTheme == 0) ? @"🔥 SPORT MODE • แตะสลับ" : ((TRDTheme == 1) ? @"❄️ NORMAL MODE • แตะสลับ" : @"🌱 ECO MODE • แตะสลับ");
         [mb setTitle:mName forState:UIControlStateNormal];
         mb.titleLabel.font = [UIFont boldSystemFontOfSize:13.0];
