@@ -3078,7 +3078,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
       NSString *tripTxt = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %@ (น้ำมัน %.2f L)\nECONOMY: %@ (%@)\nFUEL COST (%@): ฿ %.2f (%.2f ฿/L)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, distFmt, fuelL, kmlDisplay, kmlNote, fuelTag, cost, price, avgSpd, enTimeStr];
       if(![htbL.text isEqualToString:tripTxt]){
        NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-       ps.lineSpacing = 4.5;
+       ps.lineSpacing = 6.5;
        htbL.attributedText = [[NSAttributedString alloc] initWithString:tripTxt attributes:@{NSFontAttributeName: htbL.font ?: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: ps}];
       }
     }
@@ -4983,14 +4983,14 @@ static NSUInteger gTRDUpdateTicks=0;
       [self.compassLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(cycleDriveWidgetMode)]];
     }
     UILabel *ecoH = (UILabel *)[self.homeAiEcoCard viewWithTag:501];
-    if (ecoH) ecoH.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+    if (ecoH) ecoH.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
     UILabel *ecoS = (UILabel *)[self.homeAiEcoCard viewWithTag:502];
-    if (ecoS) ecoS.font = [UIFont monospacedDigitSystemFontOfSize:16.0 weight:UIFontWeightHeavy];
+    if (ecoS) ecoS.font = [UIFont monospacedDigitSystemFontOfSize:15.5 weight:UIFontWeightBold];
     UILabel *ecoD = (UILabel *)[self.homeAiEcoCard viewWithTag:503];
     if (ecoD) {
-      ecoD.frame = CGRectMake(10, 54, leftW - 40, 116);
-      ecoD.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium];
-      ecoD.textColor = [UIColor colorWithWhite:0.90 alpha:1];
+      ecoD.frame = CGRectMake(12, 54, leftW - 44, 118);
+      ecoD.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
+      ecoD.textColor = [UIColor colorWithWhite:0.94 alpha:1];
     }
 
     // Left Card 3: THERMALS & 12V (Exact mirror of Right Card 3 at Y = topY + 426, H = 186!)
@@ -10120,7 +10120,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
                  obd.hvBatteryTempC, obd.hvIntakeTempC];
    if(![mlLbl.text isEqualToString:t]){
     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-    ps.lineSpacing = 5.5;
+    ps.lineSpacing = 9.0;
     mlLbl.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: mlLbl.font ?: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: ps}];
    }
   }
