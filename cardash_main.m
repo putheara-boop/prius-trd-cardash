@@ -3050,7 +3050,12 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
     }
     if(vKml)  vKml.text  = kmlDisplay;
     if(vCost) vCost.text = [NSString stringWithFormat:@"฿ %.2f", cost];
-    if(vTime) vTime.text = [NSString stringWithFormat:@"%@ • %.0f km/h", [timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@""], avgSpd];
+    if(vTime){
+      NSString *compactTime = (slotSec >= 3600)
+        ? [NSString stringWithFormat:@"%02ld:%02ld ชม.", slotSec / 3600, (slotSec / 60) % 60]
+        : [NSString stringWithFormat:@"%02ld:%02ld น.", (slotSec / 60) % 60, slotSec % 60];
+      vTime.text = [NSString stringWithFormat:@"%@ • %.0f km/h", compactTime, avgSpd];
+    }
   }
 
   UIView *hTripCard = [self.view viewWithTag:711];
@@ -3071,14 +3076,18 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
     }
     UILabel *htbL = (UILabel *)[hTripCard viewWithTag:713];
     if(htbL){
-      NSString *slotTitle = (slot == 0) ? @"TRIP A • ทริปนี้ (คำนวณจริง)" : (slot == 1) ? @"TRIP B • ถังน้ำมันนี้ (คำนวณจริง)" : @"TRIP C • สะสมระยะยาว (คำนวณจริง)";
-      NSString *enTimeStr = [[timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@" hrs"] stringByReplacingOccurrencesOfString:@" นาที" withString:@" min"];
+      NSString *slotTitle = (slot == 0) ? @"📍 TRIP A • ทริปนี้" : (slot == 1) ? @"⛽ TRIP B • ถังน้ำมันนี้" : @"🏁 TRIP C • สะสมระยะยาว";
       NSString *distFmt = (dist < 100.0) ? [NSString stringWithFormat:@"%.2f km", dist] : [NSString stringWithFormat:@"%.1f km", dist];
       NSString *fuelTag = TRDFuelShortCode(obd.selectedFuelTypeIndex);
-      NSString *tripTxt = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %@ (น้ำมัน %.2f L)\nECONOMY: %@ (%@)\nFUEL COST (%@): ฿ %.2f (%.2f ฿/L)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, distFmt, fuelL, kmlDisplay, kmlNote, fuelTag, cost, price, avgSpd, enTimeStr];
+      NSString *kmlShort = hasRealFuel
+        ? [NSString stringWithFormat:@"%@ (%@)", kmlDisplay, usedMAF ? @"MAF" : @"GPS"]
+        : kmlDisplay;
+      NSString *tripTxt = [NSString stringWithFormat:@"%@\nระยะทาง: %@ • %.2f L\nสิ้นเปลือง: %@\nค่าน้ำมัน (%@): ฿ %.2f\nความเร็วเฉลี่ย: %.1f km/h\nเวลาขับขี่: %@",
+                           slotTitle, distFmt, fuelL, kmlShort, fuelTag, cost, avgSpd, timeStr];
       if(![htbL.text isEqualToString:tripTxt]){
        NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-       ps.lineSpacing = 6.5;
+       ps.lineSpacing = 5.5;
+       ps.lineBreakMode = NSLineBreakByTruncatingTail;
        htbL.attributedText = [[NSAttributedString alloc] initWithString:tripTxt attributes:@{NSFontAttributeName: htbL.font ?: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: ps}];
       }
     }
@@ -4084,17 +4093,6 @@ static NSUInteger gTRDUpdateTicks=0;
 
     // Top Bar (Width: 1024, Height: 50)
     UIColor *accent = TRDAccent();
-    self.heading.hidden = NO;
-    self.heading.frame = CGRectMake(16, 8, 390, 22);
-    self.heading.font = [UIFont systemFontOfSize:17.5 weight:UIFontWeightHeavy];
-    self.heading.textColor = accent;
-    self.heading.text = @"PRIUS TRD  •  MAP NAVIGATION";
-    self.owner.hidden = NO;
-    self.owner.frame = CGRectMake(16, 29, 390, 16);
-    self.owner.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
-    self.owner.textColor = [UIColor colorWithRed:0.68 green:0.90 blue:1.0 alpha:0.90];
-    self.owner.text = @"GPS LIVE NAVIGATION • OBD2 TELEMETRY";
-
     CGFloat curRx = w - 14;
     CGFloat barTop = 10, pillH = 32;
     curRx -= 118;
@@ -4108,7 +4106,6 @@ static NSUInteger gTRDUpdateTicks=0;
     self.voicePill.frame = CGRectMake(curRx, barTop - 2, 58, pillH + 4);
     self.voicePill.layer.cornerRadius = 12;
     self.voicePill.titleLabel.font = [UIFont boldSystemFontOfSize:20.0];
-    [self.view bringSubviewToFront:self.voicePill];
 
     curRx -= 118;
     self.thaiVoicePill.hidden = NO;
@@ -4134,6 +4131,22 @@ static NSUInteger gTRDUpdateTicks=0;
     self.obdStatusPill.frame = CGRectMake(curRx, barTop, 146, pillH);
     self.obdStatusPill.layer.cornerRadius = 10;
 
+    CGFloat mapTitleW = MAX(220.0, curRx - 28.0);
+    self.heading.hidden = NO;
+    self.heading.frame = CGRectMake(16, 8, mapTitleW, 22);
+    self.heading.font = [UIFont systemFontOfSize:17.5 weight:UIFontWeightHeavy];
+    self.heading.adjustsFontSizeToFitWidth = YES;
+    self.heading.minimumScaleFactor = 0.80;
+    self.heading.textColor = accent;
+    self.heading.text = @"PRIUS TRD  •  MAP NAVIGATION";
+    self.owner.hidden = NO;
+    self.owner.frame = CGRectMake(16, 29, mapTitleW, 16);
+    self.owner.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
+    self.owner.adjustsFontSizeToFitWidth = YES;
+    self.owner.minimumScaleFactor = 0.80;
+    self.owner.textColor = [UIColor colorWithRed:0.68 green:0.90 blue:1.0 alpha:0.90];
+    self.owner.text = @"GPS LIVE NAVIGATION • OBD2 TELEMETRY";
+
     // Map Container (Takes full width and height between Top Bar and Bottom Dock)
     CGFloat mapTop = 52;
     CGFloat navH = 68;
@@ -4158,16 +4171,21 @@ static NSUInteger gTRDUpdateTicks=0;
     CGFloat btnW = (w - 28 - 14) / (CGFloat)self.navButtons.count;
     for (int i = 0; i < self.navButtons.count; i++) {
       UIButton *b = self.navButtons[i];
+      BOOL active = (b.tag == 62);
       b.frame = CGRectMake(7 + i * btnW, 4, btnW - 6, navH - 8);
+      b.layer.cornerRadius = 10;
+      b.backgroundColor = active ? [accent colorWithAlphaComponent:0.16] : [UIColor clearColor];
       DashIcon *icon = (DashIcon *)[b viewWithTag:201];
       icon.frame = CGRectMake((btnW - 6 - 24) / 2.0, 8, 24, 24);
       UILabel *lbl = (UILabel *)[b viewWithTag:202];
       lbl.frame = CGRectMake(0, 34, btnW - 6, 20);
       lbl.font = [UIFont boldSystemFontOfSize:11.5];
+      lbl.textColor = active ? [UIColor whiteColor] : [UIColor colorWithWhite:0.86 alpha:1];
       lbl.textAlignment = NSTextAlignmentCenter;
       UIView *line = [b viewWithTag:203];
       line.frame = CGRectMake(8, navH - 12, btnW - 22, 2.5);
-      line.hidden = (b.tag != 62); // Highlight MAPS button
+      line.backgroundColor = accent;
+      line.hidden = !active;
     }
 
     [self.view bringSubviewToFront:self.heading];
@@ -4176,6 +4194,7 @@ static NSUInteger gTRDUpdateTicks=0;
     [self.view bringSubviewToFront:self.dayNightPill];
     [self.view bringSubviewToFront:self.topClockLabel];
     [self.view bringSubviewToFront:self.thaiVoicePill];
+    [self.view bringSubviewToFront:self.voicePill];
     [self.view bringSubviewToFront:self.settingsPill];
     [self.view bringSubviewToFront:self.mapContainer];
     [self.view bringSubviewToFront:self.navigation];
@@ -4228,12 +4247,12 @@ static NSUInteger gTRDUpdateTicks=0;
       [self.view addSubview:connPill];
     }
     connPill.hidden = NO;
-    connPill.frame = CGRectMake(212, barY - 5, 216, 34);
+    connPill.frame = CGRectMake(206, barY - 5, 208, 34);
     [self.view bringSubviewToFront:connPill];
 
     // Center Clock in Header (Balanced)
     self.clock.hidden = NO;
-    self.clock.frame = CGRectMake(434, barY, 78, 24);
+    self.clock.frame = CGRectMake(424, barY, 76, 24);
     self.clock.font = [UIFont fontWithName:@"HelveticaNeue-CondensedBold" size:20] ?: [UIFont boldSystemFontOfSize:20];
     self.clock.textColor = [UIColor whiteColor];
     self.clock.textAlignment = NSTextAlignmentCenter;
@@ -4637,20 +4656,20 @@ static NSUInteger gTRDUpdateTicks=0;
         rBg.layer.cornerRadius = 6;
         [self.driveTripCard addSubview:rBg];
 
-        UILabel *rL = [[UILabel alloc] initWithFrame:CGRectMake(14, ry, 108, 33)];
+        UILabel *rL = [[UILabel alloc] initWithFrame:CGRectMake(14, ry, 98, 33)];
         rL.tag = 871 + r;
-        rL.font = [UIFont boldSystemFontOfSize:14.0];
+        rL.font = [UIFont boldSystemFontOfSize:13.5];
         rL.adjustsFontSizeToFitWidth = YES;
-        rL.minimumScaleFactor = 0.88;
+        rL.minimumScaleFactor = 0.82;
         rL.textColor = [UIColor colorWithWhite:0.90 alpha:1];
         rL.text = rTitles[r];
         [self.driveTripCard addSubview:rL];
 
-        UILabel *rV = [[UILabel alloc] initWithFrame:CGRectMake(122, ry, tcW - 134, 33)];
+        UILabel *rV = [[UILabel alloc] initWithFrame:CGRectMake(114, ry, tcW - 126, 33)];
         rV.tag = 851 + r;
-        rV.font = [UIFont boldSystemFontOfSize:16.0];
+        rV.font = [UIFont boldSystemFontOfSize:15.5];
         rV.adjustsFontSizeToFitWidth = YES;
-        rV.minimumScaleFactor = 0.88;
+        rV.minimumScaleFactor = 0.78;
         rV.textAlignment = NSTextAlignmentRight;
         rV.textColor = (r == 2) ? [UIColor colorWithRed:0.35 green:0.98 blue:0.55 alpha:1] : [UIColor whiteColor];
         [self.driveTripCard addSubview:rV];
@@ -4837,43 +4856,29 @@ static NSUInteger gTRDUpdateTicks=0;
     // Top Bar
     UIColor *accent = TRDAccent();
     CGFloat barY = 12;
-    self.heading.hidden = NO;
-    self.heading.frame = CGRectMake(16, barY, 350, 22);
-    self.heading.font = [UIFont systemFontOfSize:19.0 weight:UIFontWeightHeavy];
-    self.heading.textColor = accent;
-    self.heading.text = [NSString stringWithFormat:@"PRIUS TRD  •  %@", TRDDriveModeName(TRDTheme)];
-    self.owner.hidden = NO;
-    self.owner.frame = CGRectMake(16, barY + 23, 410, 18);
-    self.owner.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightSemibold];
-    self.owner.adjustsFontSizeToFitWidth = YES;
-    self.owner.minimumScaleFactor = 0.85;
-    self.owner.textColor = [UIColor colorWithRed:0.68 green:0.90 blue:1.0 alpha:0.92];
-    self.owner.text = @"HYBRID SMART COCKPIT \u2022 OBD2 LIVE TELEMETRY";
-
-    CGFloat curRx = w - 16;
+    CGFloat curRx = w - 14;
     CGFloat pillH = 32;
 
-    curRx -= 108;
+    curRx -= 104;
     self.settingsPill.hidden = NO;
-    self.settingsPill.frame = CGRectMake(curRx, barY + 4, 108, pillH);
+    self.settingsPill.frame = CGRectMake(curRx, barY + 4, 104, pillH);
     self.settingsPill.layer.cornerRadius = 10;
     [self.settingsPill setTitle:@"⚙️ SETTINGS" forState:UIControlStateNormal];
 
-    curRx -= 80;
+    curRx -= 74;
     self.helpPill.hidden = NO;
-    self.helpPill.frame = CGRectMake(curRx, barY + 4, 74, pillH);
+    self.helpPill.frame = CGRectMake(curRx, barY + 4, 68, pillH);
     self.helpPill.layer.cornerRadius = 10;
 
-    curRx -= 64;
+    curRx -= 60;
     self.voicePill.hidden = NO;
-    self.voicePill.frame = CGRectMake(curRx, barY + 2, 58, pillH + 4);
+    self.voicePill.frame = CGRectMake(curRx, barY + 2, 54, pillH + 4);
     self.voicePill.layer.cornerRadius = 12;
     self.voicePill.titleLabel.font = [UIFont boldSystemFontOfSize:20.0];
-    [self.view bringSubviewToFront:self.voicePill];
 
     // Remove THAI VOICE pill on Home Mode; show Live Wi-Fi/Hotspot + Bluetooth/Speaker pill instead
     self.thaiVoicePill.hidden = YES;
-    curRx -= 190;
+    curRx -= 178;
     UIButton *connPillH = (UIButton *)[self.view viewWithTag:910];
     if (!connPillH) {
       connPillH = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -4889,26 +4894,41 @@ static NSUInteger gTRDUpdateTicks=0;
       [self.view addSubview:connPillH];
     }
     connPillH.hidden = NO;
-    connPillH.frame = CGRectMake(curRx, barY + 4, 182, pillH);
-    [self.view bringSubviewToFront:connPillH];
+    connPillH.frame = CGRectMake(curRx, barY + 4, 172, pillH);
 
-    curRx -= 64;
+    curRx -= 62;
     self.topClockLabel.hidden = NO;
-    self.topClockLabel.frame = CGRectMake(curRx, barY + 4, 58, pillH);
+    self.topClockLabel.frame = CGRectMake(curRx, barY + 4, 56, pillH);
     self.topClockLabel.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightBold];
     self.topClockLabel.layer.cornerRadius = 10;
     self.topClockLabel.text = [self.clockFormat stringFromDate:[NSDate date]];
 
-    curRx -= 90;
+    curRx -= 84;
     self.dayNightPill.hidden = NO;
-    self.dayNightPill.frame = CGRectMake(curRx, barY + 4, 84, pillH);
+    self.dayNightPill.frame = CGRectMake(curRx, barY + 4, 78, pillH);
     self.dayNightPill.layer.cornerRadius = 10;
     [self.dayNightPill setTitle:self.nightMode?@"🌙 NIGHT":@"☀️ DAY" forState:UIControlStateNormal];
 
-    curRx -= 142;
+    curRx -= 134;
     self.obdStatusPill.hidden = NO;
-    self.obdStatusPill.frame = CGRectMake(curRx, barY + 4, 136, pillH);
+    self.obdStatusPill.frame = CGRectMake(curRx, barY + 4, 128, pillH);
     self.obdStatusPill.layer.cornerRadius = 10;
+
+    CGFloat homeTitleW = MAX(220.0, curRx - 26.0);
+    self.heading.hidden = NO;
+    self.heading.frame = CGRectMake(16, barY, homeTitleW, 22);
+    self.heading.font = [UIFont systemFontOfSize:18.5 weight:UIFontWeightHeavy];
+    self.heading.adjustsFontSizeToFitWidth = YES;
+    self.heading.minimumScaleFactor = 0.78;
+    self.heading.textColor = accent;
+    self.heading.text = [NSString stringWithFormat:@"PRIUS TRD  •  %@", TRDDriveModeName(TRDTheme)];
+    self.owner.hidden = NO;
+    self.owner.frame = CGRectMake(16, barY + 23, homeTitleW, 18);
+    self.owner.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
+    self.owner.adjustsFontSizeToFitWidth = YES;
+    self.owner.minimumScaleFactor = 0.78;
+    self.owner.textColor = [UIColor colorWithRed:0.68 green:0.90 blue:1.0 alpha:0.92];
+    self.owner.text = @"HYBRID COCKPIT \u2022 OBD2 TELEMETRY";
 
     UIColor *outerGlassBg = [UIColor colorWithRed:0.032 green:0.050 blue:0.080 alpha:1.0];
     UIColor *innerGlassBg = [UIColor colorWithRed:0.055 green:0.085 blue:0.130 alpha:1.0];
@@ -4983,12 +5003,18 @@ static NSUInteger gTRDUpdateTicks=0;
       [self.compassLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(cycleDriveWidgetMode)]];
     }
     UILabel *ecoH = (UILabel *)[self.homeAiEcoCard viewWithTag:501];
-    if (ecoH) ecoH.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
+    if (ecoH) {
+      ecoH.frame = CGRectMake(10, 6, leftW - 36, 22);
+      ecoH.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
+    }
     UILabel *ecoS = (UILabel *)[self.homeAiEcoCard viewWithTag:502];
-    if (ecoS) ecoS.font = [UIFont monospacedDigitSystemFontOfSize:15.5 weight:UIFontWeightBold];
+    if (ecoS) {
+      ecoS.frame = CGRectMake(10, 29, leftW - 36, 24);
+      ecoS.font = [UIFont monospacedDigitSystemFontOfSize:15.5 weight:UIFontWeightBold];
+    }
     UILabel *ecoD = (UILabel *)[self.homeAiEcoCard viewWithTag:503];
     if (ecoD) {
-      ecoD.frame = CGRectMake(12, 54, leftW - 44, 118);
+      ecoD.frame = CGRectMake(10, 54, leftW - 36, 118);
       ecoD.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
       ecoD.textColor = [UIColor colorWithWhite:0.94 alpha:1];
     }
@@ -5002,7 +5028,11 @@ static NSUInteger gTRDUpdateTicks=0;
     self.homeThermalsCard.layer.borderColor = innerGlassBorder;
     for (NSInteger tTag = 601; tTag <= 603; tTag++) {
       UILabel *tr = (UILabel *)[self.homeThermalsCard viewWithTag:tTag];
-      if (tr) tr.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
+      if (tr) {
+        CGFloat rowY = 8.0 + (tTag - 601) * 58.0;
+        tr.frame = CGRectMake(10, rowY, leftW - 36, 54);
+        tr.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
+      }
     }
 
     // 2. CENTER ZONE (Two Symmetric Cards matching Left & Right Top/Bottom borders!)
@@ -5319,11 +5349,11 @@ static NSUInteger gTRDUpdateTicks=0;
     tCard.frame = CGRectMake(rightX + 10, topY + 426, rightW - 20, 186);
     UILabel *tbLbl = (UILabel *)[tCard viewWithTag:713];
     if (tbLbl) {
-      tbLbl.frame = CGRectMake(12, 38, rightW - 40, 140);
+      tbLbl.frame = CGRectMake(10, 38, rightW - 36, 142);
       tbLbl.numberOfLines = 6;
       tbLbl.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
       tbLbl.adjustsFontSizeToFitWidth = YES;
-      tbLbl.minimumScaleFactor = 0.88;
+      tbLbl.minimumScaleFactor = 0.85;
     }
     [self refreshDriveTripDisplay];
 
@@ -5362,6 +5392,8 @@ static NSUInteger gTRDUpdateTicks=0;
     [self.view bringSubviewToFront:self.obdStatusPill];
     [self.view bringSubviewToFront:self.dayNightPill];
     [self.view bringSubviewToFront:self.thaiVoicePill];
+    if (connPillH) [self.view bringSubviewToFront:connPillH];
+    [self.view bringSubviewToFront:self.voicePill];
     [self.view bringSubviewToFront:self.settingsPill];
     [self.view bringSubviewToFront:self.helpPill];
     [self.view bringSubviewToFront:self.readyPill];
@@ -5792,7 +5824,7 @@ static NSUInteger gTRDUpdateTicks=0;
  self.artPlaceholder.hidden=self.focused||self.artwork.image!=nil;
 }
 -(void)releaseArtwork{self.artwork.image=nil;self.artworkData=nil;self.artworkLen=0;self.artworkSig=0;self.artPlaceholder.hidden=self.focused;}
--(void)didReceiveMemoryWarning{[super didReceiveMemoryWarning];self.memoryWarnings++;[self releaseArtwork];[[NSURLCache sharedURLCache]removeAllCachedResponses];[self hideWelcome];[self.settingsSheet dismiss];if(!self.mapMode&&!self.carplayMode&&self.mapWebView){[self.mapWebView stopLoading];[self.mapWebView removeFromSuperview];self.mapWebView.delegate=nil;self.mapWebView=nil;}}
+-(void)didReceiveMemoryWarning{[super didReceiveMemoryWarning];self.memoryWarnings++;[self releaseArtwork];[[NSURLCache sharedURLCache]removeAllCachedResponses];[self hideWelcome];[self.settingsSheet dismiss];if(!self.mapMode&&!self.carplayMode&&self.mapWebView){[self teardownMapWebView];}size_t (*relief)(void *, size_t)=(size_t (*)(void *, size_t))dlsym(RTLD_DEFAULT,"malloc_zone_pressure_relief");if(relief)relief(NULL,0);}
 -(NSString *)trackTimeString:(double)value{if(!isfinite(value)||value<0)return @"--:--";long long n=(long long)value;return n>=3600?[NSString stringWithFormat:@"%lld:%02lld:%02lld",n/3600,n/60%60,n%60]:[NSString stringWithFormat:@"%lld:%02lld",n/60,n%60];}
 -(void)refreshTrackProgress{
  if(self.radioPlayer){
@@ -6214,6 +6246,7 @@ static NSUInteger gTRDUpdateTicks=0;
   self.radioPlayer=nil;
  }
  if(!url.length){
+  [self setCarDashRemoteControlEnabled:NO];
   self.currentRadioStation=nil;
   self.currentRadioURL=nil;
   self.song.text=@"Radio stopped";
@@ -6224,11 +6257,17 @@ static NSUInteger gTRDUpdateTicks=0;
   return;
  }
 
+ [self setCarDashRemoteControlEnabled:YES];
  self.currentRadioStation=name;
  self.currentRadioURL=url;
  self.song.text=[NSString stringWithFormat:@"[CONNECTING...] %@", name];
  self.artist.text=@"Buffering live stream...";
  self.sourceBadge.text=@"RADIO";
+ [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo=@{
+  MPMediaItemPropertyTitle:name?:@"Live Radio",
+  MPMediaItemPropertyArtist:@"PRIUS TRD • Live Radio",
+  MPNowPlayingInfoPropertyPlaybackRate:@(1.0)
+ };
  [self refreshTransportState];
  [self refreshMini];
 
@@ -7026,9 +7065,12 @@ static NSUInteger gTRDUpdateTicks=0;
    [ud synchronize];
    [[NSURLCache sharedURLCache] removeAllCachedResponses];
    [strongSelf releaseArtwork];
+   if(strongSelf.mapWebView)[strongSelf teardownMapWebView];
+   size_t (*relief)(void *, size_t)=(size_t (*)(void *, size_t))dlsym(RTLD_DEFAULT,"malloc_zone_pressure_relief");
+   if(relief)relief(NULL,0);
    trd_run_bg("killall -9 YTNine Maps 2>/dev/null");
    if([UIApplication sharedApplication].applicationState==UIApplicationStateBackground){
-    if(strongSelf.radioPlayer){[strongSelf.radioPlayer pause];strongSelf.radioPlayer=nil;}
+    if(strongSelf.radioPlayer){[strongSelf.radioPlayer pause];strongSelf.radioPlayer=nil;[strongSelf setCarDashRemoteControlEnabled:NO];}
     notify_post("com.codex.trd.youtube.pause");
     Boolean (*pCmd)(int,id)=dlsym(RTLD_DEFAULT,"MRMediaRemoteSendCommand");
     if(!pCmd||!pCmd(1,nil))[strongSelf send:@"libactivator.ipod.pause-playback"];
@@ -7796,6 +7838,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  [self prepareForExternalAppLaunch];
  self.radioGeneration++;
  if(self.radioPlayer){[self.radioPlayer pause];[self.radioPlayer replaceCurrentItemWithPlayerItem:nil];self.radioPlayer=nil;}
+ [self setCarDashRemoteControlEnabled:NO];
  [self logNavigation:@"opening YouTube (ytnine)"];
  notify_post("com.codex.trd.network.internet.force");
  [self send:@"com.himais0giiiin.ytnine"];
@@ -7982,7 +8025,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  }
 }
 -(void)homePage{[self cancelNavigationTouch:nil forEvent:nil];self.mapConfirmationGeneration++;self.mapURLRequestGeneration++;self.mapNavigationAuthorized=NO;self.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.12;[self hideFeatureExplanation];[self dismissLowFuelBanner];if(self.welcome)[self hideWelcome];if(self.tripSummaryCard){[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideTripSummary) object:nil];[self.tripSummaryCard removeFromSuperview];self.tripSummaryCard=nil;}notify_post("com.codex.trd.network.internet");[self.settingsSheet dismiss];[self ensureActiveRunLoopHealth];self.mapContainer.hidden=YES;self.tripMode=NO;self.mapMode=NO;self.carplayMode=NO;self.carplayGridMode=NO;if(self.driveMode){self.autoDriveSuppressed=YES;self.movingSince=nil;[self.driveCar stop];}self.manualDriveActive=NO;self.driveMode=NO;self.musicMode=NO;self.focused=NO;self.returnTap.enabled=NO;self.song.numberOfLines=1;self.heading.hidden=NO;self.owner.hidden=NO;self.modeButton.hidden=NO;self.driveButton.hidden=NO;self.nightButton.hidden=NO;self.statusStrip.hidden=NO;[self.driveButton setTitle:@"DRIVE MODE" forState:UIControlStateNormal];[self.view setNeedsLayout];}
--(void)openMusic{self.offlinePlaybackActive=NO;if(self.radioPlayer){[self.radioPlayer pause];self.radioPlayer=nil;}notify_post("com.codex.trd.network.internet.force");[self showMusicSources:nil];}
+-(void)openMusic{self.offlinePlaybackActive=NO;if(self.radioPlayer){[self.radioPlayer pause];[self.radioPlayer replaceCurrentItemWithPlayerItem:nil];self.radioPlayer=nil;}[self setCarDashRemoteControlEnabled:NO];notify_post("com.codex.trd.network.internet.force");[self showMusicSources:nil];}
 -(void)executeOrQueueMapJS:(NSString *)js{
   if(!js.length) return;
   if(self.mapWebView && self.mapWebView.request && !self.mapWebView.loading){
@@ -8379,6 +8422,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  // Clear any stale pending download-play-request so audioNINJA never hijacks on next open
  [[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/download-play-request.plist" error:nil];
 
+ [self setCarDashRemoteControlEnabled:YES];
  self.song.text=title;
  self.artist.text=self.currentOfflineArtist;
  self.sourceBadge.text=@"OFFLINE";
@@ -8444,6 +8488,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(![self acceptNavigationTouch:button forEvent:event])return;
  self.offlinePlaybackActive=NO;
  if(self.radioPlayer){[self.radioPlayer pause];[self.radioPlayer replaceCurrentItemWithPlayerItem:nil];self.radioPlayer=nil;}
+ [self setCarDashRemoteControlEnabled:NO];
  TRDSendMediaRemoteExternal(1,^{ [self send:@"libactivator.ipod.pause-playback"]; });
  if(button.tag==1){[self openYouTubeSource];return;}
  if(button.tag==2){[self browseSource:@"com.legacymusic.app"];return;}
@@ -9881,14 +9926,13 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     if(![ecoS.text isEqualToString:t]) ecoS.text = t;
    }
    if(ecoD){
-    NSString *thrState = (obd.engineRPM > 1850) ? @"เร่งแรง (POWER)" : (obd.engineRPM > 100) ? @"กำลังขับปกติ (Hybrid)" : @"โหมดไฟฟ้าเงียบ (EV)";
-    NSString *regState = (obd.hvPackCurrent < -0.5) ? [NSString stringWithFormat:@"ชาร์จคืนแบต %.1f kW", obd.regenBrakingPowerKW] : @"พร้อมปั่นไฟชะลอ";
-    NSString *brkState = obd.brakeFluidNormal ? @"แรงดันเบรกปกติ" : @"⚠️ ตรวจเช็กระบบเบรก";
-    NSString *t = [NSString stringWithFormat:@"• HYBRID: %@\n• THROTTLE: %@\n• REGEN: %@\n• แตะการ์ดเพื่อสลับ Widget ▸", obd.isConnected ? @"LIVE OBD2" : @"STANDBY", thrState, regState];
-    (void)brkState;
+    NSString *thrState = (obd.engineRPM > 1850) ? @"เร่งแรง (PWR)" : (obd.engineRPM > 100) ? @"ขับปกติ (Hybrid)" : @"ไฟฟ้าเงียบ (EV)";
+    NSString *regState = (obd.hvPackCurrent < -0.5) ? [NSString stringWithFormat:@"ชาร์จคืน %.1f kW", obd.regenBrakingPowerKW] : @"พร้อมปั่นไฟชะลอ";
+    NSString *t = [NSString stringWithFormat:@"• HYBRID: %@\n• THROTTLE: %@\n• REGEN: %@\n• แตะสลับโหมดการ์ด ▸", obd.isConnected ? @"LIVE OBD2" : @"STANDBY", thrState, regState];
     if(![ecoD.text isEqualToString:t]){
      NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-     ps.lineSpacing = 8.0;
+     ps.lineSpacing = 7.5;
+     ps.lineBreakMode = NSLineBreakByTruncatingTail;
      ecoD.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor colorWithWhite:0.94 alpha:1], NSParagraphStyleAttributeName: ps}];
     }
    }
@@ -9909,10 +9953,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     if(![ecoS.text isEqualToString:t]) ecoS.text = t;
    }
    if(ecoD){
-    NSString *t = [NSString stringWithFormat:@"• แบต HV: %.1f°C (พัดลมดูด %.0f°C)\n• มอเตอร์ MG2: %.0f°C • 12V: %.2fV\n• ชิป A7: %@\n• แตะการ์ดเพื่อสลับ Widget ▸", obd.hvBatteryTempC, obd.hvIntakeTempC, obd.mg2TempC, obd.auxBatteryVoltage, a7State];
+    NSString *t = [NSString stringWithFormat:@"• แบต HV: %.1f°C (ลม %.0f°C)\n• MG2: %.0f°C • ไฟ 12V: %.2fV\n• ชิป A7: %@\n• แตะสลับโหมดการ์ด ▸", obd.hvBatteryTempC, obd.hvIntakeTempC, obd.mg2TempC, obd.auxBatteryVoltage, a7State];
     if(![ecoD.text isEqualToString:t]){
      NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-     ps.lineSpacing = 8.0;
+     ps.lineSpacing = 7.5;
+     ps.lineBreakMode = NSLineBreakByTruncatingTail;
      ecoD.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor colorWithWhite:0.94 alpha:1], NSParagraphStyleAttributeName: ps}];
     }
    }
@@ -9938,7 +9983,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   UILabel *tRow2 = (UILabel *)[self.homeThermalsCard viewWithTag:602];
   UILabel *tRow3 = (UILabel *)[self.homeThermalsCard viewWithTag:603];
   NSMutableParagraphStyle *tps = [[NSMutableParagraphStyle alloc] init];
-  tps.lineSpacing = 6.0;
+  tps.lineSpacing = 5.5;
+  tps.lineBreakMode = NSLineBreakByTruncatingTail;
   UIFont *tFont = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
   if(tRow1){
    NSString *ectStatus = (obd.coolantTempC >= 98.0) ? @"สูง" : (obd.coolantTempC >= 40.0) ? @"ปกติ" : @"อุ่นเครื่อง";
@@ -9946,7 +9992,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
    if(![tRow1.text isEqualToString:t]) tRow1.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: tFont, NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: tps}];
   }
   if(tRow2){
-   NSString *t = [NSString stringWithFormat:@"❄️ CABIN A/C : %.1f°C • EXT %.0f°C\n     INV : %.0f°C • HV AIR %.1f°C", obd.cabinTempC, obd.exteriorTempC, obd.inverterTempC, obd.hvIntakeTempC];
+   NSString *t = [NSString stringWithFormat:@"❄️ CABIN : %.1f°C • EXT %.0f°C\n     INV : %.0f°C • HV AIR %.1f°C", obd.cabinTempC, obd.exteriorTempC, obd.inverterTempC, obd.hvIntakeTempC];
    if(![tRow2.text isEqualToString:t]) tRow2.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: tFont, NSForegroundColorAttributeName: [UIColor colorWithRed:0.65 green:0.94 blue:1.0 alpha:1], NSParagraphStyleAttributeName: tps}];
   }
   if(tRow3){
@@ -10293,7 +10339,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 @property(nonatomic,strong) UIWindow *window;
 @end
 @implementation CarApp
--(BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options{[NSURLCache setSharedURLCache:[[NSURLCache alloc]initWithMemoryCapacity:4*1024*1024 diskCapacity:32*1024*1024 diskPath:@"TRDMapTileCache"]];self.window=[[TRDWindow alloc]initWithFrame:[UIScreen mainScreen].bounds];self.window.rootViewController=[Dashboard new];[self.window makeKeyAndVisible];[self performSelector:@selector(carStartAutoplay) withObject:nil afterDelay:4.0];return YES;}
+-(BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options{[NSURLCache setSharedURLCache:[[NSURLCache alloc]initWithMemoryCapacity:2*1024*1024 diskCapacity:24*1024*1024 diskPath:@"TRDMapTileCache"]];self.window=[[TRDWindow alloc]initWithFrame:[UIScreen mainScreen].bounds];self.window.rootViewController=[Dashboard new];[self.window makeKeyAndVisible];[self performSelector:@selector(carStartAutoplay) withObject:nil afterDelay:4.0];return YES;}
 -(void)carStartAutoplay{
  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive)return;
  Dashboard *v=(Dashboard *)self.window.rootViewController;
