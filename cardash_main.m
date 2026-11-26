@@ -4997,7 +4997,7 @@ static NSUInteger gTRDUpdateTicks=0;
     self.homeThermalsCard.layer.borderColor = innerGlassBorder;
     for (NSInteger tTag = 601; tTag <= 603; tTag++) {
       UILabel *tr = (UILabel *)[self.homeThermalsCard viewWithTag:tTag];
-      if (tr) tr.font = [UIFont monospacedDigitSystemFontOfSize:13.0 weight:UIFontWeightSemibold];
+      if (tr) tr.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
     }
 
     // 2. CENTER ZONE (Two Symmetric Cards matching Left & Right Top/Bottom borders!)
@@ -5213,14 +5213,14 @@ static NSUInteger gTRDUpdateTicks=0;
     UILabel *ptLbl = (UILabel *)[pCard viewWithTag:702];
     if (ptLbl) {
       ptLbl.frame = CGRectMake(10, 8, rightW - 36, 22);
-      ptLbl.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+      ptLbl.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
       ptLbl.textColor = accent;
       ptLbl.text = @"⚡ POWERTRAIN & HV • 7EA";
     }
     UILabel *pbLbl = (UILabel *)[pCard viewWithTag:703];
     if (pbLbl) {
       pbLbl.frame = CGRectMake(10, 34, rightW - 36, 74);
-      pbLbl.font = [UIFont monospacedDigitSystemFontOfSize:13.0 weight:UIFontWeightSemibold];
+      pbLbl.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
     }
 
     self.blockGraphView.hidden = NO;
@@ -5269,7 +5269,7 @@ static NSUInteger gTRDUpdateTicks=0;
     UILabel *mlLbl = (UILabel *)[mCard viewWithTag:708];
     if (mlLbl) {
       mlLbl.frame = CGRectMake(12, 8, rightW - 40, 162);
-      mlLbl.font = [UIFont boldSystemFontOfSize:14.0];
+      mlLbl.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
       mlLbl.adjustsFontSizeToFitWidth = YES;
       mlLbl.minimumScaleFactor = 0.88;
     }
@@ -5316,7 +5316,7 @@ static NSUInteger gTRDUpdateTicks=0;
     if (tbLbl) {
       tbLbl.frame = CGRectMake(12, 38, rightW - 40, 140);
       tbLbl.numberOfLines = 6;
-      tbLbl.font = [UIFont boldSystemFontOfSize:14.0];
+      tbLbl.font = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
       tbLbl.adjustsFontSizeToFitWidth = YES;
       tbLbl.minimumScaleFactor = 0.88;
     }
