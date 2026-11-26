@@ -160,6 +160,19 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
 @property (nonatomic, copy) NSString *lastLoggedCAN614Hex;
 @property (nonatomic, assign) NSUInteger can614Misses;
 @property (nonatomic, strong) NSDate *lastCAN614At;
+@property (nonatomic, assign, readwrite) BOOL autoHVFanBoostEnabled;
+@property (nonatomic, assign, readwrite) NSInteger manualHVFanSpeed;
+@property (nonatomic, assign, readwrite) NSInteger activeHVFanCommanded;
+@property (nonatomic, strong) NSDate *lastHVFanKeepAliveAt;
+@property (nonatomic, assign, readwrite) NSInteger reverseBeepMode;
+@property (nonatomic, copy, readwrite) NSString *reverseBeepStatusText;
+@property (nonatomic, assign, readwrite) BOOL dtcScanInProgress;
+@property (nonatomic, strong) NSMutableArray<NSString *> *mutableDetectedDTCs;
+@property (nonatomic, copy, readwrite) NSArray<NSString *> *detectedDTCs;
+@property (nonatomic, copy, readwrite) NSString *lastDTCScanTimeText;
+@property (nonatomic, assign, readwrite) CGFloat sessionPeakHVTempC;
+@property (nonatomic, assign, readwrite) CGFloat sessionPeakDeltaV;
+@property (nonatomic, strong) NSDate *lastHVThermalLogAt;
 @end
 
 @implementation TRDOBDClient
@@ -212,6 +225,15 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
         _autoDoorLockEnabled = [prefs objectForKey:@"TRDAutoDoorLockEnabled"] ? [prefs boolForKey:@"TRDAutoDoorLockEnabled"] : NO;
         _autoDoorUnlockOnParkEnabled = [prefs objectForKey:@"TRDAutoDoorUnlockOnParkEnabled"] ? [prefs boolForKey:@"TRDAutoDoorUnlockOnParkEnabled"] : NO;
+        _autoHVFanBoostEnabled = [prefs objectForKey:@"TRDAutoHVFanBoostEnabled"] ? [prefs boolForKey:@"TRDAutoHVFanBoostEnabled"] : YES;
+        _manualHVFanSpeed = [prefs integerForKey:@"TRDManualHVFanSpeed"];
+        if (_manualHVFanSpeed < 0 || _manualHVFanSpeed > 6) _manualHVFanSpeed = 0;
+        _activeHVFanCommanded = 0;
+        _reverseBeepMode = [prefs objectForKey:@"TRDReverseBeepMode"] ? [prefs integerForKey:@"TRDReverseBeepMode"] : -1;
+        _reverseBeepStatusText = (_reverseBeepMode == 1) ? @"ดังติ๊ดเดียว (Single Beep)" : ((_reverseBeepMode == 0) ? @"ดังต่อเนื่อง (โรงงาน)" : @"ยังไม่ได้อ่านค่า");
+        _mutableDetectedDTCs = [NSMutableArray array];
+        _detectedDTCs = @[];
+        _lastDTCScanTimeText = @"ยังไม่ได้สแกนในรอบนี้";
         _selectedFuelTypeIndex = [prefs integerForKey:@"TRDSelectedFuelTypeIndex"];
         if (_selectedFuelTypeIndex < 0 || _selectedFuelTypeIndex > 3) _selectedFuelTypeIndex = 0;
         
@@ -265,13 +287,17 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     });
     dispatch_async(sLogQueue, ^{
         @autoreleasepool {
+            static NSUInteger sLogWriteCounter = 0;
+            sLogWriteCounter++;
             NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [df stringFromDate:now], msg];
             NSFileManager *fm = [NSFileManager defaultManager];
-            NSDictionary *attrs = [fm attributesOfItemAtPath:kTRDOBDDebugLogPath error:nil];
-            if (attrs && [attrs fileSize] > 48 * 1024) {
-                if (![fm fileExistsAtPath:kTRDOBDPreviousDebugLogPath] ||
-                    [fm removeItemAtPath:kTRDOBDPreviousDebugLogPath error:nil]) {
-                    [fm moveItemAtPath:kTRDOBDDebugLogPath toPath:kTRDOBDPreviousDebugLogPath error:nil];
+            if ((sLogWriteCounter % 50) == 1) {
+                NSDictionary *attrs = [fm attributesOfItemAtPath:kTRDOBDDebugLogPath error:nil];
+                if (attrs && [attrs fileSize] > 40 * 1024) {
+                    if (![fm fileExistsAtPath:kTRDOBDPreviousDebugLogPath] ||
+                        [fm removeItemAtPath:kTRDOBDPreviousDebugLogPath error:nil]) {
+                        [fm moveItemAtPath:kTRDOBDDebugLogPath toPath:kTRDOBDPreviousDebugLogPath error:nil];
+                    }
                 }
             }
             if (![fm fileExistsAtPath:kTRDOBDDebugLogPath]) {
@@ -591,6 +617,11 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     if (self.pollingTimer) {
         [self.pollingTimer invalidate];
         self.pollingTimer = nil;
+    }
+    if (self.activePeripheral && self.centralManager) {
+        CBPeripheral *pStop = self.activePeripheral;
+        [self resetConnectionStateWithStatus:@"Standby (Engine Off)"];
+        [self.centralManager cancelPeripheralConnection:pStop];
     }
 }
 
@@ -1069,7 +1100,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     CBCharacteristicWriteType writeType = (self.writeCharacteristic.properties & CBCharacteristicPropertyWriteWithoutResponse) ? CBCharacteristicWriteWithoutResponse : CBCharacteristicWriteWithResponse;
     self.waitingForResponse = YES;
     self.lastCmdSentAt = [NSDate date];
-    if (self.rawLogCount < 80) {
+    if (self.rawLogCount < 16) {
         [self obdLog:@"TX: %@", cmd];
     }
     [self.activePeripheral writeValue:data forCharacteristic:self.writeCharacteristic type:writeType];
@@ -1304,15 +1335,40 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         }
     }
 
-    // Priority one-shot Body ECU commands (e.g. Prius 0x750 door lock/unlock)
+    // Priority one-shot ECU commands (Door lock 750, HV Fan 7E2, DTC Scan/Clear, Reverse Beep 7C0)
     if (self.canMonitorPhase == 0 && self.pendingBodyCommands.count > 0) {
         NSString *bodyCmd = self.pendingBodyCommands.firstObject;
         [self.pendingBodyCommands removeObjectAtIndex:0];
+        if ([bodyCmd isEqualToString:@"__DTC_DONE__"]) {
+            self.dtcScanInProgress = NO;
+            self.detectedDTCs = [self.mutableDetectedDTCs copy];
+            NSDateFormatter *df = [[NSDateFormatter alloc] init];
+            df.dateFormat = @"HH:mm:ss";
+            self.lastDTCScanTimeText = [NSString stringWithFormat:@"สแกนล่าสุด %@", [df stringFromDate:[NSDate date]]];
+            if (self.detectedDTCs.count > 0) {
+                [self archiveDetectedDTCsToHistory:self.detectedDTCs];
+            }
+            [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+            [self scheduleImmediatePoll];
+            return;
+        }
         if ([bodyCmd hasPrefix:@"ATSH "]) {
             self.activeCANHeader = [bodyCmd substringFromIndex:5];
         }
         [self sendCommand:bodyCmd];
         return;
+    }
+
+    // Smart HV Battery Cooling Fan keep-alive (piggybacks cleanly when 7E2 is active, 0 extra header switch!)
+    if (self.canMonitorPhase == 0 && [self.activeCANHeader isEqualToString:@"7E2"]) {
+        NSInteger desiredFan = [self desiredHVFanSpeedForCurrentTemp];
+        NSTimeInterval fanAge = self.lastHVFanKeepAliveAt ? [[NSDate date] timeIntervalSinceDate:self.lastHVFanKeepAliveAt] : 999.0;
+        if ((desiredFan > 0 && fanAge >= 4.2) || (desiredFan == 0 && self.activeHVFanCommanded > 0)) {
+            self.lastHVFanKeepAliveAt = [NSDate date];
+            self.activeHVFanCommanded = desiredFan;
+            [self sendCommand:[NSString stringWithFormat:@"3081%02ld", (long)desiredFan]];
+            return;
+        }
     }
 
     // CAN 0x127 (GEAR_PACKET) / 0x620 (SEATS_DOORS) passive snapshot sequence at end of cycle
@@ -1671,7 +1727,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         self.waitingForResponse = NO;
         self.consecutiveTimeouts = 0;
 
-        if (self.rawLogCount < 80) {
+        if (self.rawLogCount < 16) {
             self.rawLogCount++;
             NSString *compact = [[frame stringByReplacingOccurrencesOfString:@"\r" withString:@"|"] stringByReplacingOccurrencesOfString:@"\n" withString:@""];
             [self obdLog:@"RX[%lu]: %@", (unsigned long)self.rawLogCount, compact];
@@ -1964,6 +2020,10 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         double t3  = (([b[6] unsignedIntValue] * 256.0) + [b[7] unsignedIntValue]) * scale - 50.0;
         self.hvIntakeTempC = (CGFloat)tIn;
         self.hvBatteryTempC = (CGFloat)((t1 + t2 + t3) / 3.0);
+        if (self.hvBatteryTempC > self.sessionPeakHVTempC && self.hvBatteryTempC < 95.0) {
+            self.sessionPeakHVTempC = self.hvBatteryTempC;
+        }
+        [self recordHVThermalSpikeIfNeeded];
         if (!self.hasLive7C4CabinTemp) {
             self.cabinTempC = self.hvIntakeTempC;
         }
@@ -1985,6 +2045,11 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         self.hvBlockVoltages = blocks;
         self.hvBlockMinV = minV;
         self.hvBlockMaxV = maxV;
+        CGFloat curDV = MAX(0.0, maxV - minV);
+        if (maxV > 5.0 && curDV > self.sessionPeakDeltaV) {
+            self.sessionPeakDeltaV = curDV;
+        }
+        [self recordHVThermalSpikeIfNeeded];
         self.hvPackVoltage = (CGFloat)((([b[30] unsignedIntValue] * 256.0) + [b[31] unsignedIntValue]) / 10.0);
         [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
         return;
@@ -1994,6 +2059,30 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     if ((b = [self bytesFromHex:hex afterPrefix:@"6198" minBytes:5])) {
         self.hvDeltaSOC = (CGFloat)([b[4] unsignedIntValue] / 2.0);
         [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+        return;
+    }
+
+    // 7C0 21AC / 3BAC: Prius Gen 3 Combination Meter Reverse Beep Status
+    if ([self.activeCANHeader isEqualToString:@"7C0"] && [hex hasPrefix:@"61AC"] && hex.length >= 6) {
+        unsigned int modeByte = 0;
+        [[NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(4, 2)]] scanHexInt:&modeByte];
+        self.reverseBeepMode = (modeByte == 0x40) ? 1 : 0;
+        self.reverseBeepStatusText = (self.reverseBeepMode == 1) ? @"ดังติ๊ดเดียว (Single Beep)" : @"ดังต่อเนื่อง (โรงงาน)";
+        [[NSUserDefaults standardUserDefaults] setInteger:self.reverseBeepMode forKey:@"TRDReverseBeepMode"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        [self obdLog:@"7C0_61AC ReverseBeep -> 0x%02X (%@)", modeByte, self.reverseBeepStatusText];
+        [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+        return;
+    }
+    if ([self.activeCANHeader isEqualToString:@"7C0"] && [hex hasPrefix:@"7BAC"]) {
+        [self obdLog:@"7C0_7BAC ReverseBeep write ACK (%@)", hex];
+        [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+        return;
+    }
+
+    // Mode 03 (43...) / Mode 07 (47...) / Toyota 13 (53...) Diagnostic Trouble Codes
+    if ([hex hasPrefix:@"43"] || [hex hasPrefix:@"47"] || ([self.activeCANHeader isEqualToString:@"7B0"] && [hex hasPrefix:@"53"])) {
+        [self parseDTCFrameHex:hex ecuHeader:self.activeCANHeader ?: @"ECU" isPending:[hex hasPrefix:@"47"]];
         return;
     }
 }
@@ -2055,6 +2144,256 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
             [self requestDoorLock:NO];
         }
     }
+}
+
+#pragma mark - Smart HV Cooling Fan, DTC Scanner & Reverse Beep (Prius ZVW30)
+
+- (NSInteger)desiredHVFanSpeedForCurrentTemp {
+    if (self.manualHVFanSpeed >= 1 && self.manualHVFanSpeed <= 6) {
+        return self.manualHVFanSpeed;
+    }
+    if (!self.autoHVFanBoostEnabled || self.hvBatteryTempC <= 1.0) {
+        return 0;
+    }
+    CGFloat t = self.hvBatteryTempC;
+    if (t >= 41.0) return 6;
+    if (t >= 38.5) return 5;
+    if (t >= 36.8) return 3;
+    if (t <= 35.5) return 0;
+    return self.activeHVFanCommanded;
+}
+
+- (void)setAutoHVFanBoostEnabled:(BOOL)enabled {
+    _autoHVFanBoostEnabled = enabled;
+    NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
+    [prefs setBool:enabled forKey:@"TRDAutoHVFanBoostEnabled"];
+    [prefs synchronize];
+    if (!enabled && self.manualHVFanSpeed == 0 && self.activeHVFanCommanded > 0 && self.isConnected && self.obdInitialized) {
+        self.activeHVFanCommanded = 0;
+        [self.pendingBodyCommands addObjectsFromArray:@[@"ATSH 7E2", @"308100", @"ATSH 7DF"]];
+    }
+    [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+}
+
+- (void)setManualHVFanSpeed:(NSInteger)speed {
+    if (speed < 0 || speed > 6) speed = 0;
+    _manualHVFanSpeed = speed;
+    NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
+    [prefs setInteger:speed forKey:@"TRDManualHVFanSpeed"];
+    [prefs synchronize];
+    if (self.isConnected && self.obdInitialized) {
+        NSInteger target = [self desiredHVFanSpeedForCurrentTemp];
+        self.activeHVFanCommanded = target;
+        self.lastHVFanKeepAliveAt = [NSDate date];
+        [self.pendingBodyCommands addObjectsFromArray:@[
+            @"ATSH 7E2",
+            [NSString stringWithFormat:@"3081%02ld", (long)target],
+            @"ATSH 7DF"
+        ]];
+    }
+    [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+}
+
++ (NSString *)thaiDescriptionForPriusDTC:(NSString *)code {
+    static NSDictionary<NSString *, NSString *> *map = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        map = @{
+            @"P0A80": @"แบตเตอรี่ไฮบริดเสื่อมสภาพ / แรงดันบล็อกต่างกันเกินเกณฑ์",
+            @"P0A7F": @"ชุดแบตเตอรี่ไฮบริดเริ่มเสื่อมตามอายุการใช้งาน",
+            @"P0A81": @"พัดลมระบายความร้อนแบตไฮบริดชุดที่ 1 ผิดปกติ",
+            @"P0A82": @"พัดลมระบายความร้อนแบตไฮบริดทำงานติดขัด / อุดตัน",
+            @"P0A84": @"วงจรพัดลมแบตไฮบริดแรงดันต่ำผิดปกติ",
+            @"P0A93": @"ปั๊มน้ำระบายความร้อนอินเวอร์เตอร์ทำงานผิดปกติ (ควรจอดพักทันที)",
+            @"P0A94": @"ชุดอินเวอร์เตอร์ / DC-DC Converter ขัดข้อง",
+            @"P0AA6": @"ตรวจพบไฟรั่วในระบบแรงดันสูง Hybrid Isolation Fault",
+            @"P261B": @"ปั๊มน้ำไฟฟ้าเครื่องยนต์เสีย / รอบปั๊มน้ำผิดปกติ",
+            @"P261C": @"วงจรปั๊มน้ำไฟฟ้าเครื่องยนต์สัญญาณต่ำ",
+            @"P0401": @"ระบบหมุนเวียนไอเสีย EGR อุดตัน (แนะนำล้างท่อร่วม/วาล์ว EGR)",
+            @"P0420": @"แคตตาไลติกเสื่อมประสิทธิภาพ หรือเซนเซอร์ไอเสียตัวหลัง",
+            @"P0300": @"เครื่องยนต์เดินสะดุดหลายสูบ (เช็กหัวเทียน/คอยล์/หัวฉีด/EGR)",
+            @"P0301": @"เครื่องยนต์จุดระเบิดผิดพลาด สูบที่ 1 (หัวเทียน/คอยล์สูบ 1)",
+            @"P0302": @"เครื่องยนต์จุดระเบิดผิดพลาด สูบที่ 2 (หัวเทียน/คอยล์สูบ 2)",
+            @"P0303": @"เครื่องยนต์จุดระเบิดผิดพลาด สูบที่ 3 (หัวเทียน/คอยล์สูบ 3)",
+            @"P0304": @"เครื่องยนต์จุดระเบิดผิดพลาด สูบที่ 4 (หัวเทียน/คอยล์สูบ 4)",
+            @"P0171": @"ส่วนผสมบางเกินไป (เช็กท่ออากาศรั่ว / เซนเซอร์ MAF สกปรก)",
+            @"P0101": @"เซนเซอร์วัดมวลอากาศ MAF สัญญาณผิดปกติ",
+            @"P3000": @"กล่องควบคุมแบตเตอรี่ไฮบริดแจ้งเตือนความผิดปกติ",
+            @"P3190": @"กำลังเครื่องยนต์ตก (เช็กน้ำมันเชื้อเพลิง / ลิ้นปีกผีเสื้อ / MAF)",
+            @"P3191": @"เครื่องยนต์สตาร์ทไม่ติด (เช็กปั๊มติ๊ก / ลิ้นปีกผีเสื้อ)",
+            @"C1259": @"ระบบเบรกไฮบริด Regen Malfunction (สัมพันธ์กับระบบไฮบริด)",
+            @"C1391": @"แรงดันสะสมปั๊มเบรกไฮดรอลิกผิดปกติ (Accumulator Leak)",
+            @"C1252": @"มอเตอร์ปั๊มเบรกไฮดรอลิกทำงานนานเกินเกณฑ์",
+            @"C1256": @"แรงดันสะสมปั๊มเบรกต่ำกว่าเกณฑ์ (Low Accumulator Pressure)",
+            @"U0100": @"ขาดการติดต่อกับกล่องเครื่องยนต์ ECM (CAN-Bus)",
+            @"U0111": @"ขาดการติดต่อกับกล่องควบคุมแบตไฮบริด",
+            @"U0293": @"ขาดการติดต่อกับกล่องควบคุมระบบไฮบริด HV ECU"
+        };
+    });
+    NSString *desc = map[code];
+    if (desc) return desc;
+    if ([code hasPrefix:@"P0A"] || [code hasPrefix:@"P30"]) return @"รหัสระบบไฮบริด / แบตเตอรี่แรงดันสูง / อินเวอร์เตอร์";
+    if ([code hasPrefix:@"P03"]) return @"รหัสระบบจุดระเบิดเครื่องยนต์ (หัวเทียน / คอยล์)";
+    if ([code hasPrefix:@"P"]) return @"รหัสระบบเครื่องยนต์ / ควบคุมมลพิษ (Powertrain)";
+    if ([code hasPrefix:@"C"]) return @"รหัสระบบเบรก ABS / VSC / ช่วงล่าง (Chassis)";
+    if ([code hasPrefix:@"B"]) return @"รหัสระบบตัวถัง / แอร์ / ถุงลม (Body)";
+    return @"รหัสระบบสื่อสารเครือข่ายกล่อง ECU (CAN Network)";
+}
+
+- (void)parseDTCFrameHex:(NSString *)hex ecuHeader:(NSString *)hdr isPending:(BOOL)pending {
+    if (hex.length < 4) return;
+    NSString *payload = [hex substringFromIndex:2];
+    NSUInteger byteCount = payload.length / 2;
+    if (byteCount == 0) return;
+    NSMutableArray<NSNumber *> *bytes = [NSMutableArray arrayWithCapacity:byteCount];
+    for (NSUInteger i = 0; i < byteCount; i++) {
+        unsigned int val = 0;
+        [[NSScanner scannerWithString:[payload substringWithRange:NSMakeRange(i * 2, 2)]] scanHexInt:&val];
+        [bytes addObject:@(val)];
+    }
+    // ISO 15765-4 CAN Mode 03/07: byte 0 is count when remaining length is odd (1 + 2*N)
+    NSUInteger startIdx = ((byteCount % 2) == 1) ? 1 : 0;
+    static const char prefixes[4] = {'P', 'C', 'B', 'U'};
+    NSString *ecuTag = [hdr isEqualToString:@"7E2"] ? @"HV" : ([hdr isEqualToString:@"7E0"] ? @"ENG" : ([hdr isEqualToString:@"7B0"] ? @"ABS" : @"ECU"));
+    for (NSUInteger i = startIdx; i + 1 < byteCount; i += 2) {
+        uint8_t b0 = (uint8_t)[bytes[i] unsignedIntValue];
+        uint8_t b1 = (uint8_t)[bytes[i + 1] unsignedIntValue];
+        if (b0 == 0 && b1 == 0) continue;
+        char p = prefixes[(b0 >> 6) & 0x03];
+        int d1 = (b0 >> 4) & 0x03;
+        int d2 = b0 & 0x0F;
+        NSString *code = [NSString stringWithFormat:@"%c%d%01X%02X", p, d1, d2, b1];
+        NSString *desc = [TRDOBDClient thaiDescriptionForPriusDTC:code];
+        NSString *entry = [NSString stringWithFormat:@"%@ [%@%@] — %@", code, ecuTag, pending ? @"·รอยืนยัน" : @"", desc];
+        BOOL exists = NO;
+        for (NSString *existing in self.mutableDetectedDTCs) {
+            if ([existing hasPrefix:[code stringByAppendingString:@" "]]) { exists = YES; break; }
+        }
+        if (!exists) {
+            [self.mutableDetectedDTCs addObject:entry];
+        }
+    }
+}
+
+- (void)archiveDetectedDTCsToHistory:(NSArray<NSString *> *)codes {
+    if (codes.count == 0) return;
+    NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+    NSMutableArray *hist = [[ud arrayForKey:@"TRDDTCHistoryLog"] mutableCopy] ?: [NSMutableArray array];
+    NSDateFormatter *df = [[NSDateFormatter alloc] init];
+    df.dateFormat = @"yyyy-MM-dd HH:mm";
+    NSDictionary *rec = @{
+        @"at": [df stringFromDate:[NSDate date]],
+        @"codes": codes,
+        @"hvTemp": @(self.hvBatteryTempC),
+        @"ect": @(self.coolantTempC)
+    };
+    [hist insertObject:rec atIndex:0];
+    if (hist.count > 25) [hist removeLastObject];
+    [ud setObject:hist forKey:@"TRDDTCHistoryLog"];
+    [ud synchronize];
+}
+
+- (NSArray<NSDictionary *> *)savedDTCHistory {
+    NSArray *arr = [[NSUserDefaults standardUserDefaults] arrayForKey:@"TRDDTCHistoryLog"];
+    return [arr isKindOfClass:[NSArray class]] ? arr : @[];
+}
+
+- (BOOL)scanAllPriusDTCs {
+    if (!self.isConnected || !self.obdInitialized) return NO;
+    [self.mutableDetectedDTCs removeAllObjects];
+    self.detectedDTCs = @[];
+    self.dtcScanInProgress = YES;
+    self.lastDTCScanTimeText = @"กำลังสแกนกล่อง ECU...";
+    [self.pendingBodyCommands addObjectsFromArray:@[
+        @"ATSH 7E0", @"03", @"07",
+        @"ATSH 7E2", @"03", @"07",
+        @"ATSH 7B0", @"13",
+        @"ATSH 7DF", @"__DTC_DONE__"
+    ]];
+    [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+    return YES;
+}
+
+- (BOOL)clearAllPriusDTCs {
+    if (!self.isConnected || !self.obdInitialized) return NO;
+    // Safety lock: ONLY clear DTCs when car is stationary (0 km/h) and in Park (P)!
+    if (self.currentSpeedKmh >= 1.0 || ![self.currentGear isEqualToString:@"P"]) {
+        return NO;
+    }
+    if (self.detectedDTCs.count > 0) {
+        [self archiveDetectedDTCsToHistory:self.detectedDTCs];
+    }
+    [self.mutableDetectedDTCs removeAllObjects];
+    self.detectedDTCs = @[];
+    self.lastDTCScanTimeText = @"ส่งคำสั่งลบโค้ดแล้ว (บันทึกประวัติไว้แล้ว)";
+    // Send standard Mode 04 ONLY to Powertrain/Hybrid (7E0, 7E2, 7DF) — never touch 7B0 linear valve calibration!
+    [self.pendingBodyCommands addObjectsFromArray:@[
+        @"ATSH 7E0", @"04",
+        @"ATSH 7E2", @"04",
+        @"ATSH 7DF", @"04"
+    ]];
+    [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+    return YES;
+}
+
+- (BOOL)queryPriusReverseBeepMode {
+    if (!self.isConnected || !self.obdInitialized) return NO;
+    [self.pendingBodyCommands addObjectsFromArray:@[@"ATSH 7C0", @"21AC", @"ATSH 7DF"]];
+    return YES;
+}
+
+- (BOOL)setPriusReverseSingleBeep:(BOOL)singleBeep {
+    if (!self.isConnected || !self.obdInitialized) return NO;
+    NSString *cmd = singleBeep ? @"3BAC40" : @"3BAC00";
+    self.reverseBeepMode = singleBeep ? 1 : 0;
+    self.reverseBeepStatusText = singleBeep ? @"ดังติ๊ดเดียว (Single Beep)" : @"ดังต่อเนื่อง (โรงงาน)";
+    [[NSUserDefaults standardUserDefaults] setInteger:self.reverseBeepMode forKey:@"TRDReverseBeepMode"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    [self.pendingBodyCommands addObjectsFromArray:@[@"ATSH 7C0", cmd, @"21AC", @"ATSH 7DF"]];
+    [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
+    return YES;
+}
+
+- (void)recordHVThermalSpikeIfNeeded {
+    if (!self.isConnected || self.hvBatteryTempC <= 1.0) return;
+    CGFloat dv = (self.hvBlockMaxV > 5.0) ? MAX(0.0, self.hvBlockMaxV - self.hvBlockMinV) : 0.0;
+    BOOL notable = (self.hvBatteryTempC >= 38.5 || dv >= 0.25 || self.inverterTempC >= 65.0);
+    if (!notable) return;
+    NSDate *now = [NSDate date];
+    if (self.lastHVThermalLogAt && [now timeIntervalSinceDate:self.lastHVThermalLogAt] < 180.0) {
+        return; // Throttle flash writes to at most once every 3 minutes
+    }
+    self.lastHVThermalLogAt = now;
+    static dispatch_queue_t sHealthQ = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        sHealthQ = dispatch_queue_create("com.codex.trd.hvhealth", DISPATCH_QUEUE_SERIAL);
+    });
+    CGFloat hvT = self.hvBatteryTempC, inT = self.hvIntakeTempC, invT = self.inverterTempC, soc = self.hybridBatterySOC;
+    NSInteger fan = self.activeHVFanCommanded;
+    dispatch_async(sHealthQ, ^{
+        NSString *path = @"/var/mobile/codex-car/hv-battery-health.plist";
+        NSMutableArray *logs = [[NSArray arrayWithContentsOfFile:path] mutableCopy] ?: [NSMutableArray array];
+        NSDateFormatter *df = [[NSDateFormatter alloc] init];
+        df.dateFormat = @"MM-dd HH:mm";
+        NSDictionary *entry = @{
+            @"at": [df stringFromDate:now],
+            @"hvC": @((round(hvT * 10.0)) / 10.0),
+            @"inC": @((round(inT * 10.0)) / 10.0),
+            @"invC": @(round(invT)),
+            @"dv": @((round(dv * 100.0)) / 100.0),
+            @"soc": @(round(soc)),
+            @"fan": @(fan)
+        };
+        [logs insertObject:entry atIndex:0];
+        while (logs.count > 40) [logs removeLastObject];
+        [logs writeToFile:path atomically:YES];
+    });
+}
+
+- (NSArray<NSDictionary *> *)savedHVThermalHealthLogs {
+    NSArray *arr = [NSArray arrayWithContentsOfFile:@"/var/mobile/codex-car/hv-battery-health.plist"];
+    return [arr isKindOfClass:[NSArray class]] ? arr : @[];
 }
 
 @end

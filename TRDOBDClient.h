@@ -89,6 +89,18 @@ extern NSString * const TRDOBDGearChangedNotification;
 @property (nonatomic, assign, readonly) CGFloat brakeAccumulatorPressureMPa;
 @property (nonatomic, assign, readonly) CGFloat regenBrakingPowerKW;
 
+// Smart HV Cooling Fan, DTC Scanner & Reverse Beep Customizer (Prius ZVW30)
+@property (nonatomic, assign, readonly) BOOL autoHVFanBoostEnabled;      // Auto-boost HV fan when >= 38.5 C
+@property (nonatomic, assign, readonly) NSInteger manualHVFanSpeed;      // 0 = Auto, 1..6 = Manual speed
+@property (nonatomic, assign, readonly) NSInteger activeHVFanCommanded;  // Current commanded fan speed (0..6)
+@property (nonatomic, assign, readonly) NSInteger reverseBeepMode;       // -1 = Unknown, 0 = Continuous, 1 = Single Beep
+@property (nonatomic, copy, readonly) NSString *reverseBeepStatusText;
+@property (nonatomic, assign, readonly) BOOL dtcScanInProgress;
+@property (nonatomic, copy, readonly) NSArray<NSString *> *detectedDTCs; // Formatted DTC strings with Thai descriptions
+@property (nonatomic, copy, readonly) NSString *lastDTCScanTimeText;
+@property (nonatomic, assign, readonly) CGFloat sessionPeakHVTempC;
+@property (nonatomic, assign, readonly) CGFloat sessionPeakDeltaV;
+
 // Controls
 - (void)startScanning;
 - (void)stopScanning;
@@ -107,6 +119,15 @@ extern NSString * const TRDOBDGearChangedNotification;
 - (void)setAutoDoorUnlockOnParkEnabled:(BOOL)enabled;
 - (void)evaluateAutoDoorLockForSpeed:(CGFloat)kmh;
 - (BOOL)requestDoorLock:(BOOL)lock;
+- (void)setAutoHVFanBoostEnabled:(BOOL)enabled;
+- (void)setManualHVFanSpeed:(NSInteger)speed;
+- (BOOL)scanAllPriusDTCs;
+- (BOOL)clearAllPriusDTCs;
+- (BOOL)queryPriusReverseBeepMode;
+- (BOOL)setPriusReverseSingleBeep:(BOOL)singleBeep;
+- (NSArray<NSDictionary *> *)savedDTCHistory;
+- (NSArray<NSDictionary *> *)savedHVThermalHealthLogs;
+- (void)obdLog:(NSString *)fmt, ...;
 - (void)integrateFallbackFuelForDistanceKm:(double)distanceKm speedKmh:(double)kmh dtSeconds:(double)dt;
 - (void)updateRealConsumptionWithDistanceKm:(double)distanceKm;
 

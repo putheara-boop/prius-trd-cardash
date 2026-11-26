@@ -23,7 +23,16 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <notify.h>
+#include <mach/mach.h>
 #include <mach/mach_time.h>
+static inline double TRDCurrentRAMMegabytes(void){
+ struct mach_task_basic_info info;
+ mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+ if(task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &count) == KERN_SUCCESS){
+  return (double)info.resident_size / (1024.0 * 1024.0);
+ }
+ return 0.0;
+}
 extern char **environ;
 static inline void trd_run_bg(const char *cmd){
  if(!cmd)return;
@@ -2685,6 +2694,9 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 @property UIButton *hybridSocCard;
 @property TRDHybridEcoBar *hybridEcoBar;
 -(void)openHybridDiagnosticsMenu;
+-(void)openDTCScannerMenu;
+-(void)openReverseBeepMenu;
+-(void)openHVThermalHistoryMenu;
 -(void)refreshHybridStatus;
 -(void)toggleTestHybridSOC;
 -(void)obdDataUpdated:(NSNotification *)note;
@@ -2980,7 +2992,12 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   UILabel *lMaxL = (UILabel *)[self.view viewWithTag:906];
   if (lMaxL) {
     double maxSpd = self.trip ? self.trip.maximum : 0.0;
-    lMaxL.text = [NSString stringWithFormat:@"🚀 MAX: %.0f km/h • GPS", maxSpd];
+    NSString *cvtMode = @"⚙️ e-CVT READY";
+    if (obd.engineRPM > 900 && obd.mg1RPM < -80) cvtMode = @"🔒 e-CVT LOCK";
+    else if (obd.engineRPM > 900) cvtMode = @"⚡ PWR SPLIT";
+    else if (obd.hvPackCurrent < -1.2 && obd.mg2RPM > 80) cvtMode = @"♻️ e-CVT REGEN";
+    else if (obd.mg2RPM > 60 || obd.currentSpeedKmh >= 2.0) cvtMode = @"🍃 EV DIRECT";
+    lMaxL.text = [NSString stringWithFormat:@"%@ • MAX %.0f", cvtMode, maxSpd];
   }
   UIButton *lModeB = (UIButton *)[self.view viewWithTag:905];
   if (lModeB) {
@@ -3385,7 +3402,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   self.frontMotorBox.layer.cornerRadius = 6;
   self.frontMotorBox.layer.borderWidth = 1.2;
   self.frontMotorBox.layer.borderColor = [UIColor colorWithRed:0 green:.80 blue:.95 alpha:.5].CGColor;
-  UILabel *fmL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,188,20)];fmL1.font=[UIFont boldSystemFontOfSize:13.0];fmL1.adjustsFontSizeToFitWidth=YES;fmL1.minimumScaleFactor=0.85;fmL1.textColor=[UIColor whiteColor];fmL1.text=@"FRONT AXLE (TRANSAXLE)";[self.frontMotorBox addSubview:fmL1];
+  UILabel *fmL1 = [[UILabel alloc]initWithFrame:CGRectMake(8,3,190,20)];fmL1.tag=840;fmL1.font=[UIFont boldSystemFontOfSize:12.5];fmL1.adjustsFontSizeToFitWidth=YES;fmL1.minimumScaleFactor=0.82;fmL1.textColor=[UIColor whiteColor];fmL1.text=@"⚙️ e-CVT: P410 READY";[self.frontMotorBox addSubview:fmL1];
   UILabel *fmL2 = [[UILabel alloc]initWithFrame:CGRectMake(8,23,188,20)];fmL2.tag=841;fmL2.font=[UIFont boldSystemFontOfSize:13.0];fmL2.adjustsFontSizeToFitWidth=YES;fmL2.minimumScaleFactor=0.85;fmL2.textColor=[UIColor colorWithRed:0 green:.90 blue:1 alpha:1];fmL2.text=@"⚡ MOTOR MG1 / MG2";[self.frontMotorBox addSubview:fmL2];
   [self.view addSubview:self.frontMotorBox];
 
@@ -5585,6 +5602,17 @@ static NSUInteger gTRDUpdateTicks=0;
   [self teardownMapWebView];
   [[NSURLCache sharedURLCache] removeAllCachedResponses];
   [[TRDOBDClient sharedClient] obdLog:@"MEM reclaimed idle mapWebView after 20s"];
+ }
+ if(self.ticks % 15 == 7){
+  double ramMB = TRDCurrentRAMMegabytes();
+  if(ramMB >= 95.0){
+   [[NSURLCache sharedURLCache] removeAllCachedResponses];
+   if(!self.mapMode && !self.carplayMode && self.mapWebView){[self teardownMapWebView];}
+   if(self.carplayMode && self.carplayGridMode){[self releaseArtwork];}
+   size_t (*relief)(void *, size_t)=(size_t (*)(void *, size_t))dlsym(RTLD_DEFAULT,"malloc_zone_pressure_relief");
+   if(relief)relief(NULL,0);
+   [[TRDOBDClient sharedClient] obdLog:@"RAM_GUARD auto-purged at %.1f MB", ramMB];
+  }
  }
  if(!self.carplayMode && !self.mapMode && !self.focused){
   [self refreshDriveTripDisplay];[self refreshMini];[self refreshBrakeStatus];
@@ -9573,7 +9601,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   }
  }
  [self.reverseBeepTimer invalidate];
- self.reverseBeepTimer=[NSTimer scheduledTimerWithTimeInterval:0.85 target:self selector:@selector(playReverseBeep) userInfo:nil repeats:YES];
+ self.reverseBeepTimer=nil;
+ BOOL singleBeepOnly = ([TRDOBDClient sharedClient].reverseBeepMode == 1);
+ if(!singleBeepOnly){
+  self.reverseBeepTimer=[NSTimer scheduledTimerWithTimeInterval:0.85 target:self selector:@selector(playReverseBeep) userInfo:nil repeats:YES];
+ }
  [self playReverseBeep];
 }
 
@@ -9937,11 +9969,12 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     }
    }
   } else if(wMode == 1){
-   NSString *a7State = @"ปกติ (เย็น)";
+   double ramNow = TRDCurrentRAMMegabytes();
+   NSString *a7State = [NSString stringWithFormat:@"ปกติ • %.0fMB", ramNow > 1.0 ? ramNow : 52.0];
    if([[NSProcessInfo processInfo] respondsToSelector:@selector(thermalState)]){
     NSProcessInfoThermalState ts = [[NSProcessInfo processInfo] thermalState];
-    if(ts >= NSProcessInfoThermalStateSerious) a7State = @"🔥 ร้อน (Eco 8FPS)";
-    else if(ts == NSProcessInfoThermalStateFair) a7State = @"🌤️ อุ่น (Eco 8FPS)";
+    if(ts >= NSProcessInfoThermalStateSerious) a7State = [NSString stringWithFormat:@"🔥 ร้อน • %.0fMB", ramNow];
+    else if(ts == NSProcessInfoThermalStateFair) a7State = [NSString stringWithFormat:@"🌤️ อุ่น • %.0fMB", ramNow];
    }
    if(ecoH){
     ecoH.textColor = [UIColor colorWithRed:0.25 green:0.92 blue:1.0 alpha:1];
@@ -9949,7 +9982,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
     if(![ecoH.text isEqualToString:t]) ecoH.text = t;
    }
    if(ecoS){
-    NSString *t = [NSString stringWithFormat:@"ECT %.0f°C  •  INV %.0f°C", obd.coolantTempC, obd.inverterTempC];
+    NSString *fanTag = (obd.activeHVFanCommanded > 0) ? [NSString stringWithFormat:@" • FAN %ld", (long)obd.activeHVFanCommanded] : @"";
+    NSString *t = [NSString stringWithFormat:@"ECT %.0f°C • INV %.0f°C%@", obd.coolantTempC, obd.inverterTempC, fanTag];
     if(![ecoS.text isEqualToString:t]) ecoS.text = t;
    }
    if(ecoD){
@@ -9987,17 +10021,26 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   tps.lineBreakMode = NSLineBreakByTruncatingTail;
   UIFont *tFont = [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold];
   if(tRow1){
-   NSString *ectStatus = (obd.coolantTempC >= 98.0) ? @"สูง" : (obd.coolantTempC >= 40.0) ? @"ปกติ" : @"อุ่นเครื่อง";
-   NSString *t = [NSString stringWithFormat:@"🌡️ ENGINE COOLANT : %.0f °C\n     น้ำหล่อเย็น (%@) • RPM %ld", obd.coolantTempC, ectStatus, (long)obd.engineRPM];
+   NSString *ectStatus = (obd.coolantTempC >= 98.0) ? @"⚠️ ร้อนสูง" : (obd.coolantTempC >= 40.0) ? @"ปกติ" : @"อุ่นเครื่อง";
+   NSString *wPmp = (obd.coolantTempC >= 98.0) ? @"WARN" : @"OK";
+   NSString *t = [NSString stringWithFormat:@"🌡️ ECT %.0f°C • 💧 W-PMP %@\n     หม้อน้ำ (%@) • ICE %ld", obd.coolantTempC, wPmp, ectStatus, (long)obd.engineRPM];
    if(![tRow1.text isEqualToString:t]) tRow1.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: tFont, NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: tps}];
   }
   if(tRow2){
-   NSString *t = [NSString stringWithFormat:@"❄️ CABIN : %.1f°C • EXT %.0f°C\n     INV : %.0f°C • HV AIR %.1f°C", obd.cabinTempC, obd.exteriorTempC, obd.inverterTempC, obd.hvIntakeTempC];
+   NSString *iPmp = (obd.inverterTempC >= 68.0) ? @"⚠️ ร้อน" : @"ปกติ";
+   NSString *t = [NSString stringWithFormat:@"⚡ INV %.0f°C • ❄️ A/C %.1f°C\n     💧 I-PMP (%@) • EXT %.0f°C", obd.inverterTempC, obd.cabinTempC, iPmp, obd.exteriorTempC];
    if(![tRow2.text isEqualToString:t]) tRow2.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: tFont, NSForegroundColorAttributeName: [UIColor colorWithRed:0.65 green:0.94 blue:1.0 alpha:1], NSParagraphStyleAttributeName: tps}];
   }
   if(tRow3){
-   NSString *auxMsg = (obd.auxBatteryVoltage >= 13.4) ? @"ระบบ DC-DC ชาร์จไฟ 12V ปกติ" : (obd.auxBatteryVoltage >= 12.1) ? @"ไฟ 12V สแตนด์บายปกติ" : @"⚠️ แบตเตอรี่ 12V ต่ำ";
-   NSString *t = [NSString stringWithFormat:@"🔋 AUX 12V BATTERY : %.2f V\n     %@", obd.auxBatteryVoltage, auxMsg];
+   NSString *cvtShort = @"READY";
+   if(obd.engineRPM > 900 && obd.mg1RPM < -80) cvtShort = @"LOCK";
+   else if(obd.engineRPM > 900) cvtShort = @"SPLIT";
+   else if(obd.hvPackCurrent < -1.2 && obd.mg2RPM > 80) cvtShort = @"REGEN";
+   else if(obd.mg2RPM > 60 || obd.currentSpeedKmh >= 2.0) cvtShort = @"EV";
+   NSString *auxMsg = (obd.auxBatteryVoltage >= 13.5)
+    ? @"DC-DC ชาร์จไฟ 12V สมบูรณ์"
+    : ((obd.auxBatteryVoltage >= 12.2) ? @"ไฟ 12V สแตนด์บายปกติ" : @"⚠️ แบต 12V อ่อน ควรตรวจเช็ก");
+   NSString *t = [NSString stringWithFormat:@"🔋 12V : %.2fV • ⚙️ %@\n     %@", obd.auxBatteryVoltage, cvtShort, auxMsg];
    if(![tRow3.text isEqualToString:t]) tRow3.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: tFont, NSForegroundColorAttributeName: [UIColor colorWithRed:.35 green:.96 blue:.52 alpha:1], NSParagraphStyleAttributeName: tps}];
   }
  }
@@ -10020,6 +10063,15 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   if(![self.energyFlowLabel.text isEqualToString:ef]) self.energyFlowLabel.text = ef;
  }
  if(self.frontMotorBox){
+  UILabel *fm1 = (UILabel *)[self.frontMotorBox viewWithTag:840];
+  if(fm1){
+   NSString *cvtHdr = @"⚙️ e-CVT: P410 READY";
+   if(obd.engineRPM > 900 && obd.mg1RPM < -80) cvtHdr = @"🔒 e-CVT: DIRECT LOCK";
+   else if(obd.engineRPM > 900) cvtHdr = @"⚡ e-CVT: POWER SPLIT";
+   else if(obd.hvPackCurrent < -1.2 && obd.mg2RPM > 80) cvtHdr = @"♻️ e-CVT: REGEN BRAKE";
+   else if(obd.mg2RPM > 60 || obd.currentSpeedKmh >= 2.0) cvtHdr = @"🍃 e-CVT: EV DIRECT";
+   if(![fm1.text isEqualToString:cvtHdr]) fm1.text = cvtHdr;
+  }
   UILabel *fm2 = (UILabel *)[self.frontMotorBox viewWithTag:841];
   NSString *t = [NSString stringWithFormat:@"MG1 %ld / MG2 %ld RPM", (long)obd.mg1RPM, (long)obd.mg2RPM];
   if(fm2 && ![fm2.text isEqualToString:t]) fm2.text = t;
@@ -10175,22 +10227,25 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if(mCard){
   UILabel *mlLbl = (UILabel *)[mCard viewWithTag:708];
   if(mlLbl){
-   NSString *t = [NSString stringWithFormat:@"⚙️ MOTOR MG2 : %ld RPM\n     อุณหภูมิ %.0f °C • รถ %.0f km/h\n⚡ GENERATOR MG1 : %ld RPM\n     อุณหภูมิ %.0f °C • ICE %ld RPM\n🌡️ HV BATTERY TEMP\n     %.1f °C • ลมดูด %.1f °C",
+   NSString *fanTag = (obd.activeHVFanCommanded > 0) ? [NSString stringWithFormat:@"🌀L%ld", (long)obd.activeHVFanCommanded] : @"🌀AUTO";
+   NSString *t = [NSString stringWithFormat:@"⚙️ MOTOR MG2 : %ld RPM\n     อุณหภูมิ %.0f °C • รถ %.0f km/h\n⚡ GENERATOR MG1 : %ld RPM\n     อุณหภูมิ %.0f °C • ICE %ld RPM\n🌡️ HV BAT • %@\n     %.1f °C • ลมดูด %.1f °C",
                  (long)obd.mg2RPM, obd.mg2TempC, obd.currentSpeedKmh,
                  (long)obd.mg1RPM, obd.mg1TempC, (long)obd.engineRPM,
-                 obd.hvBatteryTempC, obd.hvIntakeTempC];
+                 fanTag, obd.hvBatteryTempC, obd.hvIntakeTempC];
    if(![mlLbl.text isEqualToString:t]){
     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
     ps.lineSpacing = 9.0;
+    ps.lineBreakMode = NSLineBreakByTruncatingTail;
     mlLbl.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: mlLbl.font ?: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: ps}];
    }
   }
  }
 
- // Drive Mode Cards
+ // Drive Mode Cards (Icons + Standard English Abbreviations + Live Pump/Fan/12V Status)
  if(self.driveClockCard){
   UILabel *cSub = (UILabel *)[self.driveClockCard viewWithTag:802];
-  NSString *t = [NSString stringWithFormat:@"❄️ A/C %.1f°C • INV %.0f°C", obd.cabinTempC, obd.inverterTempC];
+  NSString *pmpTag = (obd.coolantTempC >= 98.0 || obd.inverterTempC >= 68.0) ? @"⚠️PMP" : @"💧OK";
+  NSString *t = [NSString stringWithFormat:@"🌡️ECT %.0f°C • ⚡INV %.0f°C • %@", obd.coolantTempC, obd.inverterTempC, pmpTag];
   if(cSub && ![cSub.text isEqualToString:t]) cSub.text = t;
  }
  if(self.driveBatteryCard){
@@ -10205,7 +10260,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   }
   UILabel *bS = (UILabel *)[self.driveBatteryCard viewWithTag:812];
   if(bS){
-   NSString *t = [NSString stringWithFormat:@"%.1f%% (HV BAT %.1f°C)\nแรงดัน: %.1f V  •  %+.2f A", obd.hybridBatterySOC, obd.hvBatteryTempC, obd.hvPackVoltage, obd.hvPackCurrent];
+   NSString *fanDrv = (obd.activeHVFanCommanded > 0) ? [NSString stringWithFormat:@"🌀FAN L%ld", (long)obd.activeHVFanCommanded] : @"🌀AUTO";
+   NSString *t = [NSString stringWithFormat:@"%.1f%% • 🌡️%.1f°C • %@\n⚡%.1fV %+.1fA • 🔋%.2fV", obd.hybridBatterySOC, obd.hvBatteryTempC, fanDrv, obd.hvPackVoltage, obd.hvPackCurrent, obd.auxBatteryVoltage];
    if(![bS.text isEqualToString:t]) bS.text = t;
   }
  }
@@ -10266,31 +10322,165 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
 -(void)openHybridDiagnosticsMenu{
  TRDOBDClient *obd=[TRDOBDClient sharedClient];
- NSString *socHealth=(obd.hybridBatterySOC>=40 && obd.hybridBatterySOC<=80)?@"✅ เกณฑ์ปกติ (Optimal 40-80%)":@"⚠️ นอกช่วงเหมาะสม";
- NSString *invStr=[NSString stringWithFormat:@"%.1f °C (เกณฑ์ปกติ 30-55 °C)", obd.inverterTempC];
- NSString *ectStr=[NSString stringWithFormat:@"%.1f °C (เกณฑ์ทำงาน 85-95 °C)", obd.coolantTempC];
- NSString *auxStr=[NSString stringWithFormat:@"%.1f V (ระบบไฟเสริม 12V)", obd.auxBatteryVoltage];
- NSString *evStr=[NSString stringWithFormat:@"%.0f%% (สัดส่วนขับขี่ด้วยไฟฟ้า)", obd.tripEVDistancePercent];
- NSString *msg=[NSString stringWithFormat:@"ระบบไฮบริด Toyota Prius Gen 3 (ZVW30):\n• แบตเตอรี่ไฮบริด (SOC): %.0f%% (%@)\n• ความร้อนอินเวอร์เตอร์: %@\n• ความร้อนเครื่องยนต์ (ECT): %@\n• แบตเตอรี่เสริม 12V: %@\n• อัตราขับด้วยไฟฟ้า (EV): %@",
-               obd.hybridBatterySOC, socHealth, invStr, ectStr, auxStr, evStr];
- TRDSettingsMenu *m=[self settingsMenu:@"🔋 ข้อมูลระบบไฮบริด (PRIUS HYBRID TELEMETRY)" message:msg];
- [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🔄 สลับจำลองระดับแบตเตอรี่ (ปัจจุบัน %.0f%%)", obd.hybridBatterySOC] style:0 handler:^(TRDSettingAction *a){
-  [self toggleTestHybridSOC];
-  [self refreshHybridStatus];
+ CGFloat liveDV = (obd.hvBlockMaxV > 5.0) ? (obd.hvBlockMaxV - obd.hvBlockMinV) : 0.0;
+ NSString *fanTag = (obd.manualHVFanSpeed > 0) ? [NSString stringWithFormat:@"Manual L%ld", (long)obd.manualHVFanSpeed] : (obd.autoHVFanBoostEnabled ? [NSString stringWithFormat:@"Auto (L%ld)", (long)obd.activeHVFanCommanded] : @"ECU");
+ NSString *pmpTag = (obd.coolantTempC >= 98.0 || obd.inverterTempC >= 68.0) ? @"⚠️ ร้อน" : @"ปั๊มน้ำปกติ";
+ NSString *msg=[NSString stringWithFormat:@"SOC %.1f%% • ΔV %.2fV • HV %.1f°C • 🌀 %@\n🌡️ ECT %.0f°C • ⚡ INV %.0f°C (%@) • 🔋 12V %.2fV",
+               obd.hybridBatterySOC, liveDV, obd.hvBatteryTempC, fanTag, obd.coolantTempC, obd.inverterTempC, pmpTag, obd.auxBatteryVoltage];
+ TRDSettingsMenu *m=[self settingsMenu:@"🔋 ระบบไฮบริด & พัดลมแบตอัจฉริยะ (7E2)" message:msg];
+ [m addAction:[TRDSettingAction actionWithTitle:obd.autoHVFanBoostEnabled?@"🌀 พัดลมแบตอัตโนมัติ (เร่งเมื่อ ≥37°C): ON":@"🌀 พัดลมแบตอัตโนมัติ (เร่งเมื่อ ≥37°C): OFF" style:0 handler:^(TRDSettingAction *a){
+  [obd setManualHVFanSpeed:0];
+  [obd setAutoHVFanBoostEnabled:!obd.autoHVFanBoostEnabled];
   [self openHybridDiagnosticsMenu];
  }]];
- [m addAction:[TRDSettingAction actionWithTitle:@"⚡ สลับจำลองมาตรวัด CHG (เบรก) / ECO / PWR" style:0 handler:^(TRDSettingAction *a){
-  if(self.hybridEcoBar){
-   static int simStep=0;
-   simStep=(simStep+1)%3;
-   if(simStep==0)[self.hybridEcoBar updateWithSpeed:30 isBraking:YES isAccelerating:NO];
-   else if(simStep==1)[self.hybridEcoBar updateWithSpeed:55 isBraking:NO isAccelerating:NO];
-   else [self.hybridEcoBar updateWithSpeed:95 isBraking:NO isAccelerating:YES];
-  }
+ [m addAction:[TRDSettingAction actionWithTitle:(obd.manualHVFanSpeed==6)?@"✓ ❄️ บังคับพัดลมแบตแรงสุด เบอร์ 6 (MAX COOL)":@"❄️ บังคับพัดลมแบตแรงสุด เบอร์ 6 (MAX COOL)" style:0 handler:^(TRDSettingAction *a){
+  [obd setManualHVFanSpeed:(obd.manualHVFanSpeed==6)?0:6];
   [self openHybridDiagnosticsMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:(obd.manualHVFanSpeed==4)?@"✓ 🌬️ บังคับพัดลมแบตระดับกลาง เบอร์ 4":@"🌬️ บังคับพัดลมแบตระดับกลาง เบอร์ 4" style:0 handler:^(TRDSettingAction *a){
+  [obd setManualHVFanSpeed:(obd.manualHVFanSpeed==4)?0:4];
+  [self openHybridDiagnosticsMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"📈 ดูประวัติความร้อน & สุขภาพแบตสะสมบนเครื่อง" style:0 handler:^(TRDSettingAction *a){
+  [self openHVThermalHistoryMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔍 สแกน / วิเคราะห์โค้ดไฟโชว์ (DTC ไทย)" style:0 handler:^(TRDSettingAction *a){
+  [self openDTCScannerMenu];
  }]];
  [m addAction:[TRDSettingAction actionWithTitle:@"🔙 ปิดหน้าต่าง" style:0 handler:^(TRDSettingAction *a){
   [self.settingsSheet dismiss];
+ }]];
+ [self presentSettingsMenu:m];
+}
+
+-(void)openHVThermalHistoryMenu{
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ NSArray *logs=[obd savedHVThermalHealthLogs];
+ NSString *hdr=[NSString stringWithFormat:@"บันทึกอัตโนมัติเมื่อแบต ≥38.5°C หรือ ΔV ≥0.25V\nสูงสุดรอบนี้: แบต %.1f°C • ΔV %.2fV (%lu รายการสะสม)",
+  MAX(obd.hvBatteryTempC, obd.sessionPeakHVTempC), obd.sessionPeakDeltaV, (unsigned long)logs.count];
+ TRDSettingsMenu *m=[self settingsMenu:@"📈 ประวัติความร้อน & สุขภาพแบตไฮบริด" message:hdr];
+ if(logs.count == 0){
+  [m addAction:[TRDSettingAction actionWithTitle:@"✅ ยังไม่พบเหตุการณ์แบตร้อนสูง • สุขภาพแบตปกติดี" style:0 handler:^(TRDSettingAction *a){
+   [self openHybridDiagnosticsMenu];
+  }]];
+ }else{
+  NSUInteger lim = MIN((NSUInteger)10, logs.count);
+  for(NSUInteger i=0; i<lim; i++){
+   NSDictionary *d = logs[i];
+   NSString *row = [NSString stringWithFormat:@"📅 %@ • 🌡️%.1f°C • ΔV %.2fV • 🌀L%@",
+    d[@"at"]?:@"-", [d[@"hvC"] doubleValue], [d[@"dv"] doubleValue], d[@"fan"]?:@0];
+   [m addAction:[TRDSettingAction actionWithTitle:row style:0 handler:^(TRDSettingAction *a){}]];
+  }
+ }
+ [m addAction:[TRDSettingAction actionWithTitle:@"↩️ กลับหน้าข้อมูลระบบไฮบริด" style:0 handler:^(TRDSettingAction *a){
+  [self openHybridDiagnosticsMenu];
+ }]];
+ [self presentSettingsMenu:m];
+}
+
+-(void)openDTCScannerMenu{
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ NSString *msg = nil;
+ if(!obd.isConnected){
+  msg = @"⚠️ ยังไม่ได้เชื่อมต่อ vLinker MC+ • เปิดสวิตช์รถ (IG-ON / READY) แล้วกดเริ่มสแกนครับ";
+ }else if(obd.dtcScanInProgress){
+  msg = @"⏳ กำลังสแกนกล่องเครื่องยนต์ (7E0), ไฮบริด/แบต (7E2) และเบรก ABS (7B0)...";
+ }else if(obd.detectedDTCs.count == 0){
+  msg = [NSString stringWithFormat:@"✅ ไม่พบรหัสไฟโชว์ผิดปกติ (%@) • เครื่องยนต์ ไฮบริด และเบรกปกติ", obd.lastDTCScanTimeText ?: @"พร้อมสแกน"];
+ }else{
+  msg = [NSString stringWithFormat:@"🚨 พบรหัสแจ้งเตือน %lu รายการ (%@) • แตะที่รหัสเพื่ออ่านคำวิเคราะห์ภาษาไทย", (unsigned long)obd.detectedDTCs.count, obd.lastDTCScanTimeText ?: @""];
+ }
+ TRDSettingsMenu *m=[self settingsMenu:@"🔍 สแกน & วิเคราะห์โค้ดไฟโชว์ (PRIUS DTC)" message:msg];
+ for(NSString *dtcLine in obd.detectedDTCs){
+  NSString *lineCopy = [dtcLine copy];
+  [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"⚠️ %@", lineCopy] style:0 handler:^(TRDSettingAction *a){
+   [self showFeatureExplanation:@"🔍 คำวิเคราะห์รหัสปัญหา (PRIUS DTC)" body:[NSString stringWithFormat:@"%@\n\nคำแนะนำเบื้องต้น:\n• หากเป็นรหัสระบบน้ำหล่อเย็น/ปั๊มน้ำ (P0A93, P261B) ควรจอดพักห้ามฝืนขับต่อเพื่อป้องกันเครื่อง/อินเวอร์เตอร์ร้อนจัด\n• ระบบบันทึกประวัตินี้เก็บไว้ในเครื่องให้ช่างตรวจสอบย้อนหลังได้ตลอดครับ", lineCopy]];
+  }]];
+ }
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔎 เริ่มสแกนโค้ดทุกกล่อง (เครื่องยนต์ + ไฮบริด + ABS)" style:0 handler:^(TRDSettingAction *a){
+  if([obd scanAllPriusDTCs]){
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+    [self openDTCScannerMenu];
+   });
+  }
+  [self openDTCScannerMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔄 รีเฟรชผลสแกนล่าสุด" style:0 handler:^(TRDSettingAction *a){
+  [self openDTCScannerMenu];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🧹 ลบโค้ดไฟโชว์ (ต้องจอดนิ่งเกียร์ P เท่านั้น)" style:0 handler:^(TRDSettingAction *a){
+  if(obd.currentSpeedKmh >= 1.0 || ![obd.currentGear isEqualToString:@"P"]){
+   [self showFeatureExplanation:@"⚠️ ระบบป้องกันความปลอดภัย" body:@"เพื่อความปลอดภัยของระบบไฮบริด ห้ามลบโค้ดขณะรถเคลื่อนที่ครับ\nกรุณาจอดรถสนิทและเข้าเกียร์ P ก่อนกดลบโค้ดไฟโชว์ครับ"];
+   return;
+  }
+  [self confirmSettingsActionTitle:@"⚠️ ยืนยันการลบโค้ดไฟโชว์ (CLEAR DTC)"
+                           message:@"ระบบจะบันทึกประวัติรหัสที่พบเก็บไว้ในเครื่องอัตโนมัติก่อนลบ (หากอะไหล่ยังเสียจริง ไฟจะกลับมาเตือนใหม่)"
+                      confirmTitle:@"✅ ยืนยันลบโค้ดไฟโชว์ (เกียร์ P)"
+                         onConfirm:^{
+   [obd clearAllPriusDTCs];
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+    [self openDTCScannerMenu];
+   });
+  }];
+ }]];
+ NSArray *hist = [obd savedDTCHistory];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"📋 ประวัติโค้ดที่เคยตรวจพบ (%lu ครั้ง)", (unsigned long)hist.count] style:0 handler:^(TRDSettingAction *a){
+  TRDSettingsMenu *sub=[self settingsMenu:@"📋 ประวัติโค้ดย้อนหลัง (เก็บไว้ให้ช่างดูได้)" message:(hist.count==0)?@"ยังไม่มีประวัติรหัสไฟโชว์ที่เคยบันทึกไว้ครับ":@"แตะรายการเพื่อดูรายละเอียดรหัสที่บันทึกไว้:"];
+  NSUInteger lim = MIN((NSUInteger)8, hist.count);
+  for(NSUInteger i=0; i<lim; i++){
+   NSDictionary *r = hist[i];
+   NSArray *cs = r[@"codes"];
+   NSString *joined = [cs componentsJoinedByString:@" | "];
+   NSString *rowT = [NSString stringWithFormat:@"[%@] %@", r[@"at"]?:@"-", joined];
+   NSString *bodyT = [NSString stringWithFormat:@"บันทึกเมื่อ: %@ (แบต %.0f°C / น้ำ %.0f°C)\n\n%@", r[@"at"]?:@"-", [r[@"hvTemp"] doubleValue], [r[@"ect"] doubleValue], [cs componentsJoinedByString:@"\n"]];
+   [sub addAction:[TRDSettingAction actionWithTitle:rowT style:0 handler:^(TRDSettingAction *y){
+    [self showFeatureExplanation:@"📋 รายละเอียดโค้ดย้อนหลัง" body:bodyT];
+   }]];
+  }
+  [sub addAction:[TRDSettingAction actionWithTitle:@"↩️ กลับหน้าสแกนโค้ด DTC" style:0 handler:^(TRDSettingAction *x){[self openDTCScannerMenu];}]];
+  [self presentSettingsMenu:sub];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"↩️ กลับหน้า CAR SETTINGS" style:0 handler:^(TRDSettingAction *a){
+  [self carSettings];
+ }]];
+ [self presentSettingsMenu:m];
+}
+
+-(void)openReverseBeepMenu{
+ TRDOBDClient *obd=[TRDOBDClient sharedClient];
+ NSString *curTxt = obd.reverseBeepStatusText ?: @"ยังไม่ได้อ่านค่า";
+ NSString *msg = [NSString stringWithFormat:@"สถานะปัจจุบัน: %@ • ปรับเฉพาะเสียงติ๊ดเรือนไมล์รถ (7C0)\nเสียงเซนเซอร์กะระยะกันชนท้ายยังคงดังเตือนปกติ 100%% ไม่ถูกรบกวนครับ", curTxt];
+ TRDSettingsMenu *m=[self settingsMenu:@"🔕 ตั้งค่าเสียงติ๊ดเกียร์ถอยหลัง (PRIUS 7C0)" message:msg];
+ [m addAction:[TRDSettingAction actionWithTitle:(obd.reverseBeepMode==1)?@"✓ 🔕 ดังติ๊ดเดียวตอนเข้าเกียร์ R (แนะนำ • ฟังเซนเซอร์ถอยชัด)":@"🔕 ตั้งให้ดังติ๊ดเดียวตอนเข้าเกียร์ R (แนะนำ • ฟังเซนเซอร์ถอยชัด)" style:0 handler:^(TRDSettingAction *a){
+  if(!obd.isConnected){
+   [[NSUserDefaults standardUserDefaults] setInteger:1 forKey:@"TRDReverseBeepMode"];
+   [[NSUserDefaults standardUserDefaults] synchronize];
+  }else{
+   [obd setPriusReverseSingleBeep:YES];
+  }
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.8*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   [self openReverseBeepMenu];
+  });
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:(obd.reverseBeepMode==0)?@"✓ 🔔 ดังติ๊ดต่อเนื่องตลอดเวลา (ค่าโรงงานเดิม)":@"🔔 คืนค่าให้ดังติ๊ดต่อเนื่องตลอดเวลา (ค่าโรงงานเดิม)" style:0 handler:^(TRDSettingAction *a){
+  if(!obd.isConnected){
+   [[NSUserDefaults standardUserDefaults] setInteger:0 forKey:@"TRDReverseBeepMode"];
+   [[NSUserDefaults standardUserDefaults] synchronize];
+  }else{
+   [obd setPriusReverseSingleBeep:NO];
+  }
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.8*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   [self openReverseBeepMenu];
+  });
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🔎 อ่านค่าปัจจุบันจากกล่องเรือนไมล์รถ (7C0 21AC)" style:0 handler:^(TRDSettingAction *a){
+  [obd queryPriusReverseBeepMode];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   [self openReverseBeepMenu];
+  });
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"↩️ กลับหน้า CAR SETTINGS" style:0 handler:^(TRDSettingAction *a){
+  [self carSettings];
  }]];
  [self presentSettingsMenu:m];
 }
@@ -10412,6 +10602,8 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if([url.host isEqualToString:@"obd"])[v openFuelPriceSettings];
  if([url.host isEqualToString:@"brake"])[v openBrakeDiagnosticsMenu];
  if([url.host isEqualToString:@"hybrid"])[v openHybridDiagnosticsMenu];
+ if([url.host isEqualToString:@"dtc"])[v openDTCScannerMenu];
+ if([url.host isEqualToString:@"beep"])[v openReverseBeepMenu];
  if([url.host isEqualToString:@"reverse"]){ [[TRDOBDClient sharedClient] toggleTestReverseGear]; }
  if([url.host isEqualToString:@"welcome"])[v showWelcome];
  if([url.host isEqualToString:@"help"])[v openFeatureHelpMenu];
