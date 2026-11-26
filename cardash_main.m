@@ -5268,8 +5268,8 @@ static NSUInteger gTRDUpdateTicks=0;
     mCard.frame = CGRectMake(rightX + 10, topY + 240, rightW - 20, 178);
     UILabel *mlLbl = (UILabel *)[mCard viewWithTag:708];
     if (mlLbl) {
-      mlLbl.frame = CGRectMake(10, 6, rightW - 36, 166);
-      mlLbl.font = [UIFont monospacedDigitSystemFontOfSize:14.0 weight:UIFontWeightSemibold];
+      mlLbl.frame = CGRectMake(12, 8, rightW - 40, 162);
+      mlLbl.font = [UIFont boldSystemFontOfSize:14.0];
       mlLbl.adjustsFontSizeToFitWidth = YES;
       mlLbl.minimumScaleFactor = 0.88;
     }
@@ -5314,9 +5314,9 @@ static NSUInteger gTRDUpdateTicks=0;
     tCard.frame = CGRectMake(rightX + 10, topY + 426, rightW - 20, 186);
     UILabel *tbLbl = (UILabel *)[tCard viewWithTag:713];
     if (tbLbl) {
-      tbLbl.frame = CGRectMake(10, 38, rightW - 36, 142);
+      tbLbl.frame = CGRectMake(12, 38, rightW - 40, 140);
       tbLbl.numberOfLines = 6;
-      tbLbl.font = [UIFont monospacedDigitSystemFontOfSize:14.0 weight:UIFontWeightSemibold];
+      tbLbl.font = [UIFont boldSystemFontOfSize:14.0];
       tbLbl.adjustsFontSizeToFitWidth = YES;
       tbLbl.minimumScaleFactor = 0.88;
     }
