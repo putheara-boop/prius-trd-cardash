@@ -3075,7 +3075,12 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
       NSString *enTimeStr = [[timeStr stringByReplacingOccurrencesOfString:@" ชม." withString:@" hrs"] stringByReplacingOccurrencesOfString:@" นาที" withString:@" min"];
       NSString *distFmt = (dist < 100.0) ? [NSString stringWithFormat:@"%.2f km", dist] : [NSString stringWithFormat:@"%.1f km", dist];
       NSString *fuelTag = TRDFuelShortCode(obd.selectedFuelTypeIndex);
-      htbL.text = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %@ (น้ำมัน %.2f L)\nECONOMY: %@ (%@)\nFUEL COST (%@): ฿ %.2f (%.2f ฿/L)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, distFmt, fuelL, kmlDisplay, kmlNote, fuelTag, cost, price, avgSpd, enTimeStr];
+      NSString *tripTxt = [NSString stringWithFormat:@"MODE: %@\nDISTANCE: %@ (น้ำมัน %.2f L)\nECONOMY: %@ (%@)\nFUEL COST (%@): ฿ %.2f (%.2f ฿/L)\nAVG SPEED: %.1f km/h\nDRIVE TIME: %@", slotTitle, distFmt, fuelL, kmlDisplay, kmlNote, fuelTag, cost, price, avgSpd, enTimeStr];
+      if(![htbL.text isEqualToString:tripTxt]){
+       NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+       ps.lineSpacing = 4.5;
+       htbL.attributedText = [[NSAttributedString alloc] initWithString:tripTxt attributes:@{NSFontAttributeName: htbL.font ?: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: ps}];
+      }
     }
   }
 }
@@ -10113,7 +10118,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
                  (long)obd.mg2RPM, obd.mg2TempC, obd.currentSpeedKmh,
                  (long)obd.mg1RPM, obd.mg1TempC, (long)obd.engineRPM,
                  obd.hvBatteryTempC, obd.hvIntakeTempC];
-   if(![mlLbl.text isEqualToString:t]) mlLbl.text = t;
+   if(![mlLbl.text isEqualToString:t]){
+    NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+    ps.lineSpacing = 5.5;
+    mlLbl.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: mlLbl.font ?: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: ps}];
+   }
   }
  }
 
