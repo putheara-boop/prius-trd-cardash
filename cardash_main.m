@@ -7300,7 +7300,7 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
  dispatch_async(dispatch_get_main_queue(), ^{
   @try {
    AVAudioSession *session = [AVAudioSession sharedInstance];
-   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionMixWithOthers|AVAudioSessionCategoryOptionDuckOthers error:nil];
    [session setActive:YES error:nil];
    self.ownsSpeechAudioSession = YES;
    if(!gTRDWelcomeSynth) gTRDWelcomeSynth = [[AVSpeechSynthesizer alloc] init];
@@ -7317,7 +7317,10 @@ static inline double TRDDistanceMeters(double lat1, double lon1, double lat2, do
     Dashboard *v = weakSelf;
     if(v && !v.radioPlayer && v.ownsSpeechAudioSession && (!gTRDWelcomeSynth || !gTRDWelcomeSynth.isSpeaking)){
      v.ownsSpeechAudioSession = NO;
-     [[AVAudioSession sharedInstance] setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+     AVAudioSession *s2 = [AVAudioSession sharedInstance];
+     [s2 setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
+     [s2 setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+     notify_post("com.codex.trd.music.refresh");
     }
    });
   } @catch(NSException *e){}
@@ -10155,7 +10158,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   NSString *csText = nil;
   NSInteger styleTag = 0;
   if(doorAlert){
-   csText = [NSString stringWithFormat:@"เปิด: %@ • เกียร์ %@ • %.2fV%@", openDoors, obd.currentGear ?: @"P", obd.auxBatteryVoltage, lightTag];
+   csText = [NSString stringWithFormat:@"แจ้งเตือนประตูเปิด: %@  •  เกียร์ %@%@", openDoors, obd.currentGear ?: @"P", lightTag];
    styleTag = 1;
   } else if(self.driveMode){
    csText = [NSString stringWithFormat:@"OBD2 %@  •  ปิดครบ  •  %.1fL (~%.0f กม.)  •  %.0f°C%@", obd.isConnected ? @"LIVE" : @"SCAN", obd.fuelRemainingLiters, estRangeKm, obd.coolantTempC, lightTag];
@@ -10710,7 +10713,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [v ensureActiveRunLoopHealth];
  [v restoreDisplayBrightness];
 }
--(void)applicationDidBecomeActive:(UIApplication *)app{Dashboard *v=(Dashboard *)self.window.rootViewController;if(!v.isReverseActive && ![TRDOBDClient sharedClient].isReverseGear){notify_post("com.codex.trd.network.internet");}[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];[v ensureActiveRunLoopHealth];[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.10;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];if(!v.isReverseActive)[[TRDFrontGestureEngine sharedEngine] startIfEnabled];[v ensureActiveRunLoopHealth];[v startGPS];[v update];[v captureLifecycle];}
+-(void)applicationDidBecomeActive:(UIApplication *)app{Dashboard *v=(Dashboard *)self.window.rootViewController;if(!v.radioPlayer && !v.voiceListening && !v.ownsSpeechAudioSession){@try{AVAudioSession *as=[AVAudioSession sharedInstance];[as setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];[as setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];}@catch(NSException *e){}notify_post("com.codex.trd.music.refresh");}if(!v.isReverseActive && ![TRDOBDClient sharedClient].isReverseGear){notify_post("com.codex.trd.network.internet");}[[TRDOBDClient sharedClient] fetchLiveOilPrices];[[TRDOBDClient sharedClient] ensureConnectedOrScan];[v ensureActiveRunLoopHealth];[v cancelNavigationTouch:nil forEvent:nil];v.navGuardUntil=[NSProcessInfo processInfo].systemUptime+0.10;v.mapConfirmationGeneration++;v.mapNavigationAuthorized=NO;if(v.settingsSheet.requiresIntentionalTouch)[v.settingsSheet dismiss];[v cancelBrowseReturn];[v applyDisplaySchedule];[v restoreDisplayBrightness];BOOL welcomePending=[[NSFileManager defaultManager]fileExistsAtPath:@"/var/mobile/codex-car/welcome-pending"];if(welcomePending){[[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/welcome-pending" error:nil];[v showWelcome];}[v.view setNeedsLayout];[v refreshNowPlaying];[v performSelector:@selector(restoreDisplayBrightness) withObject:nil afterDelay:.6];[v.audioBars start];if(!v.isReverseActive)[[TRDFrontGestureEngine sharedEngine] startIfEnabled];[v ensureActiveRunLoopHealth];[v startGPS];[v update];[v captureLifecycle];}
 
 @end
 static void TRDCrashHandler(NSException *exception) {

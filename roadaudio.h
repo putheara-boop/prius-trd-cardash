@@ -324,7 +324,17 @@ if(player){
   }
  }
  if([player respondsToSelector:next?@selector(nextTrack):@selector(previousTrack)]){
+  @try {
+   AVAudioSession *audSess=[AVAudioSession sharedInstance];
+   [audSess setCategory:AVAudioSessionCategoryPlayback error:nil];
+   [audSess setActive:YES error:nil];
+  } @catch(NSException *e){}
   if(next)[player nextTrack];else [player previousTrack];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.18*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   if([player respondsToSelector:@selector(playerIsPlaying)] && ![player playerIsPlaying]){
+    if([player respondsToSelector:@selector(togglePlayPause)])[(id)player performSelector:@selector(togglePlayPause)];
+   }
+  });
   delivered=YES;
   [@{@"command":next?@"next":@"previous",@"delivered":@YES,@"target":@"audioNINJA",@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/ninja-remote.plist" atomically:YES];
   return;
@@ -332,9 +342,9 @@ if(player){
 }
 id vc=TRDFindController(@"YTPlayerViewController");if(vc&&[vc respondsToSelector:next?@selector(playNextVideo):@selector(playPreviousVideo)]){if(next)[vc playNextVideo];else [vc playPreviousVideo];delivered=YES;}else{Class cls=NSClassFromString(@"YTQueue");id q=[cls respondsToSelector:@selector(shared)]?[cls shared]:nil;if(q&&((next&&[q hasNext])||(!next&&[q hasPrevious]))){if(next)[q playNext];else [q playPrevious];delivered=YES;}}[@{@"command":next?@"next":@"previous",@"delivered":@(delivered),@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/ytnine-remote.plist" atomically:YES];};if([NSThread isMainThread])action();else dispatch_sync(dispatch_get_main_queue(),action);return delivered?MPRemoteCommandHandlerStatusSuccess:MPRemoteCommandHandlerStatusNoActionableNowPlayingItem;}
 
--(MPRemoteCommandHandlerStatus)next:(id)event{MPRemoteCommandHandlerStatus result=[self move:YES];if([NSBundle.mainBundle.bundleIdentifier isEqual:@"com.legacymusic.app"])dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/2),dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"next");});return result;}
+-(MPRemoteCommandHandlerStatus)next:(id)event{MPRemoteCommandHandlerStatus result=[self move:YES];if([NSBundle.mainBundle.bundleIdentifier isEqual:@"com.legacymusic.app"]){dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.35*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"next");});dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.15*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"next-settled");});}return result;}
 
--(MPRemoteCommandHandlerStatus)previous:(id)event{MPRemoteCommandHandlerStatus result=[self move:NO];if([NSBundle.mainBundle.bundleIdentifier isEqual:@"com.legacymusic.app"])dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/2),dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"previous");});return result;}
+-(MPRemoteCommandHandlerStatus)previous:(id)event{MPRemoteCommandHandlerStatus result=[self move:NO];if([NSBundle.mainBundle.bundleIdentifier isEqual:@"com.legacymusic.app"]){dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.35*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"previous");});dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.15*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"previous-settled");});}return result;}
 
 +(void)install{if(!roadAudio)roadAudio=[TRDRoadAudio new];MPRemoteCommandCenter *center=[MPRemoteCommandCenter sharedCommandCenter];[center.nextTrackCommand removeTarget:nil];[center.previousTrackCommand removeTarget:nil];[center.nextTrackCommand addTarget:roadAudio action:@selector(next:)];[center.previousTrackCommand addTarget:roadAudio action:@selector(previous:)];center.nextTrackCommand.enabled=YES;center.previousTrackCommand.enabled=YES;[[UIApplication sharedApplication]beginReceivingRemoteControlEvents];TRDInstallCarControls();}
 

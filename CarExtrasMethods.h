@@ -171,9 +171,10 @@ static NSUInteger gTRDSpeechGen = 0;
   @try {
    AVAudioSession *session=[AVAudioSession sharedInstance];
    [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
-   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+   [session setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
    [session setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
   } @catch(NSException *e){}
+  notify_post("com.codex.trd.music.refresh");
  }
 }
 
@@ -191,9 +192,10 @@ static NSUInteger gTRDSpeechGen = 0;
    @try {
     AVAudioSession *session=[AVAudioSession sharedInstance];
     [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
-    [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+    [session setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
     [session setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
    } @catch(NSException *e){}
+   notify_post("com.codex.trd.music.refresh");
   }
  });
 }
@@ -243,8 +245,8 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
   }
   @try {
    AVAudioSession *session=[AVAudioSession sharedInstance];
-   [session setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker|AVAudioSessionCategoryOptionDuckOthers error:nil];
-   [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
+   [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
+   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionMixWithOthers|AVAudioSessionCategoryOptionDuckOthers error:nil];
    [session setActive:YES error:nil];
    self.ownsSpeechAudioSession=YES;
    if(!gTRDWelcomeSynth) gTRDWelcomeSynth=[[AVSpeechSynthesizer alloc]init];
@@ -307,8 +309,8 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
   if(voiceLang==2) return;
   @try {
    AVAudioSession *session=[AVAudioSession sharedInstance];
-   [session setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker|AVAudioSessionCategoryOptionDuckOthers error:nil];
-   [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
+   [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
+   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionMixWithOthers|AVAudioSessionCategoryOptionDuckOthers error:nil];
    [session setActive:YES error:nil];
    self.ownsSpeechAudioSession=YES;
    if(!gTRDWelcomeSynth) gTRDWelcomeSynth=[[AVSpeechSynthesizer alloc]init];
@@ -484,10 +486,17 @@ static void TRDEnqueueCalmSpeech(AVSpeechSynthesizer *synth, NSArray *sentences,
   [view removeFromSuperview];
   [self.view setNeedsLayout];
   @try {
-   AVAudioSession *session=[AVAudioSession sharedInstance];
-   [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
-   [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionDuckOthers error:nil];
+   if(!self.radioPlayer){
+    AVAudioSession *session=[AVAudioSession sharedInstance];
+    [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:nil];
+    [session setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
+    if(!gTRDWelcomeSynth || !gTRDWelcomeSynth.isSpeaking){
+     self.ownsSpeechAudioSession=NO;
+     [session setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+    }
+   }
   } @catch(NSException *e){}
+  notify_post("com.codex.trd.music.refresh");
  }];
 }
 -(void)previewWelcomeCapture{[self showWelcome];[self.welcome layoutIfNeeded];[self capture];}

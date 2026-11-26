@@ -1369,10 +1369,10 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     if (self.canMonitorPhase == 0 && [self.activeCANHeader isEqualToString:@"7E2"]) {
         NSInteger desiredFan = [self desiredHVFanSpeedForCurrentTemp];
         NSTimeInterval fanAge = self.lastHVFanKeepAliveAt ? [[NSDate date] timeIntervalSinceDate:self.lastHVFanKeepAliveAt] : 999.0;
-        if ((desiredFan > 0 && fanAge >= 4.2) || (desiredFan == 0 && self.activeHVFanCommanded > 0)) {
+        if ((desiredFan > 0 && fanAge >= 4.2) || (desiredFan == 0 && self.activeHVFanCommanded > 0 && fanAge >= 0.0)) {
             self.lastHVFanKeepAliveAt = [NSDate date];
             self.activeHVFanCommanded = desiredFan;
-            [self sendCommand:[NSString stringWithFormat:@"3081%02ld", (long)desiredFan]];
+            [self sendCommand:[NSString stringWithFormat:@"308106%02ld", (long)desiredFan]];
             return;
         }
     }
@@ -2176,7 +2176,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
     [prefs synchronize];
     if (!enabled && self.manualHVFanSpeed == 0 && self.activeHVFanCommanded > 0 && self.isConnected && self.obdInitialized) {
         self.activeHVFanCommanded = 0;
-        [self.pendingBodyCommands addObjectsFromArray:@[@"ATSH 7E2", @"308100", @"ATSH 7DF"]];
+        [self.pendingBodyCommands addObjectsFromArray:@[@"ATSH 7E2", @"30810600", @"ATSH 7DF"]];
     }
     [[NSNotificationCenter defaultCenter] postNotificationName:TRDOBDDataDidUpdateNotification object:self];
 }
@@ -2193,7 +2193,7 @@ static NSString * const kTRDOBDPreviousDebugLogPath = @"/var/mobile/codex-car/ob
         self.lastHVFanKeepAliveAt = [NSDate date];
         [self.pendingBodyCommands addObjectsFromArray:@[
             @"ATSH 7E2",
-            [NSString stringWithFormat:@"3081%02ld", (long)target],
+            [NSString stringWithFormat:@"308106%02ld", (long)target],
             @"ATSH 7DF"
         ]];
     }

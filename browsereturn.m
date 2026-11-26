@@ -581,7 +581,21 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   });
  }
  if([bundle isEqual:@"com.legacymusic.app"]){
-  static int musicPlayTok=0,musicPauseTok=0,musicNextTok=0,musicPrevTok=0,musicToggleTok=0,voiceSearchTok=0;
+  static int musicPlayTok=0,musicPauseTok=0,musicNextTok=0,musicPrevTok=0,musicToggleTok=0,voiceSearchTok=0,musicRefreshTok=0;
+  notify_register_dispatch("com.codex.trd.music.refresh",&musicRefreshTok,dispatch_get_main_queue(),^(int t){
+   id p=TRDCarPlayer();
+   if(p && [p respondsToSelector:@selector(hasActivePlayer)] && [p hasActivePlayer]){
+    if([p respondsToSelector:@selector(playerIsPlaying)] && [p playerIsPlaying]){
+     @try {
+      AVAudioSession *audSess=[AVAudioSession sharedInstance];
+      [audSess setCategory:AVAudioSessionCategoryPlayback error:nil];
+      [audSess setActive:YES error:nil];
+     } @catch(NSException *e){}
+    }
+    [TRDRoadAudio install];
+    TRDCarRefreshMetadata(@"cardash-refresh");
+   }
+  });
   notify_register_dispatch("com.codex.trd.music.voicesearch",&voiceSearchTok,dispatch_get_main_queue(),^(int t){
    TRDHandleVoiceSearchIfPending();
   });
@@ -675,7 +689,20 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   });
  }
  else if([bundle isEqual:@"com.himais0giiiin.ytnine"]){
-  static int ytToggleTok=0,ytPauseTok=0,ytPlayTok=0,ytNextTok=0,ytPrevTok=0;
+  static int ytToggleTok=0,ytPauseTok=0,ytPlayTok=0,ytNextTok=0,ytPrevTok=0,ytRefreshTok=0;
+  notify_register_dispatch("com.codex.trd.music.refresh",&ytRefreshTok,dispatch_get_main_queue(),^(int t){
+   id yt=TRDYouTubePlayback();
+   if(yt && TRDYouTubeIsCurrentlyPlaying(yt)){
+    @try {
+     AVAudioSession *ytSess=[AVAudioSession sharedInstance];
+     [ytSess setCategory:AVAudioSessionCategoryPlayback error:nil];
+     [ytSess setActive:YES error:nil];
+    } @catch(NSException *e){}
+    [TRDRoadAudio install];
+    id<TRDYTPlaybackProto> pb=(id<TRDYTPlaybackProto>)yt;
+    if([pb respondsToSelector:@selector(updateNowPlaying)])[pb updateNowPlaying];
+   }
+  });
   notify_register_dispatch("com.codex.trd.youtube.toggle",&ytToggleTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(2,@"darwin-toggle");});
   notify_register_dispatch("com.codex.trd.youtube.pause",&ytPauseTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(1,@"darwin-pause");});
   notify_register_dispatch("com.codex.trd.youtube.play",&ytPlayTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(0,@"darwin-play");});
