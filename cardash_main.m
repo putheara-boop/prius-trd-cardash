@@ -10098,7 +10098,11 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
    NSString *curSign = (obd.hvPackCurrent < 0) ? @"ชาร์จ" : @"โหลด";
    NSString *t = [NSString stringWithFormat:@"HV SOC: %.1f%% (%@)\nPACK: %.1f V • %@ %+.2f A\n14 BLOCKS (ΔSOC %.1f%%)",
                  obd.hybridBatterySOC, socGrade, obd.hvPackVoltage, curSign, obd.hvPackCurrent, obd.hvDeltaSOC];
-   if(![pbLbl.text isEqualToString:t]) pbLbl.text = t;
+   if(![pbLbl.text isEqualToString:t]){
+    NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+    ps.lineSpacing = 5.5;
+    pbLbl.attributedText = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:13.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: [UIColor whiteColor], NSParagraphStyleAttributeName: ps}];
+   }
   }
  }
  if(self.blockGraphView && obd.hvBlockVoltages.count == 14){
