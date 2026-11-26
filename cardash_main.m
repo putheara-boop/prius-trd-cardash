@@ -2043,6 +2043,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
  CFAbsoluteTime _cooldownUntil;
  NSUInteger _frameIdx;
  float _smoothAmbient;
+ float _prevMeanLuma;
 }
 @property (nonatomic, strong) AVCaptureSession *session;
 @property (nonatomic, strong) dispatch_queue_t queue;
@@ -2247,9 +2248,12 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   for(int i=0;i<96;i++){_prevLuma[i]=cur[i];_baseLuma[i]=cur[i];}
   _hasPrev=YES;
   _smoothAmbient=meanLuma;
+  _prevMeanLuma=meanLuma;
   return;
  }
 
+ float globalShift = meanLuma - _prevMeanLuma;
+ _prevMeanLuma = meanLuma;
  float ambEst = (_smoothAmbient > 0.0f) ? _smoothAmbient : meanLuma;
  BOOL isNightCabin = (ambEst < 30.0f);
  // Responsive near-field driver-zone thresholds (gx >= 3 masks out left passenger seat!)
@@ -2272,7 +2276,8 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   int gy = i / 12;
   spatialVarSum += fabsf(cur[i] - meanLuma);
   if(cur[i] <= darkCellCut) darkCells++;
-  float dm=fabsf(cur[i]-_prevLuma[i]);
+  // Illumination-invariant motion: subtract global brightness shift so passing streetlights / shadows NEVER trigger swipes!
+  float dm=fabsf((cur[i]-_prevLuma[i]) - globalShift);
   _prevLuma[i]=cur[i];
   // RHD Prius (steering wheel Right, Lightning port Right -> front lens on Left bezel):
   // Columns gx = 0..2 look straight into the Left Passenger Seat — ignore them for swipe motion!
@@ -8459,28 +8464,34 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 -(BOOL)canBecomeFirstResponder{return YES;}
 -(MPRemoteCommandHandlerStatus)carRemoteNext:(id)event{
  if(self.radioPlayer){if(self.offlinePlaybackActive)[self nextOfflineTrack];return MPRemoteCommandHandlerStatusSuccess;}
- if([self isYouTubeMediaActive]){
-  static NSTimeInterval lastNext=0;
-  NSTimeInterval now=TRDMonotonic();
-  if(now-lastNext>=0.25){lastNext=now;notify_post("com.codex.trd.youtube.next");}
+ static NSTimeInterval lastNext=0;
+ NSTimeInterval now=TRDMonotonic();
+ if(now-lastNext>=0.25){
+  lastNext=now;
+  if([self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.next");}
+  else{notify_post("com.codex.trd.music.next");}
  }
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(MPRemoteCommandHandlerStatus)carRemotePrev:(id)event{
  if(self.radioPlayer){if(self.offlinePlaybackActive)[self prevOfflineTrack];return MPRemoteCommandHandlerStatusSuccess;}
- if([self isYouTubeMediaActive]){
-  static NSTimeInterval lastPrev=0;
-  NSTimeInterval now=TRDMonotonic();
-  if(now-lastPrev>=0.25){lastPrev=now;notify_post("com.codex.trd.youtube.previous");}
+ static NSTimeInterval lastPrev=0;
+ NSTimeInterval now=TRDMonotonic();
+ if(now-lastPrev>=0.25){
+  lastPrev=now;
+  if([self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.previous");}
+  else{notify_post("com.codex.trd.music.previous");}
  }
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(MPRemoteCommandHandlerStatus)carRemoteToggle:(id)event{
  if(self.radioPlayer){[self media:(UIButton *)[self.controls viewWithTag:21]];return MPRemoteCommandHandlerStatusSuccess;}
- if([self isYouTubeMediaActive]){
-  static NSTimeInterval lastTog=0;
-  NSTimeInterval now=TRDMonotonic();
-  if(now-lastTog>=0.25){lastTog=now;notify_post("com.codex.trd.youtube.toggle");}
+ static NSTimeInterval lastTog=0;
+ NSTimeInterval now=TRDMonotonic();
+ if(now-lastTog>=0.25){
+  lastTog=now;
+  if([self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.toggle");}
+  else{notify_post("com.codex.trd.music.toggle");}
  }
  return MPRemoteCommandHandlerStatusSuccess;
 }
@@ -8495,10 +8506,12 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   }
   return MPRemoteCommandHandlerStatusSuccess;
  }
- if([self isYouTubeMediaActive]){
-  static NSTimeInterval lastPlay=0;
-  NSTimeInterval now=TRDMonotonic();
-  if(now-lastPlay>=0.25){lastPlay=now;notify_post("com.codex.trd.youtube.play");}
+ static NSTimeInterval lastPlay=0;
+ NSTimeInterval now=TRDMonotonic();
+ if(now-lastPlay>=0.25){
+  lastPlay=now;
+  if([self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.play");}
+  else{notify_post("com.codex.trd.music.play");}
  }
  return MPRemoteCommandHandlerStatusSuccess;
 }
@@ -8513,10 +8526,12 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   }
   return MPRemoteCommandHandlerStatusSuccess;
  }
- if([self isYouTubeMediaActive]){
-  static NSTimeInterval lastPause=0;
-  NSTimeInterval now=TRDMonotonic();
-  if(now-lastPause>=0.25){lastPause=now;notify_post("com.codex.trd.youtube.pause");}
+ static NSTimeInterval lastPause=0;
+ NSTimeInterval now=TRDMonotonic();
+ if(now-lastPause>=0.25){
+  lastPause=now;
+  if([self isYouTubeMediaActive]){notify_post("com.codex.trd.youtube.pause");}
+  else{notify_post("com.codex.trd.music.pause");}
  }
  return MPRemoteCommandHandlerStatusSuccess;
 }

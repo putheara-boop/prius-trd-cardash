@@ -581,12 +581,26 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   });
  }
  if([bundle isEqual:@"com.legacymusic.app"]){
-  static int musicPlayTok=0,musicPauseTok=0,voiceSearchTok=0;
+  static int musicPlayTok=0,musicPauseTok=0,musicNextTok=0,musicPrevTok=0,musicToggleTok=0,voiceSearchTok=0;
   notify_register_dispatch("com.codex.trd.music.voicesearch",&voiceSearchTok,dispatch_get_main_queue(),^(int t){
    TRDHandleVoiceSearchIfPending();
   });
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.9*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
    TRDHandleVoiceSearchIfPending();
+  });
+  notify_register_dispatch("com.codex.trd.music.next",&musicNextTok,dispatch_get_main_queue(),^(int t){
+   TRDNormalizeNinjaOutput();
+   [roadAudio next:nil];
+  });
+  notify_register_dispatch("com.codex.trd.music.previous",&musicPrevTok,dispatch_get_main_queue(),^(int t){
+   TRDNormalizeNinjaOutput();
+   [roadAudio previous:nil];
+  });
+  notify_register_dispatch("com.codex.trd.music.toggle",&musicToggleTok,dispatch_get_main_queue(),^(int t){
+   TRDNormalizeNinjaOutput();
+   id p=TRDCarPlayer();
+   if(p && [p respondsToSelector:@selector(playerIsPlaying)] && [p playerIsPlaying]){[roadAudio carPause:nil];}
+   else{[roadAudio carPlay:nil];}
   });
   notify_register_dispatch("com.codex.trd.music.pause",&musicPauseTok,dispatch_get_main_queue(),^(int t){
    TRDReversePaused=YES;
