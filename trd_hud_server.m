@@ -11,8 +11,64 @@
 #include <notify.h>
 #include <spawn.h>
 #include <dns_sd.h>
+#include <dlfcn.h>
+#include <mach/mach.h>
 
 extern char **environ;
+
+static NSDictionary *readIPadPMUPowerSnapshot(void) {
+  static NSDictionary *sCached = nil;
+  static CFAbsoluteTime sLastRead = 0;
+  CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+  if (sCached && (now - sLastRead) < 2.5) return sCached;
+  sLastRead = now;
+
+  typedef CFMutableDictionaryRef (*IOServiceMatchingFn)(const char *);
+  typedef mach_port_t (*IOServiceGetMatchingServiceFn)(mach_port_t, CFDictionaryRef);
+  typedef kern_return_t (*IORegistryEntryCreateCFPropertiesFn)(mach_port_t, CFMutableDictionaryRef *, CFAllocatorRef, uint32_t);
+  typedef kern_return_t (*IOObjectReleaseFn)(mach_port_t);
+
+  static void *iokit = NULL;
+  static IOServiceMatchingFn fnMatch = NULL;
+  static IOServiceGetMatchingServiceFn fnGet = NULL;
+  static IORegistryEntryCreateCFPropertiesFn fnProps = NULL;
+  static IOObjectReleaseFn fnRel = NULL;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    iokit = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY);
+    if (iokit) {
+      fnMatch = (IOServiceMatchingFn)dlsym(iokit, "IOServiceMatching");
+      fnGet = (IOServiceGetMatchingServiceFn)dlsym(iokit, "IOServiceGetMatchingService");
+      fnProps = (IORegistryEntryCreateCFPropertiesFn)dlsym(iokit, "IORegistryEntryCreateCFProperties");
+      fnRel = (IOObjectReleaseFn)dlsym(iokit, "IOObjectRelease");
+    }
+  });
+
+  if (fnMatch && fnGet && fnProps && fnRel) {
+    mach_port_t entry = fnGet(0, fnMatch("AppleARMPMUCharger"));
+    if (!entry) entry = fnGet(0, fnMatch("IOPMPowerSource"));
+    if (entry) {
+      CFMutableDictionaryRef cfProps = NULL;
+      if (fnProps(entry, &cfProps, kCFAllocatorDefault, 0) == KERN_SUCCESS && cfProps) {
+        NSDictionary *p = CFBridgingRelease(cfProps);
+        NSInteger curCap = [p[@"CurrentCapacity"] integerValue];
+        NSInteger maxCap = [p[@"MaxCapacity"] integerValue];
+        NSInteger pct = (maxCap > 0 && maxCap != 100) ? (NSInteger)llround(((double)curCap / (double)maxCap) * 100.0) : curCap;
+        double mv = [p[@"Voltage"] doubleValue];
+        double tempRaw = [p[@"Temperature"] doubleValue];
+        BOOL extConn = [p[@"ExternalConnected"] boolValue] || [p[@"AppleRawExternalConnected"] boolValue];
+        BOOL isChg = [p[@"IsCharging"] boolValue];
+        NSString *vStr = (mv > 1000.0) ? [NSString stringWithFormat:@"%.2f", mv / 1000.0] : @"--";
+        NSString *cStr = (tempRaw > 100.0) ? [NSString stringWithFormat:@"%.1f", tempRaw / 100.0] : @"--";
+        NSString *st = isChg ? @"ชาร์จไฟ ⚡" : (extConn ? @"เสียบไฟรถ ⚡" : @"แบตในตัว");
+        sCached = @{@"pct": @(MAX(0, MIN(100, pct))), @"v": vStr, @"c": cStr, @"ext": @(extConn), @"state": st};
+      }
+      fnRel(entry);
+    }
+  }
+  if (!sCached) sCached = @{@"pct": @0, @"v": @"--", @"c": @"--", @"ext": @NO, @"state": @"--"};
+  return sCached;
+}
 
 static void stopH109ViewerIfRunning(void) {
   pid_t pid = 0;
@@ -229,8 +285,8 @@ static NSString *const kHUDHTML =
 "\n"
 "  <div class=\"card\">\n"
 "    <div class=\"card-hdr\">\n"
-"      <div class=\"card-title\">🚗 สถานะ PRIUS TRD สดจากกล่อง OBD2</div>\n"
-"      <div style=\"font-size:11px;color:#22ff88;font-weight:800;\" id=\"gearMini\">GEAR P</div>\n"
+"      <div class=\"card-title\">🚗 สถานะ PRIUS TRD & iPad สด</div>\n"
+"      <div style=\"font-size:11px;color:#22ff88;font-weight:800;\" id=\"gearMini\">GEAR P • iPad --%</div>\n"
 "    </div>\n"
 "    <div class=\"tel-grid\">\n"
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">ความเร็ว / โหมดขับ</div><div class=\"tel-val\" id=\"tSpd\">0 km/h</div><div class=\"tel-sub\" id=\"tMode\">EV READY</div></div>\n"
@@ -238,6 +294,7 @@ static NSString *const kHUDHTML =
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">ความร้อนเครื่อง / อินเวอร์เตอร์</div><div class=\"tel-val\" id=\"tEct\">--°C</div><div class=\"tel-sub\" id=\"tInv\">INV --°C • แบต 12V --V</div></div>\n"
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">น้ำมันเหลือ / ทริปนี้</div><div class=\"tel-val\" id=\"tFuel\">-- L</div><div class=\"tel-sub\" id=\"tCost\">฿0.0 • -- km/L</div></div>\n"
 "    </div>\n"
+"    <div class=\"song-banner\" id=\"ipadPwrRemote\" style=\"margin-top:8px;margin-bottom:0;font-size:12px;color:#bfeaff;\">🔋 ไฟเลี้ยงจอ iPad: กำลังอ่านค่าแบตเตอรี่และแรงดันไฟ...</div>\n"
 "    <div class=\"row\" style=\"margin-top:10px;\">\n"
 "      <button class=\"rbtn\" onclick=\"sendCmd('screen','home')\">🏠 หน้าหลัก</button>\n"
 "      <button class=\"rbtn\" onclick=\"sendCmd('screen','drive')\">🏎️ Drive</button>\n"
@@ -265,6 +322,7 @@ static NSString *const kHUDHTML =
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">ความสมดุลเซลล์ (ΔV)</div><div class=\"tel-val\" id=\"hvDeltaTxt\">-- V</div><div class=\"tel-sub\" id=\"hvGradeTxt\">รอวัดค่า 14 บล็อก</div></div>\n"
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">อุณหภูมิแบต / ลมดูด</div><div class=\"tel-val\" id=\"hvTempBig\">-- °C</div><div class=\"tel-sub\" id=\"hvInletTxt\">ลมเข้า --°C • พัดลม AUTO</div></div>\n"
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">แบต 12V / น้ำหล่อเย็น</div><div class=\"tel-val\" id=\"auxBigTxt\">-- V</div><div class=\"tel-sub\" id=\"ectInvTxt\">เครื่อง --°C • INV --°C</div></div>\n"
+"      <div class=\"tel-box\" style=\"grid-column:span 2;\"><div class=\"tel-lbl\">🔋 แบตเตอรี่ & แรงดันไฟจอ iPad mini 2</div><div class=\"tel-val\" id=\"ipadBigTxt\" style=\"font-size:17px;\">--% • -- V</div><div class=\"tel-sub\" id=\"ipadSubTxt\">สถานะไฟชาร์จ -- • อุณหภูมิแบต --°C</div></div>\n"
 "    </div>\n"
 "    <div class=\"blk-grid\" id=\"hvBlocksGrid\"></div>\n"
 "    <div class=\"row\" style=\"margin-top:8px;\">\n"
@@ -776,9 +834,19 @@ static NSString *const kHUDHTML =
 "        var spd = Math.max(0, Math.round(Number(d.speed || 0)));\n"
 "        var gear = d.gear || 'P';\n"
 "        var soc = Math.max(0, Math.min(100, Math.round(Number(d.soc || 0))));\n"
+"        var ipPct = Number(d.ipadPct || 0);\n"
+"        var ipV = d.ipadV || '--';\n"
+"        var ipC = d.ipadC || '--';\n"
+"        var ipSt = d.ipadState || '--';\n"
 "        document.getElementById('clockMini').innerText = d.clock || '--:--';\n"
 "        document.getElementById('clockTxt').innerText = d.clock || '--:--';\n"
-"        document.getElementById('gearMini').innerText = 'GEAR ' + gear;\n"
+"        document.getElementById('gearMini').innerText = 'GEAR ' + gear + (ipPct > 0 ? (' • 🔋 iPad ' + ipPct + '%') : '');\n"
+"        var ipRem = document.getElementById('ipadPwrRemote');\n"
+"        if(ipRem) ipRem.innerText = '🔋 จอ iPad: แบต ' + (ipPct > 0 ? ipPct : '--') + '% • แรงดัน ' + ipV + 'V • แบตอุ่น ' + ipC + '°C (' + ipSt + ')';\n"
+"        var ipBig = document.getElementById('ipadBigTxt');\n"
+"        if(ipBig) ipBig.innerText = (ipPct > 0 ? ipPct : '--') + '% • ' + ipV + ' V (' + ipSt + ')';\n"
+"        var ipSub = document.getElementById('ipadSubTxt');\n"
+"        if(ipSub) ipSub.innerText = 'อุณหภูมิแบต iPad ' + ipC + '°C • แบตรถ 12V ' + (d.aux12v || '--') + 'V';\n"
 "        document.getElementById('tSpd').innerText = spd + ' km/h';\n"
 "        document.getElementById('tMode').innerText = d.hybridMode || 'EV READY';\n"
 "        document.getElementById('tSoc').innerText = soc + '%';\n"
@@ -1156,6 +1224,9 @@ static NSString *buildLiveHUDJSON(void) {
       : (song.length > 0 ? song : @"พร้อมเล่นเพลง");
 
     NSDictionary *qState = readSharedQueueState();
+    NSDictionary *pmu = readIPadPMUPowerSnapshot();
+    NSInteger ipadPct = [pmu[@"pct"] integerValue] > 0 ? [pmu[@"pct"] integerValue] : [live[@"ipadPct"] integerValue];
+    NSString *ipadState = ([pmu[@"state"] isKindOfClass:[NSString class]] && ![pmu[@"state"] isEqualToString:@"--"]) ? pmu[@"state"] : (live[@"ipadState"] ?: @"--");
     NSDictionary *payload = @{
       @"speed": @(spd),
       @"gear": live[@"gear"] ?: @"P",
@@ -1185,6 +1256,10 @@ static NSString *buildLiveHUDJSON(void) {
       @"fuelL": live[@"fuelL"] ?: @"--",
       @"rangeKm": live[@"rangeKm"] ?: @"--",
       @"aux12v": live[@"aux12v"] ?: @"--",
+      @"ipadPct": @(ipadPct),
+      @"ipadV": pmu[@"v"] ?: @"--",
+      @"ipadC": pmu[@"c"] ?: @"--",
+      @"ipadState": ipadState,
       @"hybridMode": live[@"hybridMode"] ?: @"EV READY",
       @"song": fullSong,
       @"queue": qState[@"items"] ?: @[],
@@ -1687,17 +1762,22 @@ static NSString *formatPriusReportText(NSString *kind) {
     }
     return ms;
   }
+  NSDictionary *pmu = readIPadPMUPowerSnapshot();
+  NSInteger ipPct = [pmu[@"pct"] integerValue] > 0 ? [pmu[@"pct"] integerValue] : [live[@"ipadPct"] integerValue];
+  NSString *ipSt = ([pmu[@"state"] isKindOfClass:[NSString class]] && ![pmu[@"state"] isEqualToString:@"--"]) ? pmu[@"state"] : (live[@"ipadState"] ?: @"--");
   NSString *hdr = [kind isEqualToString:@"park"] ? @"🏁 สรุปทริปหลังจอดรถ PRIUS TRD" : @"🚗 สถานะ PRIUS TRD ล่าสุด";
   return [NSString stringWithFormat:
     @"%@\n"
     "• ทริปนี้: %@ • ค่าน้ำมัน ฿%@ (%@ km/L)\n"
     "• แบตไฮบริด: SOC %@%% • ΔV %@V • %@°C (พัดลม %@)\n"
     "• เครื่องยนต์: %@°C • INV %@°C • แบต 12V %@V\n"
+    "• จอ iPad: แบต %ld%% • %@V • %@°C (%@)\n"
     "• น้ำมันคงเหลือ: %@ L (วิ่งได้ ~%@ กม.)%@",
     hdr,
     live[@"trip"] ?: @"0.0 KM", live[@"fuelCost"] ?: @"0.0", live[@"kmPerL"] ?: @"--",
     live[@"soc"] ?: @"--", live[@"hvDeltaV"] ?: @"0.00", live[@"hvC"] ?: @"--", live[@"fan"] ?: @"AUTO",
     live[@"ect"] ?: @"--", live[@"invC"] ?: @"--", live[@"aux12v"] ?: @"--",
+    (long)ipPct, pmu[@"v"] ?: @"--", pmu[@"c"] ?: @"--", ipSt,
     live[@"fuelL"] ?: @"--", live[@"rangeKm"] ?: @"--", mapUrl];
 }
 

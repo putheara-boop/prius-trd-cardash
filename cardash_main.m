@@ -5793,6 +5793,11 @@ static NSUInteger gTRDUpdateTicks=0;
   double curLat=self.fix?self.fix.coordinate.latitude:[[NSUserDefaults standardUserDefaults] doubleForKey:@"TRDLastKnownLat"];
   double curLon=self.fix?self.fix.coordinate.longitude:[[NSUserDefaults standardUserDefaults] doubleForKey:@"TRDLastKnownLon"];
   double deltaV=(hObd.hvBlockMaxV>0 && hObd.hvBlockMinV>0)?MAX(0.0,hObd.hvBlockMaxV-hObd.hvBlockMinV):0.0;
+  [UIDevice currentDevice].batteryMonitoringEnabled=YES;
+  float rawBatLvl=[UIDevice currentDevice].batteryLevel;
+  NSInteger ipadBatPct=(rawBatLvl>=0.0f)?(NSInteger)llround(rawBatLvl*100.0):0;
+  UIDeviceBatteryState ipadBst=[UIDevice currentDevice].batteryState;
+  NSString *ipadBatState=(ipadBst==UIDeviceBatteryStateCharging)?@"ชาร์จไฟ ⚡":((ipadBst==UIDeviceBatteryStateFull)?@"เต็ม 100% ⚡":@"แบตในตัว");
   NSDictionary *hudLive=@{
    @"speed":@(hSpd),
    @"gear":hGear,
@@ -5827,6 +5832,8 @@ static NSUInteger gTRDUpdateTicks=0;
    @"fuelL":[NSString stringWithFormat:@"%.1f",hObd.fuelRemainingLiters],
    @"rangeKm":[NSString stringWithFormat:@"%.0f",hRangeKm],
    @"aux12v":[NSString stringWithFormat:@"%.1f",hAux],
+   @"ipadPct":@(ipadBatPct),
+   @"ipadState":ipadBatState,
    @"hybridMode":hMode,
    @"song":self.song.text?:@"",
    @"artist":self.artist.text?:@""
