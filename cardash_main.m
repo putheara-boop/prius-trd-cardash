@@ -2727,6 +2727,10 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 -(void)openHybridDiagnosticsMenu;
 -(void)openDTCScannerMenu;
 -(void)openReverseBeepMenu;
+-(void)openMobileCompanionMenu;
+-(void)handleMobileCommandPlist;
+-(void)handleMobileGPSPlist;
+-(void)resolveAndNavigateMobileInput:(NSString *)rawInput autoStart:(BOOL)autoStart;
 -(void)openHVThermalHistoryMenu;
 -(void)refreshHybridStatus;
 -(void)toggleTestHybridSOC;
@@ -3766,6 +3770,15 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
   // Do NOT claim MPRemoteCommandCenter / NowPlaying at launch when audioNINJA/YouTube owns Bluetooth AVRCP!
   // Only claim remote control when CarDash's own radioPlayer (Offline/Radio) is actively playing.
   [self setCarDashRemoteControlEnabled:NO];
+
+  static int sMobileCmdTok = 0, sMobileGpsTok = 0;
+  __weak typeof(self) weakMobileSelf = self;
+  notify_register_dispatch("com.codex.trd.mobile.cmd", &sMobileCmdTok, dispatch_get_main_queue(), ^(int t){
+   [weakMobileSelf handleMobileCommandPlist];
+  });
+  notify_register_dispatch("com.codex.trd.mobile.gps", &sMobileGpsTok, dispatch_get_main_queue(), ^(int t){
+   [weakMobileSelf handleMobileGPSPlist];
+  });
 
   __weak typeof(self) weakGestureSelf = self;
   TRDFrontGestureEngine *ge = [TRDFrontGestureEngine sharedEngine];
@@ -5699,6 +5712,8 @@ static NSUInteger gTRDUpdateTicks=0;
   }
   NSString *hTrip=[NSString stringWithFormat:@"TRIP %.1f KM", hTripKm];
   NSString *hWeather=self.currentTemperature>0?[NSString stringWithFormat:@"%.0f°C%@",self.currentTemperature,self.rainDetected?@" 🌧️":@" ☀️"]:@"";
+  double hRangeKm=[self estimatedRangeKmForFuelLiters:hObd.fuelRemainingLiters];
+  NSString *hFanStr=(hObd.activeHVFanCommanded>0)?[NSString stringWithFormat:@"L%ld",(long)hObd.activeHVFanCommanded]:@"AUTO";
   NSDictionary *hudLive=@{
    @"speed":@(hSpd),
    @"gear":hGear,
@@ -5714,6 +5729,11 @@ static NSUInteger gTRDUpdateTicks=0;
    @"navStreet":hNavStreet,
    @"soc":@((NSInteger)llround(hSoc)),
    @"ect":@((NSInteger)llround(hEct)),
+   @"invC":@((NSInteger)llround(hObd.inverterTempC)),
+   @"hvC":[NSString stringWithFormat:@"%.1f",hObd.hvBatteryTempC],
+   @"fan":hFanStr,
+   @"fuelL":[NSString stringWithFormat:@"%.1f",hObd.fuelRemainingLiters],
+   @"rangeKm":[NSString stringWithFormat:@"%.0f",hRangeKm],
    @"aux12v":[NSString stringWithFormat:@"%.1f",hAux],
    @"hybridMode":hMode,
    @"song":self.song.text?:@"",
@@ -10526,6 +10546,247 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [self presentSettingsMenu:m];
 }
 
+static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *outLon, NSString **outPlaceName) {
+ if(!text.length) return NO;
+ NSArray *patterns = @[
+  @"!3d(-?\\d+\\.\\d+)!4d(-?\\d+\\.\\d+)",
+  @"[?&](?:q|query|ll|daddr|destination|center|viewpoint)=(-?\\d+\\.\\d+)(?:,|%2C|\\s)+(-?\\d+\\.\\d+)",
+  @"/search/(-?\\d+\\.\\d+)(?:,|%2C|\\+|\\s)+(-?\\d+\\.\\d+)",
+  @"@(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)",
+  @"(?:^|[\\s(])(-?\\d{1,2}\\.\\d{4,})\\s*,\\s*(-?\\d{1,3}\\.\\d{4,})(?:$|[\\s)])"
+ ];
+ if(outPlaceName && (!*outPlaceName || (*outPlaceName).length == 0)){
+  NSRegularExpression *placeRe = [NSRegularExpression regularExpressionWithPattern:@"/maps/place/([^/@?&]+)" options:NSRegularExpressionCaseInsensitive error:nil];
+  NSTextCheckingResult *pm = [placeRe firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
+  if(pm && pm.numberOfRanges >= 2){
+   NSString *rawP = [text substringWithRange:[pm rangeAtIndex:1]];
+   rawP = [[rawP stringByReplacingOccurrencesOfString:@"+" withString:@" "] stringByRemovingPercentEncoding] ?: rawP;
+   rawP = [rawP stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+   if(rawP.length > 0 && ![rawP hasPrefix:@"http"]) *outPlaceName = rawP;
+  }
+ }
+ for(NSString *pat in patterns){
+  NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:pat options:NSRegularExpressionCaseInsensitive error:nil];
+  NSTextCheckingResult *m = [re firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
+  if(m && m.numberOfRanges >= 3){
+   double lat = [[text substringWithRange:[m rangeAtIndex:1]] doubleValue];
+   double lon = [[text substringWithRange:[m rangeAtIndex:2]] doubleValue];
+   if(fabs(lat) >= 0.5 && fabs(lat) <= 90.0 && fabs(lon) >= 0.5 && fabs(lon) <= 180.0){
+    if(outLat) *outLat = lat;
+    if(outLon) *outLon = lon;
+    return YES;
+   }
+  }
+ }
+ return NO;
+}
+
+-(void)navigateByPlaceQueryFromMobile:(NSString *)query fallbackName:(NSString *)fallbackName autoStart:(BOOL)autoStart{
+ NSString *cleanQ = [query stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+ if(!cleanQ.length) return;
+ CLLocationDegrees baseLat = self.fix ? self.fix.coordinate.latitude : 13.7563;
+ CLLocationDegrees baseLon = self.fix ? self.fix.coordinate.longitude : 100.5018;
+ CLLocation *curLoc = self.fix ?: [[CLLocation alloc] initWithLatitude:baseLat longitude:baseLon];
+ MKLocalSearchRequest *req = [[MKLocalSearchRequest alloc] init];
+ req.naturalLanguageQuery = cleanQ;
+ req.region = MKCoordinateRegionMakeWithDistance(CLLocationCoordinate2DMake(baseLat, baseLon), 80000, 80000);
+ MKLocalSearch *search = [[MKLocalSearch alloc] initWithRequest:req];
+ __weak typeof(self) weakSelf = self;
+ [search startWithCompletionHandler:^(MKLocalSearchResponse *resp, NSError *err){
+  dispatch_async(dispatch_get_main_queue(), ^{
+   Dashboard *v = weakSelf;
+   if(!v) return;
+   MKMapItem *best = nil;
+   double bestDist = 1e15;
+   for(MKMapItem *it in resp.mapItems){
+    if(!it.placemark.location) continue;
+    double d = [curLoc distanceFromLocation:it.placemark.location];
+    if(d < bestDist){ bestDist = d; best = it; }
+   }
+   if(best){
+    NSString *nm = best.name.length ? best.name : (fallbackName.length ? fallbackName : cleanQ);
+    NSString *ad = best.placemark.title.length ? best.placemark.title : @"📱 ค้นหาจากมือถือ";
+    [v openMapToLat:best.placemark.coordinate.latitude lon:best.placemark.coordinate.longitude name:nm address:ad autoStart:autoStart];
+    [v showVoiceToast:[NSString stringWithFormat:@"📍 นำทางไป: %@", nm] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.58 alpha:1.0] autoHide:4.0];
+   } else {
+    [v openMapWithSearchQuery:cleanQ];
+   }
+  });
+ }];
+}
+
+-(void)resolveAndNavigateMobileInput:(NSString *)rawInput autoStart:(BOOL)autoStart{
+ NSString *trimmed = [rawInput stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+ if(!trimmed.length) return;
+
+ NSString *sharedTitle = nil;
+ NSString *urlString = nil;
+ NSRegularExpression *urlRe = [NSRegularExpression regularExpressionWithPattern:@"https?://[^\\s]+" options:NSRegularExpressionCaseInsensitive error:nil];
+ NSTextCheckingResult *um = [urlRe firstMatchInString:trimmed options:0 range:NSMakeRange(0, trimmed.length)];
+ if(um){
+  urlString = [trimmed substringWithRange:um.range];
+  NSString *before = [[trimmed substringToIndex:um.range.location] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@" \t\r\n-•:"]];
+  if(before.length > 0 && before.length < 120) sharedTitle = before;
+ }
+
+ double lat = 0, lon = 0;
+ NSString *placeName = sharedTitle;
+ if(TRDExtractLatLonFromText(trimmed, &lat, &lon, &placeName)){
+  NSString *finalName = placeName.length ? placeName : @"📍 หมุดจาก Google Maps มือถือ";
+  [self openMapToLat:lat lon:lon name:finalName address:@"📱 ส่งตรงจาก Google Maps มือถือ" autoStart:autoStart];
+  [self showVoiceToast:[NSString stringWithFormat:@"📍 รับพิกัดจากมือถือ: %@", finalName] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.58 alpha:1.0] autoHide:4.0];
+  return;
+ }
+
+ if(urlString.length > 0){
+  NSURL *u = [NSURL URLWithString:urlString];
+  if(u){
+   [self showVoiceToast:@"📱 กำลังดึงพิกัดจากลิงก์ Google Maps มือถือ..." color:[UIColor colorWithRed:0.25 green:0.92 blue:1.0 alpha:1.0] autoHide:3.5];
+   NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:6.5];
+   [req setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
+   __weak typeof(self) weakSelf = self;
+   [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err){
+    NSString *finalURL = resp.URL.absoluteString ?: urlString;
+    NSString *html = data.length ? ([[NSString alloc] initWithData:[data subdataWithRange:NSMakeRange(0, MIN((NSUInteger)65536, data.length))] encoding:NSUTF8StringEncoding] ?: @"") : @"";
+    double rLat = 0, rLon = 0;
+    NSString *rName = sharedTitle;
+    BOOL found = TRDExtractLatLonFromText(finalURL, &rLat, &rLon, &rName);
+    if(!found && html.length > 0){
+     found = TRDExtractLatLonFromText(html, &rLat, &rLon, &rName);
+     if(!rName.length){
+      NSRegularExpression *tRe = [NSRegularExpression regularExpressionWithPattern:@"<title>([^<]+)</title>" options:NSRegularExpressionCaseInsensitive error:nil];
+      NSTextCheckingResult *tm = [tRe firstMatchInString:html options:0 range:NSMakeRange(0, html.length)];
+      if(tm && tm.numberOfRanges >= 2){
+       NSString *tStr = [[html substringWithRange:[tm rangeAtIndex:1]] stringByReplacingOccurrencesOfString:@" - Google Maps" withString:@""];
+       tStr = [tStr stringByReplacingOccurrencesOfString:@"Google Maps" withString:@""];
+       tStr = [tStr stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+       if(tStr.length > 0 && tStr.length < 100) rName = tStr;
+      }
+     }
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+     Dashboard *v = weakSelf;
+     if(!v) return;
+     if(found){
+      NSString *bestName = rName.length ? rName : @"📍 หมุดจาก Google Maps มือถือ";
+      [v openMapToLat:rLat lon:rLon name:bestName address:@"📱 ส่งตรงจาก Google Maps มือถือ" autoStart:autoStart];
+      [v showVoiceToast:[NSString stringWithFormat:@"📍 นำทางไป: %@", bestName] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.58 alpha:1.0] autoHide:4.0];
+     } else if(rName.length > 0){
+      [v navigateByPlaceQueryFromMobile:rName fallbackName:rName autoStart:autoStart];
+     } else {
+      NSURLComponents *comp = [NSURLComponents componentsWithString:finalURL];
+      NSString *qParam = nil;
+      for(NSURLQueryItem *qi in comp.queryItems){
+       if([@[@"q", @"query", @"daddr", @"destination"] containsObject:qi.name.lowercaseString] && qi.value.length){
+        qParam = qi.value; break;
+       }
+      }
+      if(qParam.length){
+       [v navigateByPlaceQueryFromMobile:qParam fallbackName:sharedTitle autoStart:autoStart];
+      } else {
+       [v showVoiceToast:@"⚠️ ลิงก์นี้ไม่มีตัวเลขพิกัด กรุณาพิมพ์ชื่อสถานที่แทนครับ" color:[UIColor colorWithRed:1.0 green:0.65 blue:0.25 alpha:1.0] autoHide:4.0];
+      }
+     }
+    });
+   }] resume];
+   return;
+  }
+ }
+
+ [self navigateByPlaceQueryFromMobile:trimmed fallbackName:sharedTitle autoStart:autoStart];
+}
+
+-(void)handleMobileCommandPlist{
+ static NSString *sLastCmdToken = nil;
+ NSDictionary *cmd = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/mobile-cmd.plist"];
+ if(![cmd isKindOfClass:[NSDictionary class]]) return;
+ NSString *tok = [cmd[@"token"] isKindOfClass:[NSString class]] ? cmd[@"token"] : @"";
+ if(!tok.length || [tok isEqualToString:sLastCmdToken]) return;
+ sLastCmdToken = tok;
+ double atTs = [cmd[@"at"] doubleValue];
+ if(atTs > 0 && fabs([[NSDate date] timeIntervalSince1970] - atTs) > 20.0) return;
+
+ NSString *action = [cmd[@"action"] isKindOfClass:[NSString class]] ? cmd[@"action"] : @"";
+ NSString *val = [cmd[@"value"] isKindOfClass:[NSString class]] ? cmd[@"value"] : @"";
+ BOOL autoStart = [cmd[@"autoStart"] boolValue];
+
+ if([action isEqualToString:@"nav"]){
+  [self resolveAndNavigateMobileInput:val autoStart:autoStart];
+ } else if([action isEqualToString:@"music_cmd"]){
+  if([val isEqualToString:@"next"]){ [self miniNext]; }
+  else if([val isEqualToString:@"prev"]){ [self miniPrev]; }
+  else { [self miniPlay]; }
+ } else if([action isEqualToString:@"music_search"] && val.length > 0){
+  NSDictionary *req = @{@"pending": @YES, @"query": val, @"at": [NSDate date]};
+  [req writeToFile:@"/var/mobile/codex-car/voice-search.plist" atomically:YES];
+  [self showVoiceToast:[NSString stringWithFormat:@"📱 มือถือสั่งเล่นเพลง: %@", val] color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:3.5];
+  notify_post("com.codex.trd.music.voicesearch");
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+   [self send:@"com.legacymusic.app"];
+  });
+ } else if([action isEqualToString:@"eq"] && val.length > 0){
+  [self applyEQPreset:val];
+  [self showVoiceToast:[NSString stringWithFormat:@"🎚️ เปลี่ยนโทนเสียงเป็น %@", val] color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:2.5];
+ } else if([action isEqualToString:@"screen"]){
+  if([val isEqualToString:@"home"]) [self homePage];
+  else if([val isEqualToString:@"drive"]){ if(!self.driveMode)[self toggleDrive]; }
+  else if([val isEqualToString:@"maps"]){ self.mapNavigationAuthorized = YES; [self openMap]; }
+  else if([val isEqualToString:@"carplay"]){ self.mapNavigationAuthorized = YES; [self openCarPlay]; }
+ }
+}
+
+-(void)handleMobileGPSPlist{
+ NSDictionary *g = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/phone-gps.plist"];
+ if(![g isKindOfClass:[NSDictionary class]]) return;
+ double atTs = [g[@"at"] doubleValue];
+ if(fabs([[NSDate date] timeIntervalSince1970] - atTs) > 6.0) return;
+ double lat = [g[@"lat"] doubleValue];
+ double lon = [g[@"lon"] doubleValue];
+ double acc = [g[@"acc"] doubleValue];
+ double spd = [g[@"spd"] doubleValue];
+ double crs = [g[@"crs"] doubleValue];
+ if(fabs(lat) < 0.001 || fabs(lon) < 0.001) return;
+ if(acc <= 0) acc = 8.0;
+
+ BOOL ipadFixWeak = (!self.fix || self.fix.horizontalAccuracy < 0 || self.fix.horizontalAccuracy > MAX(22.0, acc + 5.0) || -[self.fix.timestamp timeIntervalSinceNow] > 4.0);
+ if(ipadFixWeak){
+  CLLocation *phoneLoc = [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake(lat, lon)
+                                                       altitude:0.0
+                                             horizontalAccuracy:acc
+                                               verticalAccuracy:10.0
+                                                         course:(crs >= 0 ? crs : -1.0)
+                                                          speed:(spd >= 0 ? spd : 0.0)
+                                                      timestamp:[NSDate date]];
+  self.fix = phoneLoc;
+  self.gpsLive = YES;
+  self.gpsUpdates++;
+  self.gpsStatus.text = [NSString stringWithFormat:@"📱 GPS มือถือ (±%.0fm)", acc];
+  if(self.mapMode || self.carplayMode){
+   [self updateMapCarForce:YES];
+  }
+ }
+}
+
+-(void)openMobileCompanionMenu{
+ NSDictionary *netState = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/network-state.plist"];
+ NSString *ip = ([netState[@"address"] isKindOfClass:[NSString class]] && [netState[@"address"] length] > 0) ? netState[@"address"] : @"172.20.10.2";
+ NSString *urlStr = [NSString stringWithFormat:@"http://%@:8080", ip];
+ NSString *msg = [NSString stringWithFormat:@"เปิด Safari/Chrome บนมือถือไปที่  %@  (ขณะเกาะ Hotspot เดียวกัน)\nส่งหมุด Google Maps ขึ้นนำทางบนจอรถ • รีโมตเพลง • ไม่กินแบตรถตอนดับเครื่อง", urlStr];
+ TRDSettingsMenu *m = [self settingsMenu:@"📱 เชื่อมต่อมือถือ & ส่ง GOOGLE MAPS เข้าจอรถ" message:msg];
+ [m addAction:[TRDSettingAction actionWithTitle:[NSString stringWithFormat:@"🌐 ที่อยู่เปิดบนมือถือ:  %@  (แตะดูวิธีใช้)", urlStr] style:0 handler:^(TRDSettingAction *a){
+  NSString *guide = [NSString stringWithFormat:@"วิธีเชื่อมมือถือกับ CarDash (ทำครั้งแรกครั้งเดียว):\n\n1. ให้ iPad และมือถือเกาะ Hotspot เดียวกัน แล้วเปิด Safari / Chrome บนมือถือ พิมพ์:\n   %@\n\n2. กดปุ่มแชร์ในเบราว์เซอร์เลือก 'เพิ่มไปยังหน้าจอโฮม (Add to Home Screen)' จะได้ไอคอนแอป PRIUS TRD บนมือถือทันที\n\n3. เวลาจะไปไหน แค่เปิดแอป Google Maps บนมือถือ ➔ กด แชร์ (Share) ➔ คัดลอกลิงก์ ➔ กดปุ่มสีเขียวในแอป PRIUS TRD บนมือถือ พิกัดจริงจะเด้งนำทางบนจอรถทันทีครับ!", urlStr];
+  [self showFeatureExplanation:@"📱 วิธีส่ง Google Maps จากมือถือขึ้นจอรถ" body:guide];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"🧪 ทดสอบจำลองส่งหมุด Google Maps จากมือถือขึ้นนำทางทันที" style:0 handler:^(TRDSettingAction *a){
+  [self.settingsSheet dismiss];
+  [self resolveAndNavigateMobileInput:@"เซ็นทรัลเวิลด์ https://www.google.com/maps/place/CentralWorld/@13.7466304,100.5393261,17z/data=!3d13.7465337!4d100.5391486" autoStart:YES];
+ }]];
+ [m addAction:[TRDSettingAction actionWithTitle:@"↩️ กลับหน้า CAR SETTINGS" style:0 handler:^(TRDSettingAction *a){
+  [self carSettings];
+ }]];
+ [self presentSettingsMenu:m];
+}
+
 -(void)toggleTestHybridSOC{
  TRDOBDClient *obd=[TRDOBDClient sharedClient];
  static int socIndex=0;
@@ -10645,6 +10906,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  if([url.host isEqualToString:@"hybrid"])[v openHybridDiagnosticsMenu];
  if([url.host isEqualToString:@"dtc"])[v openDTCScannerMenu];
  if([url.host isEqualToString:@"beep"])[v openReverseBeepMenu];
+ if([url.host isEqualToString:@"mobile"])[v openMobileCompanionMenu];
  if([url.host isEqualToString:@"reverse"]){ [[TRDOBDClient sharedClient] toggleTestReverseGear]; }
  if([url.host isEqualToString:@"welcome"])[v showWelcome];
  if([url.host isEqualToString:@"help"])[v openFeatureHelpMenu];
