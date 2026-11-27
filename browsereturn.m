@@ -809,6 +809,7 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
    NSMutableURLRequest *ytReq = [NSMutableURLRequest requestWithURL:apiURL cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:6.0];
    ytReq.HTTPMethod = @"POST";
    [ytReq setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+   [ytReq setValue:@"contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents.itemSectionRenderer.contents.videoRenderer(videoId)" forHTTPHeaderField:@"X-Goog-FieldMask"];
    NSDictionary *body = @{
     @"context": @{@"client": @{@"clientName": @"WEB", @"clientVersion": @"2.20240726.00.00", @"hl": @"th", @"gl": @"TH"}},
     @"query": clean

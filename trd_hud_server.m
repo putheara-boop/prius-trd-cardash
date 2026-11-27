@@ -365,7 +365,22 @@ static NSString *const kHUDHTML =
 "}\n"
 "var songQueue = [];\n"
 "var activeQueueIdx = -1;\n"
+"var lastSyncedRev = -1;\n"
+"var importedLocalOnce = false;\n"
 "try { songQueue = JSON.parse(localStorage.getItem('trd_song_queue_v1') || '[]'); } catch(e){ songQueue = []; }\n"
+"function pushQueueOp(qs){\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/queue?' + qs + '&t=' + Date.now(), true);\n"
+"  x.onload = function(){\n"
+"    if(x.status === 200){\n"
+"      try {\n"
+"        var r = JSON.parse(x.responseText);\n"
+"        if(r && Array.isArray(r.queue)){ songQueue = r.queue; activeQueueIdx = (typeof r.queueIdx === 'number') ? r.queueIdx : -1; lastSyncedRev = r.queueRev || 0; try { localStorage.setItem('trd_song_queue_v1', JSON.stringify(songQueue)); } catch(e){} renderSongQueue(); }\n"
+"      } catch(e){}\n"
+"    }\n"
+"  };\n"
+"  x.send();\n"
+"}\n"
 "function saveSongQueue(){ try { localStorage.setItem('trd_song_queue_v1', JSON.stringify(songQueue)); } catch(e){} renderSongQueue(); }\n"
 "function renderSongQueue(){\n"
 "  var box = document.getElementById('queueListBox');\n"
@@ -396,7 +411,7 @@ static NSString *const kHUDHTML =
 "    var del = document.createElement('button');\n"
 "    del.className = 'q-del';\n"
 "    del.innerText = '✕';\n"
-"    del.onclick = function(){ songQueue.splice(idx, 1); if(activeQueueIdx === idx) activeQueueIdx = -1; else if(activeQueueIdx > idx) activeQueueIdx--; saveSongQueue(); };\n"
+"    del.onclick = function(){ songQueue.splice(idx, 1); saveSongQueue(); pushQueueOp('op=del&idx=' + idx); };\n"
 "    row.appendChild(num); row.appendChild(nm); row.appendChild(ytB); row.appendChild(del);\n"
 "    box.appendChild(row);\n"
 "  });\n"
@@ -406,6 +421,7 @@ static NSString *const kHUDHTML =
 "  if(songQueue.length >= 25){ showMediaToast('⚠️ คิวเต็ม 25 เพลงแล้วครับ'); return; }\n"
 "  songQueue.push({id: id || '', title: title});\n"
 "  saveSongQueue();\n"
+"  pushQueueOp('op=add&id=' + encodeURIComponent(id || '') + '&title=' + encodeURIComponent(title || ''));\n"
 "  showMediaToast('➕ เพิ่มลำดับที่ ' + songQueue.length + ': ' + title);\n"
 "}\n"
 "var sugTimer = null;\n"
@@ -455,6 +471,7 @@ static NSString *const kHUDHTML =
 "}\n"
 "function clearSongQueue(){\n"
 "  songQueue = []; activeQueueIdx = -1; saveSongQueue();\n"
+"  pushQueueOp('op=clear');\n"
 "  showMediaToast('🗑️ ล้างคิวเพลงเรียบร้อยครับ');\n"
 "}\n"
 "function playFullQueue(target, startIdx){\n"
@@ -463,6 +480,7 @@ static NSString *const kHUDHTML =
 "  var idx = startIdx || 0;\n"
 "  activeQueueIdx = idx;\n"
 "  renderSongQueue();\n"
+"  pushQueueOp('op=setidx&idx=' + idx);\n"
 "  var tokens = songQueue.map(function(x){ return (x.id && x.id.length === 11) ? (x.id + '::' + x.title.replace(/\\|\\|/g,' ')) : x.title.replace(/\\|\\|/g,' '); });\n"
 "  var joined = tokens.join('||');\n"
 "  if(target === 'yt'){\n"
@@ -589,6 +607,19 @@ static NSString *const kHUDHTML =
 "        var songStr = d.song ? ('🎵 ' + d.song) : '🎵 พร้อมเล่นเพลง (audioNINJA / YouTube)';\n"
 "        document.getElementById('remoteSongTxt').innerText = songStr;\n"
 "        document.getElementById('songTxt').innerText = songStr;\n"
+"        if(Array.isArray(d.queue)){\n"
+"          if(!importedLocalOnce && d.queue.length === 0 && songQueue.length > 0){\n"
+"            importedLocalOnce = true;\n"
+"            songQueue.forEach(function(it){ pushQueueOp('op=add&id=' + encodeURIComponent(it.id || '') + '&title=' + encodeURIComponent(it.title || '')); });\n"
+"          } else if(d.queueRev !== lastSyncedRev || d.queueIdx !== activeQueueIdx){\n"
+"            importedLocalOnce = true;\n"
+"            lastSyncedRev = d.queueRev || 0;\n"
+"            songQueue = d.queue;\n"
+"            activeQueueIdx = (typeof d.queueIdx === 'number') ? d.queueIdx : -1;\n"
+"            try { localStorage.setItem('trd_song_queue_v1', JSON.stringify(songQueue)); } catch(e){}\n"
+"            renderSongQueue();\n"
+"          }\n"
+"        }\n"
 "        var sn = document.getElementById('speedNum');\n"
 "        sn.innerText = spd;\n"
 "        sn.className = 'speed-num' + (spd >= 120 ? ' warn120' : (spd >= 90 ? ' warn90' : ''));\n"
@@ -708,6 +739,7 @@ static NSString *performYTSearchJSON(NSString *q) {
   NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:5.0];
   req.HTTPMethod = @"POST";
   [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+  [req setValue:@"contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents.itemSectionRenderer.contents.videoRenderer(videoId,title,lengthText,ownerText)" forHTTPHeaderField:@"X-Goog-FieldMask"];
   NSDictionary *body = @{
     @"context": @{@"client": @{@"clientName": @"WEB", @"clientVersion": @"2.20240726.00.00", @"hl": @"th", @"gl": @"TH"}},
     @"query": clean
@@ -751,6 +783,60 @@ static NSString *performYTSuggestJSON(NSString *q) {
   return @"[]";
 }
 
+static NSString *const kSharedQueuePath = @"/var/mobile/codex-car/shared-song-queue.plist";
+static NSObject *sQueueLock = nil;
+
+static NSDictionary *readSharedQueueState(void) {
+  if (!sQueueLock) sQueueLock = [NSObject new];
+  @synchronized(sQueueLock) {
+    NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:kSharedQueuePath];
+    NSArray *items = [d[@"items"] isKindOfClass:[NSArray class]] ? d[@"items"] : @[];
+    NSInteger idx = d[@"activeIdx"] ? [d[@"activeIdx"] integerValue] : -1;
+    NSInteger rev = [d[@"rev"] integerValue];
+    NSDictionary *ytSt = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/youtube-search-state.plist"];
+    if ([ytSt[@"queueCount"] integerValue] == (NSInteger)items.count && items.count > 0 && ytSt[@"queueIdx"]) {
+      NSInteger yIdx = [ytSt[@"queueIdx"] integerValue];
+      if (yIdx >= 0 && yIdx < (NSInteger)items.count) idx = yIdx;
+    }
+    return @{@"items": items, @"activeIdx": @(idx), @"rev": @(rev)};
+  }
+}
+
+static NSString *mutateSharedQueueJSON(NSDictionary *params) {
+  if (!sQueueLock) sQueueLock = [NSObject new];
+  @synchronized(sQueueLock) {
+    NSDictionary *cur = [NSDictionary dictionaryWithContentsOfFile:kSharedQueuePath];
+    NSMutableArray *items = [cur[@"items"] isKindOfClass:[NSArray class]] ? [cur[@"items"] mutableCopy] : [NSMutableArray array];
+    NSInteger idx = cur[@"activeIdx"] ? [cur[@"activeIdx"] integerValue] : -1;
+    NSInteger rev = [cur[@"rev"] integerValue] + 1;
+    NSString *op = params[@"op"] ?: @"";
+    if ([op isEqualToString:@"add"]) {
+      NSString *vid = params[@"id"] ?: @"";
+      NSString *title = [params[@"title"] ?: @"" stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+      if (title.length > 0 && items.count < 25) {
+        [items addObject:@{@"id": vid, @"title": title}];
+      }
+    } else if ([op isEqualToString:@"del"]) {
+      NSInteger delIdx = [params[@"idx"] integerValue];
+      if (delIdx >= 0 && delIdx < (NSInteger)items.count) {
+        [items removeObjectAtIndex:(NSUInteger)delIdx];
+        if (idx == delIdx) idx = -1;
+        else if (idx > delIdx) idx--;
+      }
+    } else if ([op isEqualToString:@"clear"]) {
+      [items removeAllObjects];
+      idx = -1;
+    } else if ([op isEqualToString:@"setidx"]) {
+      idx = [params[@"idx"] integerValue];
+    }
+    NSDictionary *saved = @{@"items": items, @"activeIdx": @(idx), @"rev": @(rev)};
+    [saved writeToFile:kSharedQueuePath atomically:YES];
+    NSDictionary *resp = @{@"ok": @YES, @"queue": items, @"queueIdx": @(idx), @"queueRev": @(rev)};
+    NSData *jd = [NSJSONSerialization dataWithJSONObject:resp options:0 error:nil];
+    return jd ? ([[NSString alloc] initWithData:jd encoding:NSUTF8StringEncoding] ?: @"{}") : @"{}";
+  }
+}
+
 static NSString *buildLiveHUDJSON(void) {
   @autoreleasepool {
     static NSDateFormatter *df = nil;
@@ -773,6 +859,7 @@ static NSString *buildLiveHUDJSON(void) {
       ? [NSString stringWithFormat:@"%@ — %@", song, artist]
       : (song.length > 0 ? song : @"พร้อมเล่นเพลง");
 
+    NSDictionary *qState = readSharedQueueState();
     NSDictionary *payload = @{
       @"speed": @(spd),
       @"gear": live[@"gear"] ?: @"P",
@@ -794,7 +881,10 @@ static NSString *buildLiveHUDJSON(void) {
       @"rangeKm": live[@"rangeKm"] ?: @"--",
       @"aux12v": live[@"aux12v"] ?: @"--",
       @"hybridMode": live[@"hybridMode"] ?: @"EV READY",
-      @"song": fullSong
+      @"song": fullSong,
+      @"queue": qState[@"items"] ?: @[],
+      @"queueIdx": qState[@"activeIdx"] ?: @(-1),
+      @"queueRev": qState[@"rev"] ?: @0
     };
     NSData *jsonData = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
     if (!jsonData) return @"{}";
@@ -841,6 +931,10 @@ static void handleClientSocket(int clientFd) {
       contentType = @"application/json; charset=utf-8";
       NSDictionary *params = parseQueryParams(query);
       bodyData = [performYTSuggestJSON(params[@"q"] ?: @"") dataUsingEncoding:NSUTF8StringEncoding];
+    } else if ([path isEqualToString:@"/api/queue"]) {
+      contentType = @"application/json; charset=utf-8";
+      NSDictionary *params = parseQueryParams(query);
+      bodyData = [mutateSharedQueueJSON(params) dataUsingEncoding:NSUTF8StringEncoding];
     } else if ([path isEqualToString:@"/api/cmd"]) {
       contentType = @"application/json; charset=utf-8";
       NSDictionary *params = parseQueryParams(query);
