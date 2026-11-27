@@ -5789,6 +5789,8 @@ static NSUInteger gTRDUpdateTicks=0;
   NSString *hWeather=self.currentTemperature>0?[NSString stringWithFormat:@"%.0f°C%@",self.currentTemperature,self.rainDetected?@" 🌧️":@" ☀️"]:@"";
   double hRangeKm=[self estimatedRangeKmForFuelLiters:hObd.fuelRemainingLiters];
   NSString *hFanStr=(hObd.activeHVFanCommanded>0)?[NSString stringWithFormat:@"L%ld",(long)hObd.activeHVFanCommanded]:@"AUTO";
+  double totalOdoKm=[[NSUserDefaults standardUserDefaults] doubleForKey:@"TRDTotalOdometer"];
+  double deltaV=(hObd.hvBlockMaxV>0 && hObd.hvBlockMinV>0)?MAX(0.0,hObd.hvBlockMaxV-hObd.hvBlockMinV):0.0;
   NSDictionary *hudLive=@{
    @"speed":@(hSpd),
    @"gear":hGear,
@@ -5806,6 +5808,16 @@ static NSUInteger gTRDUpdateTicks=0;
    @"ect":@((NSInteger)llround(hEct)),
    @"invC":@((NSInteger)llround(hObd.inverterTempC)),
    @"hvC":[NSString stringWithFormat:@"%.1f",hObd.hvBatteryTempC],
+   @"hvInC":[NSString stringWithFormat:@"%.1f",hObd.hvIntakeTempC],
+   @"hvPackV":[NSString stringWithFormat:@"%.1f",hObd.hvPackVoltage],
+   @"hvPackA":[NSString stringWithFormat:@"%+.1f",hObd.hvPackCurrent],
+   @"hvDeltaV":[NSString stringWithFormat:@"%.2f",deltaV],
+   @"hvBlocks":hObd.hvBlockVoltages?:@[],
+   @"obdOk":@(hObd.isConnected),
+   @"dtcBusy":@(hObd.dtcScanInProgress),
+   @"dtcList":hObd.detectedDTCs?:@[],
+   @"dtcTime":hObd.lastDTCScanTimeText?:@"",
+   @"odoKm":@(totalOdoKm),
    @"fan":hFanStr,
    @"fuelL":[NSString stringWithFormat:@"%.1f",hObd.fuelRemainingLiters],
    @"rangeKm":[NSString stringWithFormat:@"%.0f",hRangeKm],
@@ -10892,6 +10904,23 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   } else if([val isEqualToString:@"camera"]){
    [self openCamera];
   }
+ } else if([action isEqualToString:@"hv_fan"]){
+  NSInteger spd = MAX(0, MIN(6, [val integerValue]));
+  [[TRDOBDClient sharedClient] setManualHVFanSpeed:spd];
+  NSString *lbl = (spd == 0) ? @"AUTO อัตโนมัติ" : [NSString stringWithFormat:@"ระดับ %ld", (long)spd];
+  [self showVoiceToast:[NSString stringWithFormat:@"🌀 ตั้งพัดลมแบตไฮบริด: %@", lbl] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.65 alpha:1.0] autoHide:3.0];
+ } else if([action isEqualToString:@"dtc_scan"]){
+  BOOL ok = [[TRDOBDClient sharedClient] scanAllPriusDTCs];
+  [self showVoiceToast:ok ? @"🔍 กำลังสแกนโค้ดไฟโชว์ Prius ทุกกล่อง..." : @"⚠️ กรุณาบิดสวิตช์รถเชื่อมกล่อง OBD2 ก่อนสแกนครับ" color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:3.5];
+ } else if([action isEqualToString:@"dtc_clear"]){
+  BOOL ok = [[TRDOBDClient sharedClient] clearAllPriusDTCs];
+  [self showVoiceToast:ok ? @"🧹 ส่งคำสั่งลบโค้ดไฟโชว์ DTC เรียบร้อย!" : @"⚠️ กรุณาบิดสวิตช์รถเชื่อมกล่อง OBD2 ก่อนลบโค้ดครับ" color:[UIColor colorWithRed:1.0 green:0.75 blue:0.25 alpha:1.0] autoHide:3.5];
+ } else if([action isEqualToString:@"night_toggle"]){
+  [self toggleNight];
+ } else if([action isEqualToString:@"clean_cache"]){
+  [[NSURLCache sharedURLCache] removeAllCachedResponses];
+  if(!self.mapMode && !self.carplayMode && self.mapWebView){ [self teardownMapWebView]; }
+  [self showVoiceToast:@"🧹 เคลียร์แคช & คืนแรม iPad เรียบร้อย (ประวัติ/คิวเพลงอยู่ครบ!)" color:[UIColor colorWithRed:0.25 green:0.98 blue:0.65 alpha:1.0] autoHide:3.5];
  }
 }
 

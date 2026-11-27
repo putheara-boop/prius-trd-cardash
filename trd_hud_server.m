@@ -3,12 +3,14 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
+#include <ifaddrs.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
 #include <notify.h>
 #include <spawn.h>
+#include <dns_sd.h>
 
 extern char **environ;
 
@@ -50,11 +52,28 @@ static NSString *const kHUDHTML =
 "<style>\n"
 "*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}\n"
 "html,body{width:100%;height:100%;background:#05080d;color:#ffffff;font-family:-apple-system,'Helvetica Neue','Sukhumvit Set',Arial,sans-serif;overflow-x:hidden;}\n"
-".mode-switch{position:fixed;top:max(8px,env(safe-area-inset-top));left:50%;-webkit-transform:translateX(-50%);transform:translateX(-50%);z-index:9999;display:-webkit-flex;display:flex;background:rgba(8,14,22,0.92);border:1px solid rgba(0,229,255,0.40);border-radius:20px;padding:3px;box-shadow:0 4px 16px rgba(0,0,0,0.65);}\n"
-".ms-btn{border:none;background:transparent;color:#8bb4cc;font-size:12px;font-weight:800;padding:6px 13px;border-radius:16px;cursor:pointer;white-space:nowrap;}\n"
+".mode-switch{position:fixed;top:max(8px,env(safe-area-inset-top));left:50%;-webkit-transform:translateX(-50%);transform:translateX(-50%);z-index:9999;display:-webkit-flex;display:flex;background:rgba(8,14,22,0.95);border:1px solid rgba(0,229,255,0.40);border-radius:20px;padding:3px;box-shadow:0 4px 16px rgba(0,0,0,0.65);max-width:calc(100vw - 12px);}\n"
+".ms-btn{border:none;background:transparent;color:#8bb4cc;font-size:12px;font-weight:800;padding:6px 11px;border-radius:16px;cursor:pointer;white-space:nowrap;}\n"
+"@media (max-width:375px){.ms-btn{font-size:10.5px;padding:5px 7px;}.rbtn{font-size:12px;padding:10px 6px;}}\n"
 ".ms-btn.active{background:linear-gradient(135deg,#00b8d4,#0077ff);color:#fff;box-shadow:0 0 12px rgba(0,200,255,0.55);}\n"
-"/* === REMOTE COMPANION VIEW === */\n"
-"#remoteView{min-height:100%;padding:calc(max(12px,env(safe-area-inset-top)) + 44px) 14px 32px;max-width:540px;margin:0 auto;}\n"
+"/* === REMOTE & CAR HEALTH VIEWS === */\n"
+"#remoteView,#carView{min-height:100%;padding:calc(max(12px,env(safe-area-inset-top)) + 44px) 14px 32px;max-width:540px;margin:0 auto;}\n"
+"#carView{display:none;}\n"
+".blk-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:10px 0 8px;}\n"
+".blk-cell{background:rgba(4,10,18,0.92);border:1px solid rgba(0,229,255,0.22);border-radius:8px;padding:5px 2px;text-align:center;}\n"
+".blk-bar-bg{height:30px;width:12px;margin:3px auto;background:rgba(255,255,255,0.08);border-radius:4px;display:-webkit-flex;display:flex;-webkit-align-items:flex-end;align-items:flex-end;overflow:hidden;}\n"
+".blk-bar-fill{width:100%;background:linear-gradient(180deg,#22ff88,#00b8d4);border-radius:4px;}\n"
+".blk-id{font-size:9.5px;color:#7fa8c4;font-weight:800;}\n"
+".blk-v{font-size:10.5px;color:#fff;font-weight:900;font-variant-numeric:tabular-nums;}\n"
+".m-row{background:rgba(4,10,18,0.85);border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:10px 11px;margin-bottom:8px;}\n"
+".m-top{display:-webkit-flex;display:flex;-webkit-justify-content:space-between;justify-content:space-between;-webkit-align-items:center;align-items:center;gap:6px;}\n"
+".m-title{font-size:13px;font-weight:900;color:#eaf6ff;}\n"
+".m-sub{font-size:11.5px;color:#8bb4cc;margin-top:3px;font-weight:700;}\n"
+".pbar{height:7px;background:rgba(255,255,255,0.10);border-radius:4px;overflow:hidden;margin-top:6px;}\n"
+".pfill{height:100%;background:linear-gradient(90deg,#22ff88,#00e5ff);border-radius:4px;}\n"
+".pfill.warn{background:linear-gradient(90deg,#ffaa22,#ff4455);}\n"
+".tlog-row{display:-webkit-flex;display:flex;-webkit-justify-content:space-between;justify-content:space-between;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.07);font-size:12.5px;}\n"
+".tlog-row:last-child{border-bottom:none;}\n"
 ".card{background:linear-gradient(180deg,rgba(14,22,34,0.96),rgba(9,14,22,0.98));border:1px solid rgba(0,215,255,0.22);border-radius:16px;padding:15px;margin-bottom:13px;box-shadow:0 6px 20px rgba(0,0,0,0.45);}\n"
 ".card-hdr{display:-webkit-flex;display:flex;-webkit-justify-content:space-between;justify-content:space-between;-webkit-align-items:center;align-items:center;margin-bottom:10px;}\n"
 ".card-title{font-size:14px;font-weight:900;letter-spacing:0.5px;color:#00e5ff;}\n"
@@ -133,8 +152,9 @@ static NSString *const kHUDHTML =
 "</head>\n"
 "<body>\n"
 "<div class=\"mode-switch\">\n"
-"  <button class=\"ms-btn active\" id=\"tabRemote\" onclick=\"setView('remote')\">📱 รีโมต & Google Maps</button>\n"
-"  <button class=\"ms-btn\" id=\"tabHud\" onclick=\"setView('hud')\">🪞 จอ HUD สะท้อนกระจก</button>\n"
+"  <button class=\"ms-btn active\" id=\"tabRemote\" onclick=\"setView('remote')\">📱 รีโมต & Maps</button>\n"
+"  <button class=\"ms-btn\" id=\"tabCar\" onclick=\"setView('car')\">🔧 รถ & สรุปทริป</button>\n"
+"  <button class=\"ms-btn\" id=\"tabHud\" onclick=\"setView('hud')\">🪞 จอ HUD</button>\n"
 "</div>\n"
 "\n"
 "<div id=\"remoteView\">\n"
@@ -228,8 +248,63 @@ static NSString *const kHUDHTML =
 "      <button class=\"rbtn green\" onclick=\"sendCmd('screen','music')\">🎵 แอปเพลง</button>\n"
 "      <button class=\"rbtn primary\" onclick=\"sendCmd('screen','youtube')\">📺 YouTube</button>\n"
 "      <button class=\"rbtn\" onclick=\"sendCmd('screen','camera')\">📷 กล้องรถ</button>\n"
+"      <button class=\"rbtn\" onclick=\"sendCmd('night_toggle','1')\">☀️/🌙 แสงจอ</button>\n"
 "    </div>\n"
-"    <div class=\"hint\" style=\"margin-top:8px;\">🔒 ปลอดภัย 100%: ทำงานเฉพาะตอนเปิดสวิตช์รถ เมื่อดับเครื่องไอแพดจะพักระบบอัตโนมัติ ไม่ดึงไฟแบตเตอรี่รถยนต์</div>\n"
+"    <div class=\"hint\" style=\"margin-top:8px;\">🌐 เข้าผ่านชื่อ <b>http://cardash.local</b> ได้ทันทีโดยไม่ต้องจำเลข IP! (เมื่อดับเครื่องไอแพดพักระบบอัตโนมัติ ไม่กินแบตรถ)</div>\n"
+"  </div>\n"
+"</div>\n"
+"\n"
+"<div id=\"carView\">\n"
+"  <div class=\"card\">\n"
+"    <div class=\"card-hdr\">\n"
+"      <div class=\"card-title\">🔋 สุขภาพแบตไฮบริด 14 บล็อก & OBD2</div>\n"
+"      <div class=\"live-pill\" id=\"obdLivePill\">○ รอสวิตช์รถ</div>\n"
+"    </div>\n"
+"    <div class=\"tel-grid\">\n"
+"      <div class=\"tel-box\"><div class=\"tel-lbl\">แรงดันรวม / กระแสไฟ</div><div class=\"tel-val\" id=\"hvPackTxt\">-- V</div><div class=\"tel-sub\" id=\"hvAmpTxt\">+0.0 A • SOC --%</div></div>\n"
+"      <div class=\"tel-box\"><div class=\"tel-lbl\">ความสมดุลเซลล์ (ΔV)</div><div class=\"tel-val\" id=\"hvDeltaTxt\">-- V</div><div class=\"tel-sub\" id=\"hvGradeTxt\">รอวัดค่า 14 บล็อก</div></div>\n"
+"      <div class=\"tel-box\"><div class=\"tel-lbl\">อุณหภูมิแบต / ลมดูด</div><div class=\"tel-val\" id=\"hvTempBig\">-- °C</div><div class=\"tel-sub\" id=\"hvInletTxt\">ลมเข้า --°C • พัดลม AUTO</div></div>\n"
+"      <div class=\"tel-box\"><div class=\"tel-lbl\">แบต 12V / น้ำหล่อเย็น</div><div class=\"tel-val\" id=\"auxBigTxt\">-- V</div><div class=\"tel-sub\" id=\"ectInvTxt\">เครื่อง --°C • INV --°C</div></div>\n"
+"    </div>\n"
+"    <div class=\"blk-grid\" id=\"hvBlocksGrid\"></div>\n"
+"    <div class=\"row\" style=\"margin-top:8px;\">\n"
+"      <button class=\"rbtn\" onclick=\"setFanRemote(0)\">🌀 พัดลม AUTO</button>\n"
+"      <button class=\"rbtn\" onclick=\"setFanRemote(4)\">❄️ พัดลมระดับ 4</button>\n"
+"      <button class=\"rbtn green\" onclick=\"setFanRemote(6)\">🚀 พัดลมแรงสุด</button>\n"
+"    </div>\n"
+"    <div class=\"row\" style=\"margin-bottom:0;\">\n"
+"      <button class=\"rbtn\" onclick=\"scanDTCRemote()\">🔍 สแกนโค้ดไฟโชว์ (DTC)</button>\n"
+"      <button class=\"rbtn primary\" onclick=\"clearDTCRemote()\">🧹 ลบโค้ดไฟโชว์</button>\n"
+"    </div>\n"
+"    <div class=\"song-banner\" id=\"dtcResultBox\" style=\"margin-top:9px;margin-bottom:0;white-space:normal;line-height:1.4;\">✅ ระบบพร้อมสแกนโค้ดเครื่องยนต์ / ไฮบริด / แบต HV / ABS</div>\n"
+"    <div class=\"toast\" id=\"carToast\"></div>\n"
+"  </div>\n"
+"\n"
+"  <div class=\"card\">\n"
+"    <div class=\"card-hdr\">\n"
+"      <div class=\"card-title\">📊 สรุปทริป & ค่าน้ำมันรายวัน / 30 วัน</div>\n"
+"      <div style=\"font-size:11px;color:#00e5ff;font-weight:800;\" id=\"tripDaysBadge\">ซิงก์จากรถ</div>\n"
+"    </div>\n"
+"    <div class=\"tel-grid\" style=\"margin-bottom:10px;\">\n"
+"      <div class=\"tel-box\"><div class=\"tel-lbl\">ระยะทางสะสม (30 วัน)</div><div class=\"tel-val\" id=\"sum30Km\">0.0 กม.</div><div class=\"tel-sub\" id=\"sum30Trips\">0 ทริป</div></div>\n"
+"      <div class=\"tel-box\"><div class=\"tel-lbl\">ค่าน้ำมันรวม (30 วัน)</div><div class=\"tel-val\" id=\"sum30Cost\">฿0</div><div class=\"tel-sub\" id=\"sum30Fuel\">0.0 ลิตร • -- km/L</div></div>\n"
+"    </div>\n"
+"    <div id=\"dailyTripList\"><div class=\"hint\">กำลังโหลดประวัติการเดินทางรายวัน...</div></div>\n"
+"  </div>\n"
+"\n"
+"  <div class=\"card\">\n"
+"    <div class=\"card-hdr\">\n"
+"      <div class=\"card-title\">🛠️ แจ้งเตือนเช็กระยะตามเลขไมล์จริง</div>\n"
+"      <div style=\"font-size:12px;color:#22ff88;font-weight:900;\" id=\"curOdoTxt\">ไมล์รถ -- กม.</div>\n"
+"    </div>\n"
+"    <div class=\"row\" style=\"margin-bottom:10px;\">\n"
+"      <input class=\"inp\" id=\"odoInput\" type=\"number\" inputmode=\"numeric\" placeholder=\"ใส่เลขไมล์หน้าปัดรถปัจจุบัน (กม.)...\" style=\"margin-bottom:0;-webkit-flex:1;flex:1;\">\n"
+"      <button class=\"rbtn\" style=\"-webkit-flex:0 0 112px;flex:0 0 112px;\" onclick=\"saveRealOdo()\">💾 ตั้งไมล์รถ</button>\n"
+"    </div>\n"
+"    <div id=\"maintListBox\"></div>\n"
+"    <div class=\"row\" style=\"margin-top:10px;margin-bottom:0;\">\n"
+"      <button class=\"rbtn green\" onclick=\"cleanIpadCacheRemote()\">🧹 เคลียร์แคช & คืนแรม iPad (ประวัติอยู่ครบ 100%)</button>\n"
+"    </div>\n"
 "  </div>\n"
 "</div>\n"
 "\n"
@@ -275,10 +350,102 @@ static NSString *const kHUDHTML =
 "function setView(v){\n"
 "  curView = v;\n"
 "  document.getElementById('remoteView').style.display = (v === 'remote') ? 'block' : 'none';\n"
+"  document.getElementById('carView').style.display = (v === 'car') ? 'block' : 'none';\n"
 "  document.getElementById('hudView').style.display = (v === 'hud') ? '-webkit-flex' : 'none';\n"
 "  if(v === 'hud') document.getElementById('hudView').style.display = 'flex';\n"
 "  document.getElementById('tabRemote').className = 'ms-btn' + (v === 'remote' ? ' active' : '');\n"
+"  document.getElementById('tabCar').className = 'ms-btn' + (v === 'car' ? ' active' : '');\n"
 "  document.getElementById('tabHud').className = 'ms-btn' + (v === 'hud' ? ' active' : '');\n"
+"  if(v === 'car') loadCarHealthDetail();\n"
+"}\n"
+"function showCarToast(msg){\n"
+"  var t = document.getElementById('carToast');\n"
+"  if(!t){ showToast(msg); return; }\n"
+"  t.innerText = msg; t.style.display = 'block';\n"
+"  setTimeout(function(){ t.style.display = 'none'; }, 4200);\n"
+"}\n"
+"function setFanRemote(lvl){\n"
+"  sendCmd('hv_fan', String(lvl), 1);\n"
+"  showCarToast(lvl === 0 ? '🌀 ตั้งพัดลมแบตไฮบริดเป็นโหมด AUTO แล้วครับ' : ('🚀 สั่งเร่งพัดลมแบตไฮบริดระดับ ' + lvl + ' แล้วครับ'));\n"
+"}\n"
+"function scanDTCRemote(){\n"
+"  sendCmd('dtc_scan', '1', 1);\n"
+"  document.getElementById('dtcResultBox').innerText = '🔍 กำลังสแกนกล่องเครื่องยนต์, ไฮบริด, แบต HV และ ABS...';\n"
+"  showCarToast('🔍 ส่งคำสั่งสแกนโค้ดไฟโชว์ไปที่รถแล้วครับ');\n"
+"}\n"
+"function clearDTCRemote(){\n"
+"  if(!confirm('ยืนยันส่งคำสั่งลบโค้ดไฟโชว์ (Clear Prius DTCs) ทั้งหมดหรือไม่ครับ?')) return;\n"
+"  sendCmd('dtc_clear', '1', 1);\n"
+"  showCarToast('🧹 ส่งคำสั่งลบโค้ดไฟโชว์เรียบร้อยครับ');\n"
+"}\n"
+"function render14Blocks(blocks){\n"
+"  var g = document.getElementById('hvBlocksGrid');\n"
+"  if(!g) return;\n"
+"  var arr = (Array.isArray(blocks) && blocks.length >= 14) ? blocks : [];\n"
+"  var html = '';\n"
+"  for(var i=0;i<14;i++){\n"
+"    var v = arr.length ? Number(arr[i] || 0) : 0;\n"
+"    var pct = v > 10 ? Math.max(12, Math.min(100, Math.round(((v - 14.2) / 2.6) * 100))) : 18;\n"
+"    html += '<div class=\"blk-cell\"><div class=\"blk-id\">B' + (i+1) + '</div><div class=\"blk-bar-bg\"><div class=\"blk-bar-fill\" style=\"height:' + pct + '%;\"></div></div><div class=\"blk-v\">' + (v > 1 ? v.toFixed(2) : '--') + '</div></div>';\n"
+"  }\n"
+"  g.innerHTML = html;\n"
+"}\n"
+"function saveRealOdo(){\n"
+"  var v = Number((document.getElementById('odoInput').value || '').trim());\n"
+"  if(!v || v < 0){ showCarToast('⚠️ กรุณาพิมพ์ตัวเลขไมล์รถปัจจุบันก่อนครับ'); return; }\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/carhealth?op=set_odo&km=' + encodeURIComponent(v) + '&t=' + Date.now(), true);\n"
+"  x.onload = function(){ document.getElementById('odoInput').value = ''; showCarToast('✅ บันทึกเลขไมล์รถ ' + v.toLocaleString() + ' กม. เรียบร้อย!'); loadCarHealthDetail(); };\n"
+"  x.send();\n"
+"}\n"
+"function resetMaintItem(key, label){\n"
+"  if(!confirm('บันทึกว่าเพิ่งเปลี่ยน/ทำรายการ \"' + label + '\" ที่เลขไมล์ปัจจุบันใช่ไหมครับ?')) return;\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/carhealth?op=reset&item=' + encodeURIComponent(key) + '&t=' + Date.now(), true);\n"
+"  x.onload = function(){ showCarToast('✅ เริ่มนับระยะ ' + label + ' ใหม่เรียบร้อย!'); loadCarHealthDetail(); };\n"
+"  x.send();\n"
+"}\n"
+"function cleanIpadCacheRemote(){\n"
+"  showCarToast('🧹 กำลังล้างไฟล์แคชชั่วคราวและคืนแรมบน iPad...');\n"
+"  sendCmd('clean_cache', '1', 1);\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/carhealth?op=clean_cache&t=' + Date.now(), true);\n"
+"  x.onload = function(){ showCarToast('✅ เคลียร์แคชและคืนแรม iPad เรียบร้อย! (ประวัติทริป/คิวเพลง/หมุดแผนที่อยู่ครบ 100%)'); };\n"
+"  x.send();\n"
+"}\n"
+"function loadCarHealthDetail(){\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/carhealth?t=' + Date.now(), true);\n"
+"  x.onload = function(){\n"
+"    if(x.status !== 200) return;\n"
+"    try {\n"
+"      var r = JSON.parse(x.responseText);\n"
+"      document.getElementById('curOdoTxt').innerText = 'ไมล์รถ ' + Math.round(r.currentOdo || 0).toLocaleString() + ' กม.';\n"
+"      document.getElementById('sum30Km').innerText = Number(r.sum30Km || 0).toFixed(1) + ' กม.';\n"
+"      document.getElementById('sum30Trips').innerText = (r.sum30Trips || 0) + ' ทริป • ' + (r.activeDays || 0) + ' วันที่มีขับ';\n"
+"      document.getElementById('sum30Cost').innerText = '฿' + Math.round(Number(r.sum30Cost || 0)).toLocaleString();\n"
+"      document.getElementById('sum30Fuel').innerText = Number(r.sum30Fuel || 0).toFixed(1) + ' L • เฉลี่ย ' + (r.avgKmL || '--') + ' km/L';\n"
+"      var dBox = document.getElementById('dailyTripList');\n"
+"      if(Array.isArray(r.days) && r.days.length > 0){\n"
+"        dBox.innerHTML = r.days.map(function(dy){\n"
+"          return '<div class=\"tlog-row\"><span style=\"color:#bfeaff;font-weight:800;\">📅 ' + dy.date + ' (' + dy.trips + ' ทริป)</span><span style=\"color:#fff;font-weight:900;\">' + Number(dy.km).toFixed(1) + ' กม. • <span style=\"color:#22ff88;\">฿' + Math.round(dy.cost) + '</span> (' + Number(dy.fuelL).toFixed(2) + 'L)</span></div>';\n"
+"        }).join('');\n"
+"      } else {\n"
+"        dBox.innerHTML = '<div class=\"hint\">ยังไม่มีประวัติการวิ่งที่มีระยะทางบันทึกไว้</div>';\n"
+"      }\n"
+"      var mBox = document.getElementById('maintListBox');\n"
+"      if(Array.isArray(r.maint)){\n"
+"        mBox.innerHTML = r.maint.map(function(m){\n"
+"          var used = Math.max(0, (r.currentOdo || 0) - (m.lastOdo || 0));\n"
+"          var rem = Math.max(0, m.interval - used);\n"
+"          var pct = Math.min(100, Math.round((used / m.interval) * 100));\n"
+"          var warn = rem <= 1000;\n"
+"          return '<div class=\"m-row\"><div class=\"m-top\"><div class=\"m-title\">' + m.title + '</div><button class=\"q-mini\" onclick=\"resetMaintItem(\\'' + m.key + '\\',\\'' + m.title + '\\')\">🔄 รีเซ็ต</button></div><div class=\"m-sub\">วิ่งไป ' + Math.round(used).toLocaleString() + ' / ' + m.interval.toLocaleString() + ' กม. • <span style=\"color:' + (warn ? '#ff6b7a' : '#22ff88') + ';\">' + (rem > 0 ? ('เหลืออีก ' + Math.round(rem).toLocaleString() + ' กม.') : '⚠️ ถึงกำหนดเช็กระยะแล้ว!') + '</span></div><div class=\"pbar\"><div class=\"pfill' + (warn ? ' warn' : '') + '\" style=\"width:' + pct + '%;\"></div></div></div>';\n"
+"        }).join('');\n"
+"      }\n"
+"    } catch(e){}\n"
+"  };\n"
+"  x.send();\n"
 "}\n"
 "function toggleMirror(){\n"
 "  isMirror = !isMirror;\n"
@@ -604,6 +771,24 @@ static NSString *const kHUDHTML =
 "        document.getElementById('tInv').innerText = 'INV ' + (d.invC || '--') + '°C • 12V ' + (d.aux12v || '--') + 'V';\n"
 "        document.getElementById('tFuel').innerText = (d.fuelL || '--') + ' L (~' + (d.rangeKm || '--') + ' กม.)';\n"
 "        document.getElementById('tCost').innerText = '฿' + (d.fuelCost || '0.0') + ' • ' + (d.kmPerL || '--') + ' km/L';\n"
+"        var obdP = document.getElementById('obdLivePill');\n"
+"        if(obdP){ obdP.className = 'live-pill' + (d.obdOk ? '' : ' off'); obdP.innerText = d.obdOk ? '● OBD2 เชื่อมต่อสด' : '○ รอบิดสวิตช์รถ'; }\n"
+"        document.getElementById('hvPackTxt').innerText = (Number(d.hvPackV || 0) > 10 ? d.hvPackV : '--') + ' V';\n"
+"        document.getElementById('hvAmpTxt').innerText = (d.hvPackA || '+0.0') + ' A • SOC ' + soc + '%';\n"
+"        var dv = Number(d.hvDeltaV || 0);\n"
+"        document.getElementById('hvDeltaTxt').innerText = (Array.isArray(d.hvBlocks) && d.hvBlocks.length >= 14 && Number(d.hvBlocks[0]) > 1) ? (dv.toFixed(2) + ' V') : '-- V';\n"
+"        document.getElementById('hvGradeTxt').innerText = (Array.isArray(d.hvBlocks) && d.hvBlocks.length >= 14 && Number(d.hvBlocks[0]) > 1) ? (dv <= 0.15 ? '✅ สมดุลดีเยี่ยม' : (dv <= 0.30 ? '👍 ปกติดี' : '⚠️ ควรตรวจเช็กเซลล์')) : 'รออ่านค่า 14 บล็อกตอนติดเครื่อง';\n"
+"        document.getElementById('hvTempBig').innerText = (d.hvC || '--') + ' °C';\n"
+"        document.getElementById('hvInletTxt').innerText = 'ลมเข้า ' + (d.hvInC || '--') + '°C • พัดลม ' + (d.fan || 'AUTO');\n"
+"        document.getElementById('auxBigTxt').innerText = (d.aux12v || '--') + ' V';\n"
+"        document.getElementById('ectInvTxt').innerText = 'เครื่อง ' + (d.ect || '--') + '°C • INV ' + (d.invC || '--') + '°C';\n"
+"        render14Blocks(d.hvBlocks);\n"
+"        var dtcBox = document.getElementById('dtcResultBox');\n"
+"        if(dtcBox){\n"
+"          if(d.dtcBusy) dtcBox.innerText = '🔍 กำลังสแกนโค้ดไฟโชว์ Prius ทุกกล่อง...';\n"
+"          else if(Array.isArray(d.dtcList) && d.dtcList.length > 0) dtcBox.innerText = '🚨 พบโค้ดแจ้งเตือน (' + d.dtcList.length + '): ' + d.dtcList.join(' | ');\n"
+"          else if(d.dtcTime) dtcBox.innerText = '✅ ไม่พบรหัสไฟโชว์ผิดปกติ (สแกนล่าสุด ' + d.dtcTime + ')';\n"
+"        }\n"
 "        var songStr = d.song ? ('🎵 ' + d.song) : '🎵 พร้อมเล่นเพลง (audioNINJA / YouTube)';\n"
 "        document.getElementById('remoteSongTxt').innerText = songStr;\n"
 "        document.getElementById('songTxt').innerText = songStr;\n"
@@ -837,6 +1022,94 @@ static NSString *mutateSharedQueueJSON(NSDictionary *params) {
   }
 }
 
+static NSString *const kMaintStatePath = @"/var/mobile/codex-car/maintenance-state.plist";
+
+static NSString *buildCarHealthJSON(NSDictionary *params) {
+  @autoreleasepool {
+    NSDictionary *live = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/hud-live.plist"] ?: @{};
+    double trackedOdo = [live[@"odoKm"] doubleValue];
+    NSMutableDictionary *mState = [[NSDictionary dictionaryWithContentsOfFile:kMaintStatePath] mutableCopy] ?: [NSMutableDictionary dictionary];
+    if (!mState[@"baseOdo"]) {
+      mState[@"baseOdo"] = @180000.0;
+      mState[@"trackedAtSet"] = @(trackedOdo);
+      mState[@"oilLastOdo"] = @180000.0;
+      mState[@"fanLastOdo"] = @180000.0;
+      mState[@"atfLastOdo"] = @180000.0;
+      [mState writeToFile:kMaintStatePath atomically:YES];
+    }
+    double currentOdo = [mState[@"baseOdo"] doubleValue] + MAX(0.0, trackedOdo - [mState[@"trackedAtSet"] doubleValue]);
+    NSString *op = params[@"op"] ?: @"";
+    if ([op isEqualToString:@"set_odo"]) {
+      double newOdo = [params[@"km"] doubleValue];
+      if (newOdo > 0) {
+        double prevOdo = currentOdo;
+        currentOdo = newOdo;
+        mState[@"baseOdo"] = @(newOdo);
+        mState[@"trackedAtSet"] = @(trackedOdo);
+        if (fabs(prevOdo - 180000.0) < 1.0) {
+          mState[@"oilLastOdo"] = @(newOdo);
+          mState[@"fanLastOdo"] = @(newOdo);
+          mState[@"atfLastOdo"] = @(newOdo);
+        }
+        [mState writeToFile:kMaintStatePath atomically:YES];
+      }
+    } else if ([op isEqualToString:@"reset"]) {
+      NSString *item = params[@"item"] ?: @"";
+      if ([item isEqualToString:@"oil"]) mState[@"oilLastOdo"] = @(currentOdo);
+      else if ([item isEqualToString:@"fan"]) mState[@"fanLastOdo"] = @(currentOdo);
+      else if ([item isEqualToString:@"atf"]) mState[@"atfLastOdo"] = @(currentOdo);
+      [mState writeToFile:kMaintStatePath atomically:YES];
+    } else if ([op isEqualToString:@"clean_cache"]) {
+      dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+        pid_t pid = 0;
+        char *argv[] = { (char *)"/bin/sh", (char *)"/usr/local/bin/trd-clean-cache", NULL };
+        posix_spawn(&pid, "/bin/sh", NULL, NULL, argv, environ);
+      });
+    }
+
+    NSDictionary *hist = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/trip-daily-history.plist"];
+    NSDictionary *daysDict = [hist[@"days"] isKindOfClass:[NSDictionary class]] ? hist[@"days"] : @{};
+    NSArray *sortedKeys = [[daysDict allKeys] sortedArrayUsingSelector:@selector(compare:)];
+    NSMutableArray *recentDays = [NSMutableArray array];
+    double sum30Km = 0, sum30Fuel = 0, sum30Cost = 0;
+    NSInteger sum30Trips = 0, activeDays = 0;
+    NSInteger startK = MAX(0, (NSInteger)sortedKeys.count - 30);
+    for (NSInteger i = (NSInteger)sortedKeys.count - 1; i >= startK; i--) {
+      NSString *k = sortedKeys[(NSUInteger)i];
+      NSDictionary *rec = [daysDict[k] isKindOfClass:[NSDictionary class]] ? daysDict[k] : nil;
+      double km = [rec[@"km"] doubleValue];
+      double fl = [rec[@"fuelL"] doubleValue];
+      double cs = [rec[@"cost"] doubleValue];
+      NSInteger tr = [rec[@"trips"] integerValue];
+      if (km >= 0.05 || tr > 0) {
+        sum30Km += km; sum30Fuel += fl; sum30Cost += cs; sum30Trips += MAX(1, tr); activeDays++;
+        if (recentDays.count < 14) {
+          [recentDays addObject:@{@"date": k, @"km": @(km), @"fuelL": @(fl), @"cost": @(cs), @"trips": @(MAX(1, tr))}];
+        }
+      }
+    }
+    NSString *avgKmL = (sum30Fuel > 0.05) ? [NSString stringWithFormat:@"%.1f", sum30Km / sum30Fuel] : @"--";
+    NSArray *maint = @[
+      @{@"key": @"oil", @"title": @"🛢️ น้ำมันเครื่องสังเคราะห์แท้", @"interval": @10000, @"lastOdo": mState[@"oilLastOdo"] ?: @(currentOdo)},
+      @{@"key": @"fan", @"title": @"🌀 ล้างพัดลม & กรองแบตไฮบริด HV", @"interval": @20000, @"lastOdo": mState[@"fanLastOdo"] ?: @(currentOdo)},
+      @{@"key": @"atf", @"title": @"⚙️ น้ำมันเกียร์ไฮบริด Toyota ATF WS", @"interval": @40000, @"lastOdo": mState[@"atfLastOdo"] ?: @(currentOdo)}
+    ];
+    NSDictionary *out = @{
+      @"currentOdo": @(currentOdo),
+      @"sum30Km": @(sum30Km),
+      @"sum30Fuel": @(sum30Fuel),
+      @"sum30Cost": @(sum30Cost),
+      @"sum30Trips": @(sum30Trips),
+      @"activeDays": @(activeDays),
+      @"avgKmL": avgKmL,
+      @"days": recentDays,
+      @"maint": maint
+    };
+    NSData *jd = [NSJSONSerialization dataWithJSONObject:out options:0 error:nil];
+    return jd ? ([[NSString alloc] initWithData:jd encoding:NSUTF8StringEncoding] ?: @"{}") : @"{}";
+  }
+}
+
 static NSString *buildLiveHUDJSON(void) {
   @autoreleasepool {
     static NSDateFormatter *df = nil;
@@ -876,6 +1149,15 @@ static NSString *buildLiveHUDJSON(void) {
       @"ect": live[@"ect"] ?: @0,
       @"invC": live[@"invC"] ?: @0,
       @"hvC": live[@"hvC"] ?: @"--",
+      @"hvInC": live[@"hvInC"] ?: @"--",
+      @"hvPackV": live[@"hvPackV"] ?: @"0.0",
+      @"hvPackA": live[@"hvPackA"] ?: @"+0.0",
+      @"hvDeltaV": live[@"hvDeltaV"] ?: @"0.00",
+      @"hvBlocks": live[@"hvBlocks"] ?: @[],
+      @"obdOk": live[@"obdOk"] ?: @NO,
+      @"dtcBusy": live[@"dtcBusy"] ?: @NO,
+      @"dtcList": live[@"dtcList"] ?: @[],
+      @"dtcTime": live[@"dtcTime"] ?: @"",
       @"fan": live[@"fan"] ?: @"AUTO",
       @"fuelL": live[@"fuelL"] ?: @"--",
       @"rangeKm": live[@"rangeKm"] ?: @"--",
@@ -935,6 +1217,10 @@ static void handleClientSocket(int clientFd) {
       contentType = @"application/json; charset=utf-8";
       NSDictionary *params = parseQueryParams(query);
       bodyData = [mutateSharedQueueJSON(params) dataUsingEncoding:NSUTF8StringEncoding];
+    } else if ([path isEqualToString:@"/api/carhealth"]) {
+      contentType = @"application/json; charset=utf-8";
+      NSDictionary *params = parseQueryParams(query);
+      bodyData = [buildCarHealthJSON(params) dataUsingEncoding:NSUTF8StringEncoding];
     } else if ([path isEqualToString:@"/api/cmd"]) {
       contentType = @"application/json; charset=utf-8";
       NSDictionary *params = parseQueryParams(query);
@@ -1117,15 +1403,177 @@ static void startListenerOnPort(uint16_t port) {
   });
 }
 
+static BOOL getCurrentEn0IPv4(struct in_addr *outAddr) {
+  struct ifaddrs *ifaddr = NULL;
+  BOOL found = NO;
+  if (getifaddrs(&ifaddr) == 0) {
+    for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+      if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET || !ifa->ifa_name) continue;
+      if (strcmp(ifa->ifa_name, "en0") == 0 || strcmp(ifa->ifa_name, "bridge100") == 0) {
+        struct in_addr a = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr;
+        uint32_t h = ntohl(a.s_addr);
+        if (h != 0 && (h >> 16) != 0xA9FE && (h >> 24) != 127) {
+          if (outAddr) *outAddr = a;
+          found = YES;
+          if (strcmp(ifa->ifa_name, "en0") == 0) break;
+        }
+      }
+    }
+    freeifaddrs(ifaddr);
+  }
+  return found;
+}
+
+static void dnssdRecordCallback(DNSServiceRef sdRef, DNSRecordRef RecordRef, DNSServiceFlags flags, DNSServiceErrorType errorCode, void *context) {
+  // Callback required by DNSServiceRegisterRecord
+}
+
+static void startDynamicHostnameResponders(void) {
+  // 1. Official Apple mDNSResponder registration for cardash.local (port 5353 owned by mDNSResponder)
+  dispatch_queue_t mdnsQ = dispatch_queue_create("com.codex.trd.dnssd", DISPATCH_QUEUE_SERIAL);
+  dispatch_async(mdnsQ, ^{
+    __block DNSServiceRef sdConn = NULL;
+    __block DNSRecordRef aRec = NULL;
+    __block uint32_t registeredIP = 0;
+
+    void (^syncDNSSD)(void) = ^{
+      struct in_addr cur;
+      if (!getCurrentEn0IPv4(&cur)) return;
+      if (!sdConn) {
+        if (DNSServiceCreateConnection(&sdConn) == kDNSServiceErr_NoError && sdConn) {
+          DNSServiceSetDispatchQueue(sdConn, mdnsQ);
+        } else {
+          sdConn = NULL;
+          return;
+        }
+      }
+      if (!aRec) {
+        DNSServiceErrorType err = DNSServiceRegisterRecord(
+          sdConn, &aRec, kDNSServiceFlagsShared, 0,
+          "cardash.local.", kDNSServiceType_A, kDNSServiceClass_IN,
+          4, &cur.s_addr, 60, dnssdRecordCallback, NULL
+        );
+        if (err == kDNSServiceErr_NoError) {
+          registeredIP = cur.s_addr;
+        } else {
+          aRec = NULL;
+        }
+      } else if (cur.s_addr != registeredIP) {
+        if (DNSServiceUpdateRecord(sdConn, aRec, 0, 4, &cur.s_addr, 60) == kDNSServiceErr_NoError) {
+          registeredIP = cur.s_addr;
+        } else {
+          DNSServiceRefDeallocate(sdConn);
+          sdConn = NULL;
+          aRec = NULL;
+          registeredIP = 0;
+        }
+      }
+    };
+
+    syncDNSSD();
+    static int netTok = 0;
+    notify_register_dispatch("com.codex.trd.network.changed", &netTok, mdnsQ, ^(int t){
+      syncDNSSD();
+    });
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, mdnsQ);
+    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC), 4 * NSEC_PER_SEC, 1 * NSEC_PER_SEC);
+    dispatch_source_set_event_handler(timer, ^{ syncDNSSD(); });
+    dispatch_resume(timer);
+    // Retain timer forever in daemon lifetime
+    static dispatch_source_t sKeepTimer;
+    sKeepTimer = timer;
+  });
+
+  // 2. LLMNR Responder on UDP 224.0.0.252:5355 (for http://cardash/ on Windows & Android!)
+  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (fd < 0) return;
+    int yes = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+#ifdef SO_REUSEPORT
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &yes, sizeof(yes));
+#endif
+    struct sockaddr_in baddr;
+    memset(&baddr, 0, sizeof(baddr));
+    baddr.sin_family = AF_INET;
+    baddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    baddr.sin_port = htons(5355);
+    if (bind(fd, (struct sockaddr *)&baddr, sizeof(baddr)) < 0) {
+      close(fd);
+      return;
+    }
+    __block uint32_t llmnrJoined = 0;
+    void (^joinLLMNR)(void) = ^{
+      struct in_addr c;
+      if (!getCurrentEn0IPv4(&c) || c.s_addr == llmnrJoined) return;
+      if (llmnrJoined != 0) {
+        struct ip_mreq oldM = { .imr_multiaddr.s_addr = inet_addr("224.0.0.252"), .imr_interface.s_addr = llmnrJoined };
+        setsockopt(fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, &oldM, sizeof(oldM));
+      }
+      struct ip_mreq m = { .imr_multiaddr.s_addr = inet_addr("224.0.0.252"), .imr_interface = c };
+      setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &m, sizeof(m));
+      llmnrJoined = c.s_addr;
+    };
+    joinLLMNR();
+
+    uint8_t rx[512];
+    while (1) {
+      struct sockaddr_in src;
+      socklen_t slen = sizeof(src);
+      ssize_t n = recvfrom(fd, rx, sizeof(rx), 0, (struct sockaddr *)&src, &slen);
+      if (n < 18) continue;
+      joinLLMNR();
+      uint16_t flags = (uint16_t)((rx[2] << 8) | rx[3]);
+      uint16_t qdc = (uint16_t)((rx[4] << 8) | rx[5]);
+      if ((flags & 0x8000) != 0 || qdc != 1) continue;
+      uint8_t l = rx[12];
+      if (l == 0 || 13 + l + 5 > (size_t)n || rx[13 + l] != 0) continue;
+      char name[64];
+      if (l >= sizeof(name)) continue;
+      for (uint8_t i = 0; i < l; i++) {
+        char ch = (char)rx[13 + i];
+        name[i] = (ch >= 'A' && ch <= 'Z') ? (char)(ch + 32) : ch;
+      }
+      name[l] = '\0';
+      size_t qend = 13 + l + 1;
+      uint16_t qtype = (uint16_t)((rx[qend] << 8) | rx[qend + 1]);
+      if ((strcmp(name, "cardash") == 0 || strcmp(name, "cardash.local") == 0) && (qtype == 1 || qtype == 255)) {
+        struct in_addr cur;
+        if (!getCurrentEn0IPv4(&cur)) continue;
+        uint8_t resp[256];
+        size_t qsecLen = (qend + 4) - 12;
+        resp[0] = rx[0]; resp[1] = rx[1];
+        resp[2] = 0x80; resp[3] = 0x00;
+        resp[4] = 0x00; resp[5] = 0x01;
+        resp[6] = 0x00; resp[7] = 0x01;
+        resp[8] = 0x00; resp[9] = 0x00;
+        resp[10] = 0x00; resp[11] = 0x00;
+        memcpy(resp + 12, rx + 12, qsecLen);
+        uint8_t *p = resp + 12 + qsecLen;
+        *p++ = 0xC0; *p++ = 0x0C; // pointer to QNAME
+        *p++ = 0x00; *p++ = 0x01; // TYPE A
+        *p++ = 0x00; *p++ = 0x01; // CLASS IN
+        *p++ = 0x00; *p++ = 0x00; *p++ = 0x00; *p++ = 0x1E; // TTL 30s
+        *p++ = 0x00; *p++ = 0x04;
+        memcpy(p, &cur.s_addr, 4);
+        p += 4;
+        sendto(fd, resp, (size_t)(p - resp), 0, (struct sockaddr *)&src, slen);
+      }
+    }
+  });
+}
+
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
     signal(SIGPIPE, SIG_IGN);
     startListenerOnPort(80);
     startListenerOnPort(8080);
     startListenerOnPort(8088);
-    while (1) {
-      sleep(3600);
-    }
+    startDynamicHostnameResponders();
+    NSNetService *bonjour = [[NSNetService alloc] initWithDomain:@"local." type:@"_http._tcp." name:@"cardash" port:80];
+    [bonjour scheduleInRunLoop:[NSRunLoop mainRunLoop] forMode:NSDefaultRunLoopMode];
+    [bonjour publish];
+    [[NSRunLoop mainRunLoop] run];
   }
   return 0;
 }
