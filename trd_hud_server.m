@@ -1449,17 +1449,24 @@ static void startDynamicHostnameResponders(void) {
       }
       if (!aRec) {
         DNSServiceErrorType err = DNSServiceRegisterRecord(
-          sdConn, &aRec, kDNSServiceFlagsShared, 0,
+          sdConn, &aRec, kDNSServiceFlagsUnique, 0,
           "cardash.local.", kDNSServiceType_A, kDNSServiceClass_IN,
-          4, &cur.s_addr, 60, dnssdRecordCallback, NULL
+          4, &cur.s_addr, 120, dnssdRecordCallback, NULL
         );
+        if (err != kDNSServiceErr_NoError) {
+          err = DNSServiceRegisterRecord(
+            sdConn, &aRec, kDNSServiceFlagsShared, 0,
+            "cardash.local.", kDNSServiceType_A, kDNSServiceClass_IN,
+            4, &cur.s_addr, 120, dnssdRecordCallback, NULL
+          );
+        }
         if (err == kDNSServiceErr_NoError) {
           registeredIP = cur.s_addr;
         } else {
           aRec = NULL;
         }
       } else if (cur.s_addr != registeredIP) {
-        if (DNSServiceUpdateRecord(sdConn, aRec, 0, 4, &cur.s_addr, 60) == kDNSServiceErr_NoError) {
+        if (DNSServiceUpdateRecord(sdConn, aRec, 0, 4, &cur.s_addr, 120) == kDNSServiceErr_NoError) {
           registeredIP = cur.s_addr;
         } else {
           DNSServiceRefDeallocate(sdConn);
