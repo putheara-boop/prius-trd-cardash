@@ -5831,6 +5831,13 @@ static NSUInteger gTRDUpdateTicks=0;
    @"fan":hFanStr,
    @"fuelL":[NSString stringWithFormat:@"%.1f",hObd.fuelRemainingLiters],
    @"fuelPrice":[NSString stringWithFormat:@"%.2f",hPrice],
+   @"fuelType":hObd.selectedFuelTypeName?:@"แก๊สโซฮอล์ 95",
+   @"fuelPrices":@{
+    @"G95":hObd.cachedPrices[@0]?[NSString stringWithFormat:@"%.2f",[hObd.cachedPrices[@0] doubleValue]]:@"",
+    @"G91":hObd.cachedPrices[@1]?[NSString stringWithFormat:@"%.2f",[hObd.cachedPrices[@1] doubleValue]]:@"",
+    @"E20":hObd.cachedPrices[@2]?[NSString stringWithFormat:@"%.2f",[hObd.cachedPrices[@2] doubleValue]]:@"",
+    @"P95":hObd.cachedPrices[@3]?[NSString stringWithFormat:@"%.2f",[hObd.cachedPrices[@3] doubleValue]]:@""
+   },
    @"rangeKm":[NSString stringWithFormat:@"%.0f",hRangeKm],
    @"aux12v":[NSString stringWithFormat:@"%.1f",hAux],
    @"ipadPct":@(ipadBatPct),
@@ -10877,6 +10884,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
  NSString *action = [cmd[@"action"] isKindOfClass:[NSString class]] ? cmd[@"action"] : @"";
  NSString *val = [cmd[@"value"] isKindOfClass:[NSString class]] ? cmd[@"value"] : @"";
+ NSString *mode = [cmd[@"mode"] isKindOfClass:[NSString class]] ? cmd[@"mode"] : @"";
  BOOL autoStart = [cmd[@"autoStart"] boolValue];
 
  if([action isEqualToString:@"nav"]){
@@ -10934,12 +10942,17 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  } else if([action isEqualToString:@"night_toggle"]){
   [self toggleNight];
  } else if([action isEqualToString:@"set_fuel_price"]){
+  TRDOBDClient *obd = [TRDOBDClient sharedClient];
+  if([mode isEqualToString:@"G95"]) [obd selectFuelTypeIndex:0];
+  else if([mode isEqualToString:@"G91"]) [obd selectFuelTypeIndex:1];
+  else if([mode isEqualToString:@"E20"]) [obd selectFuelTypeIndex:2];
+  else if([mode isEqualToString:@"P95"]) [obd selectFuelTypeIndex:3];
   double pVal = [[val stringByReplacingOccurrencesOfString:@"," withString:@"."] doubleValue];
   if(pVal >= 10.0 && pVal <= 120.0){
-   [[TRDOBDClient sharedClient] setCustomFuelPrice:(CGFloat)pVal];
-   [self syncActiveFuelRateToTripA];
-   [self showVoiceToast:[NSString stringWithFormat:@"⛽ อัปเดตราคาน้ำมันจริง %.2f ฿/ลิตร เรียบร้อย!", pVal] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.65 alpha:1.0] autoHide:3.5];
+   [obd setCustomFuelPrice:(CGFloat)pVal];
   }
+  [self syncActiveFuelRateToTripA];
+  [self showVoiceToast:[NSString stringWithFormat:@"⛽ อัปเดต %@ • %.2f ฿/ลิตร เรียบร้อย!", obd.selectedFuelTypeName ?: @"น้ำมัน", obd.fuelPricePerLiter] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.65 alpha:1.0] autoHide:3.5];
  } else if([action isEqualToString:@"clean_cache"]){
   [[NSURLCache sharedURLCache] removeAllCachedResponses];
   if(!self.mapMode && !self.carplayMode && self.mapWebView){ [self teardownMapWebView]; }

@@ -307,7 +307,7 @@ static NSString *const kHUDHTML =
 "      <button class=\"rbtn\" onclick=\"sendCmd('screen','camera')\">📷 กล้องรถ</button>\n"
 "      <button class=\"rbtn\" onclick=\"sendCmd('night_toggle','1')\">☀️/🌙 แสงจอ</button>\n"
 "    </div>\n"
-"    <div class=\"hint\" style=\"margin-top:8px;\">🌐 เข้าผ่านชื่อ <b>http://cardash.local</b> ได้ทันทีโดยไม่ต้องจำเลข IP! (เมื่อดับเครื่องไอแพดพักระบบอัตโนมัติ ไม่กินแบตรถ)</div>\n"
+"    <div class=\"hint\" id=\"ipHintBanner\" style=\"margin-top:8px;\">🌐 เข้าผ่าน <b>http://cardash.local</b> หรือเลข IP ตรงของไอแพด (ไม่ต้องมี s หลัง http) ได้ทันที!</div>\n"
 "  </div>\n"
 "</div>\n"
 "\n"
@@ -348,15 +348,23 @@ static NSString *const kHUDHTML =
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">ค่าน้ำมันตามทริป (30 วัน)</div><div class=\"tel-val\" id=\"sum30Cost\">฿0</div><div class=\"tel-sub\" id=\"sum30Fuel\">0.0 ลิตร • -- km/L</div></div>\n"
 "    </div>\n"
 "    <div class=\"q-wrap\" style=\"margin-top:0;margin-bottom:10px;\">\n"
-"      <div class=\"q-hdr\"><span>⛽ บันทึกบิลเติมน้ำมันหน้าปั๊ม</span><span id=\"refuelRateBadge\" style=\"color:#22ff88;font-size:11px;\">เรตคำนวณ -- ฿/L</span></div>\n"
+"      <div class=\"q-hdr\"><span>⛽ บันทึกบิลเติมน้ำมันตามใบเสร็จ</span><span id=\"refuelRateBadge\" style=\"color:#22ff88;font-size:11px;\">E20 / 95 / 91</span></div>\n"
+"      <div class=\"chips\" id=\"fuelTypeChips\" style=\"margin:2px 0 8px;\">\n"
+"        <span class=\"chip\" id=\"ft_E20\" onclick=\"selectRefuelType('E20','E20')\">🌿 E20</span>\n"
+"        <span class=\"chip\" id=\"ft_G95\" onclick=\"selectRefuelType('G95','แก๊สโซฮอล์ 95')\" style=\"border-color:#00e5ff;color:#fff;background:rgba(0,180,255,0.28);\">⛽ แก๊สโซฮอล์ 95</span>\n"
+"        <span class=\"chip\" id=\"ft_G91\" onclick=\"selectRefuelType('G91','แก๊สโซฮอล์ 91')\">🟢 แก๊สโซฮอล์ 91</span>\n"
+"        <span class=\"chip\" id=\"ft_P95\" onclick=\"selectRefuelType('P95','พรีเมียม 95')\">✨ พรีเมียม 95</span>\n"
+"      </div>\n"
 "      <div class=\"row\" style=\"margin-bottom:6px;\">\n"
-"        <input class=\"inp\" id=\"refuelBaht\" type=\"number\" inputmode=\"decimal\" placeholder=\"ยอดเงิน (บาท) เช่น 800\" style=\"margin-bottom:0;-webkit-flex:1;flex:1;\">\n"
-"        <input class=\"inp\" id=\"refuelLiters\" type=\"number\" inputmode=\"decimal\" placeholder=\"จำนวนลิตร (ถ้าทราบ)\" style=\"margin-bottom:0;-webkit-flex:1;flex:1;\">\n"
+"        <input class=\"inp\" id=\"refuelBaht\" type=\"number\" step=\"any\" inputmode=\"decimal\" placeholder=\"ยอดรวม (บาท) เช่น 500\" style=\"margin-bottom:0;-webkit-flex:1.15;flex:1.15;font-size:13px;padding:10px 8px;\" oninput=\"onRefuelFieldEdit('baht')\">\n"
+"        <input class=\"inp\" id=\"refuelPpl\" type=\"number\" step=\"any\" inputmode=\"decimal\" placeholder=\"ราคา/ลิตร\" style=\"margin-bottom:0;-webkit-flex:1;flex:1;font-size:13px;padding:10px 8px;\" oninput=\"onRefuelFieldEdit('ppl')\">\n"
+"        <input class=\"inp\" id=\"refuelLiters\" type=\"number\" step=\"any\" inputmode=\"decimal\" placeholder=\"จำนวนลิตร\" style=\"margin-bottom:0;-webkit-flex:1;flex:1;font-size:13px;padding:10px 8px;\" oninput=\"onRefuelFieldEdit('liters')\">\n"
 "      </div>\n"
+"      <div class=\"hint\" style=\"margin:0 0 6px;font-size:11px;\">💡 เลือกชนิดน้ำมันด้านบน แล้วกรอก <b>ยอดเงิน + ราคา/ลิตร</b> หรือ <b>จำนวนลิตร</b> ตามใบเสร็จ ช่องที่เหลือจะคำนวณให้อัตโนมัติครับ</div>\n"
 "      <div class=\"row\" style=\"margin-bottom:4px;\">\n"
-"        <button class=\"rbtn green\" onclick=\"saveRefuelLog()\">💾 บันทึกเติมน้ำมัน & ซิงก์ราคา/ลิตร</button>\n"
+"        <button class=\"rbtn green\" onclick=\"saveRefuelLog()\">💾 บันทึกบิลใบเสร็จ & ซิงก์เรตราคาขึ้นจอรถ</button>\n"
 "      </div>\n"
-"      <div id=\"refuelSummaryTxt\" class=\"hint\" style=\"margin:4px 0 4px;color:#bfeaff;\">ยอดเติมจริงเดือนนี้: ฿0 (0 ครั้ง)</div>\n"
+"      <div id=\"refuelSummaryTxt\" class=\"hint\" style=\"margin:4px 0 4px;color:#bfeaff;\">ยอดเติมจริง 30 วัน: ฿0 (0 ครั้ง)</div>\n"
 "      <div id=\"refuelListBox\"></div>\n"
 "    </div>\n"
 "    <div id=\"dailyTripList\"><div class=\"hint\">กำลังโหลดประวัติการเดินทางรายวัน...</div></div>\n"
@@ -471,20 +479,56 @@ static NSString *const kHUDHTML =
 "  x.onload = function(){ document.getElementById('odoInput').value = ''; showCarToast('✅ บันทึกเลขไมล์รถ ' + v.toLocaleString() + ' กม. เรียบร้อย!'); loadCarHealthDetail(); };\n"
 "  x.send();\n"
 "}\n"
+"var selFuelCode = 'G95', selFuelLabel = 'แก๊สโซฮอล์ 95', knownFuelPrices = {}, userInitializedRefuelUI = false;\n"
+"function selectRefuelType(code, label, skipPriceFill){\n"
+"  selFuelCode = code; selFuelLabel = label;\n"
+"  ['E20','G95','G91','P95'].forEach(function(k){\n"
+"    var el = document.getElementById('ft_' + k);\n"
+"    if(!el) return;\n"
+"    if(k === code){ el.style.borderColor = '#00e5ff'; el.style.color = '#fff'; el.style.background = 'rgba(0,180,255,0.28)'; }\n"
+"    else { el.style.borderColor = 'rgba(130,200,255,0.28)'; el.style.color = '#bfeaff'; el.style.background = 'rgba(20,34,52,0.9)'; }\n"
+"  });\n"
+"  var pEl = document.getElementById('refuelPpl');\n"
+"  if(!skipPriceFill && pEl && knownFuelPrices[code] && Number(knownFuelPrices[code]) >= 10){\n"
+"    pEl.value = Number(knownFuelPrices[code]).toFixed(2);\n"
+"    onRefuelFieldEdit('ppl');\n"
+"  }\n"
+"}\n"
+"function onRefuelFieldEdit(changed){\n"
+"  var bEl = document.getElementById('refuelBaht');\n"
+"  var pEl = document.getElementById('refuelPpl');\n"
+"  var lEl = document.getElementById('refuelLiters');\n"
+"  var b = Number((bEl.value || '').trim());\n"
+"  var p = Number((pEl.value || '').trim());\n"
+"  var l = Number((lEl.value || '').trim());\n"
+"  if(changed === 'baht'){\n"
+"    if(b > 0 && p >= 10) lEl.value = (b / p).toFixed(2);\n"
+"    else if(b > 0 && l > 0.1) pEl.value = (b / l).toFixed(2);\n"
+"  } else if(changed === 'ppl'){\n"
+"    if(b > 0 && p >= 10) lEl.value = (b / p).toFixed(2);\n"
+"    else if(l > 0.1 && p >= 10) bEl.value = (l * p).toFixed(1);\n"
+"  } else if(changed === 'liters'){\n"
+"    if(b > 0 && l > 0.1) pEl.value = (b / l).toFixed(2);\n"
+"    else if(l > 0.1 && p >= 10) bEl.value = (l * p).toFixed(1);\n"
+"  }\n"
+"}\n"
 "function saveRefuelLog(){\n"
 "  var b = Number((document.getElementById('refuelBaht').value || '').trim());\n"
+"  var p = Number((document.getElementById('refuelPpl').value || '').trim());\n"
 "  var l = Number((document.getElementById('refuelLiters').value || '').trim());\n"
-"  if(!b || b <= 0){ showCarToast('⚠️ กรุณาใส่ยอดเงินที่เติมน้ำมัน (บาท) ก่อนครับ'); return; }\n"
+"  if((!b || b <= 0) && p >= 10 && l > 0.1) b = Number((p * l).toFixed(2));\n"
+"  if(!b || b <= 0){ showCarToast('⚠️ กรุณาใส่ยอดเงินรวม (บาท) หรือ ราคา/ลิตร คู่กับจำนวนลิตรครับ'); return; }\n"
+"  var u = '/api/carhealth?op=add_refuel&ftype=' + encodeURIComponent(selFuelLabel) + '&fcode=' + encodeURIComponent(selFuelCode) + '&baht=' + encodeURIComponent(b) + '&ppl=' + encodeURIComponent(p || 0) + '&liters=' + encodeURIComponent(l || 0) + '&t=' + Date.now();\n"
 "  var x = new XMLHttpRequest();\n"
-"  x.open('GET', '/api/carhealth?op=add_refuel&baht=' + encodeURIComponent(b) + '&liters=' + encodeURIComponent(l || 0) + '&t=' + Date.now(), true);\n"
+"  x.open('GET', u, true);\n"
 "  x.onload = function(){\n"
 "    document.getElementById('refuelBaht').value = '';\n"
 "    document.getElementById('refuelLiters').value = '';\n"
 "    try {\n"
 "      var r = JSON.parse(x.responseText);\n"
-"      if(r.syncedPrice && Number(r.syncedPrice) >= 10) sendCmd('set_fuel_price', String(r.syncedPrice), 1);\n"
+"      if(r.syncedPrice && Number(r.syncedPrice) >= 10) sendCmd('set_fuel_price', String(r.syncedPrice), 1, selFuelCode);\n"
 "    } catch(e){}\n"
-"    showCarToast('✅ บันทึกบิลเติมน้ำมัน ฿' + Math.round(b).toLocaleString() + ' เรียบร้อย!');\n"
+"    showCarToast('✅ บันทึกบิล ' + selFuelLabel + ' ฿' + Math.round(b).toLocaleString() + ' เรียบร้อย!');\n"
 "    loadCarHealthDetail();\n"
 "  };\n"
 "  x.send();\n"
@@ -536,15 +580,27 @@ static NSString *const kHUDHTML =
 "      document.getElementById('sum30Trips').innerText = (r.sum30Trips || 0) + ' ทริป • ' + (r.activeDays || 0) + ' วันที่มีขับ';\n"
 "      document.getElementById('sum30Cost').innerText = '฿' + Math.round(Number(r.sum30Cost || 0)).toLocaleString();\n"
 "      document.getElementById('sum30Fuel').innerText = Number(r.sum30Fuel || 0).toFixed(1) + ' L • เฉลี่ย ' + (r.avgKmL || '--') + ' km/L';\n"
+"      if(r.fuelPrices) knownFuelPrices = r.fuelPrices;\n"
 "      var rb = document.getElementById('refuelRateBadge');\n"
-"      if(rb) rb.innerText = 'เรตคำนวณ ' + (r.fuelPrice || '38.14') + ' ฿/L';\n"
+"      if(rb) rb.innerText = (r.fuelType || selFuelLabel) + ' • ' + (r.fuelPrice || '30.50') + ' ฿/L';\n"
+"      if(!userInitializedRefuelUI){\n"
+"        userInitializedRefuelUI = true;\n"
+"        var ft = r.fuelType || '';\n"
+"        if(ft.indexOf('E20') >= 0) selectRefuelType('E20','E20',true);\n"
+"        else if(ft.indexOf('91') >= 0) selectRefuelType('G91','แก๊สโซฮอล์ 91',true);\n"
+"        else if(ft.indexOf('พรีเมียม') >= 0) selectRefuelType('P95','พรีเมียม 95',true);\n"
+"        else selectRefuelType('G95','แก๊สโซฮอล์ 95',true);\n"
+"        var pInp = document.getElementById('refuelPpl');\n"
+"        if(pInp && !pInp.value && r.fuelPrice) pInp.value = Number(r.fuelPrice).toFixed(2);\n"
+"      }\n"
 "      var rs = document.getElementById('refuelSummaryTxt');\n"
-"      if(rs) rs.innerText = 'ยอดบิลเติมน้ำมัน 30 วัน: ฿' + Math.round(Number(r.refuel30Baht || 0)).toLocaleString() + ' (' + Number(r.refuel30Liters || 0).toFixed(1) + ' L • ' + (r.refuel30Count || 0) + ' ครั้ง)';\n"
+"      if(rs) rs.innerText = 'ยอดบิลเติมจริง 30 วัน: ฿' + Math.round(Number(r.refuel30Baht || 0)).toLocaleString() + ' (' + Number(r.refuel30Liters || 0).toFixed(2) + ' L • ' + (r.refuel30Count || 0) + ' ครั้ง)';\n"
 "      var rBox = document.getElementById('refuelListBox');\n"
 "      if(rBox){\n"
 "        if(Array.isArray(r.refuels) && r.refuels.length > 0){\n"
 "          rBox.innerHTML = r.refuels.map(function(rf){\n"
-"            return '<div class=\"tlog-row\" style=\"padding:5px 0;\"><span style=\"color:#ffe082;font-weight:800;\">⛽ ' + rf.date + ' • ฿' + Math.round(rf.baht).toLocaleString() + ' (' + Number(rf.liters).toFixed(2) + 'L @ ' + Number(rf.ppl).toFixed(2) + ')</span><button class=\"q-mini del\" onclick=\"delRefuelItem(\\'' + rf.id + '\\')\">✕</button></div>';\n"
+"            var ftTag = rf.ftype ? ('[' + rf.ftype + '] ') : '';\n"
+"            return '<div class=\"tlog-row\" style=\"padding:5px 0;\"><span style=\"color:#ffe082;font-weight:800;\">⛽ ' + rf.date + ' • ' + ftTag + '฿' + Math.round(rf.baht).toLocaleString() + ' (' + Number(rf.liters).toFixed(2) + 'L @ ' + Number(rf.ppl).toFixed(2) + ')</span><button class=\"q-mini del\" onclick=\"delRefuelItem(\\'' + rf.id + '\\')\">✕</button></div>';\n"
 "          }).join('');\n"
 "        } else { rBox.innerHTML = ''; }\n"
 "      }\n"
@@ -896,6 +952,8 @@ static NSString *const kHUDHTML =
 "        if(ipBig) ipBig.innerText = (ipPct > 0 ? ipPct : '--') + '% • ' + ipV + ' V (' + ipSt + ')';\n"
 "        var ipSub = document.getElementById('ipadSubTxt');\n"
 "        if(ipSub) ipSub.innerText = 'อุณหภูมิแบต iPad ' + ipC + '°C • แบตรถ 12V ' + (d.aux12v || '--') + 'V';\n"
+"        var ipHint = document.getElementById('ipHintBanner');\n"
+"        if(ipHint && d.lanIp) ipHint.innerHTML = '🌐 เข้าผ่าน <b>http://' + d.lanIp + '</b> หรือ <b>http://cardash.local</b> ได้ทันที! (ใช้ http ไม่มี s)';\n"
 "        document.getElementById('tSpd').innerText = spd + ' km/h';\n"
 "        document.getElementById('tMode').innerText = d.hybridMode || 'EV READY';\n"
 "        document.getElementById('tSoc').innerText = soc + '%';\n"
@@ -1159,6 +1217,7 @@ static NSString *const kMaintStatePath = @"/var/mobile/codex-car/maintenance-sta
 static NSString *const kFuelRefillPath = @"/var/mobile/codex-car/fuel-refills.plist";
 static NSString *const kTelegramCfgPath = @"/var/mobile/codex-car/telegram-config.plist";
 static BOOL sendTelegramSummaryPush(NSString *kind);
+static BOOL getCurrentEn0IPv4(struct in_addr *outAddr);
 
 static NSString *buildCarHealthJSON(NSDictionary *params) {
   @autoreleasepool {
@@ -1199,20 +1258,30 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
       }
     } else if ([op isEqualToString:@"add_refuel"]) {
       double baht = [params[@"baht"] doubleValue];
+      double explicitPpl = [params[@"ppl"] doubleValue];
       double liters = [params[@"liters"] doubleValue];
+      NSString *ftype = [params[@"ftype"] isKindOfClass:[NSString class]] && [params[@"ftype"] length] > 0 ? params[@"ftype"] : (live[@"fuelType"] ?: @"แก๊สโซฮอล์ 95");
+      NSString *fcode = [params[@"fcode"] isKindOfClass:[NSString class]] ? params[@"fcode"] : @"";
+      if (baht <= 0.0 && explicitPpl >= 10.0 && liters > 0.1) {
+        baht = explicitPpl * liters;
+      }
       if (baht > 0.0) {
         double ppl = curFuelPrice;
-        if (liters > 0.1) {
+        if (explicitPpl >= 10.0 && explicitPpl <= 120.0) {
+          ppl = explicitPpl;
+          if (liters <= 0.05) liters = baht / ppl;
+        } else if (liters > 0.1) {
           double calcPpl = baht / liters;
-          if (calcPpl >= 10.0 && calcPpl <= 120.0) {
-            ppl = calcPpl;
-            curFuelPrice = ppl;
-            mState[@"lastSyncedPpl"] = @(ppl);
-            [mState writeToFile:kMaintStatePath atomically:YES];
-            syncedPrice = [NSString stringWithFormat:@"%.2f", ppl];
-          }
+          if (calcPpl >= 10.0 && calcPpl <= 120.0) ppl = calcPpl;
         } else {
           liters = baht / MAX(10.0, curFuelPrice);
+        }
+        if (ppl >= 10.0 && ppl <= 120.0) {
+          curFuelPrice = ppl;
+          mState[@"lastSyncedPpl"] = @(ppl);
+          mState[@"lastSyncedFuelType"] = ftype;
+          [mState writeToFile:kMaintStatePath atomically:YES];
+          syncedPrice = [NSString stringWithFormat:@"%.2f", ppl];
         }
         NSDateFormatter *rfDf = [[NSDateFormatter alloc] init];
         rfDf.calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
@@ -1222,6 +1291,8 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
           @"id": [NSUUID UUID].UUIDString ?: @"rf",
           @"ts": @([[NSDate date] timeIntervalSince1970]),
           @"date": [rfDf stringFromDate:[NSDate date]] ?: @"",
+          @"ftype": ftype,
+          @"fcode": fcode,
           @"baht": @(baht),
           @"liters": @(liters),
           @"ppl": @(ppl),
@@ -1300,9 +1371,13 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
       }
       if (recentRefuels.count < 8) [recentRefuels addObject:rf];
     }
+    NSString *curFuelType = mState[@"lastSyncedFuelType"] ?: (live[@"fuelType"] ?: @"แก๊สโซฮอล์ 95");
+    NSDictionary *fuelPricesMap = [live[@"fuelPrices"] isKindOfClass:[NSDictionary class]] ? live[@"fuelPrices"] : @{};
     NSDictionary *out = @{
       @"currentOdo": @(currentOdo),
       @"fuelPrice": [NSString stringWithFormat:@"%.2f", curFuelPrice],
+      @"fuelType": curFuelType,
+      @"fuelPrices": fuelPricesMap,
       @"syncedPrice": syncedPrice ?: @"",
       @"sum30Km": @(sum30Km),
       @"sum30Fuel": @(sum30Fuel),
@@ -1349,7 +1424,10 @@ static NSString *buildLiveHUDJSON(void) {
     NSDictionary *pmu = readIPadPMUPowerSnapshot();
     NSInteger ipadPct = [pmu[@"pct"] integerValue] > 0 ? [pmu[@"pct"] integerValue] : [live[@"ipadPct"] integerValue];
     NSString *ipadState = ([pmu[@"state"] isKindOfClass:[NSString class]] && ![pmu[@"state"] isEqualToString:@"--"]) ? pmu[@"state"] : (live[@"ipadState"] ?: @"--");
+    struct in_addr curIpAddr;
+    NSString *lanIpStr = getCurrentEn0IPv4(&curIpAddr) ? [NSString stringWithUTF8String:inet_ntoa(curIpAddr)] : @"";
     NSDictionary *payload = @{
+      @"lanIp": lanIpStr ?: @"",
       @"speed": @(spd),
       @"gear": live[@"gear"] ?: @"P",
       @"clock": clockStr,
@@ -1858,17 +1936,24 @@ static NSString *formatPriusReportText(NSString *kind) {
   double lon = [live[@"lon"] doubleValue];
   NSString *mapUrl = (fabs(lat) > 0.5 && fabs(lon) > 0.5) ? [NSString stringWithFormat:@"\n📍 พิกัดรถ: https://maps.google.com/?q=%.6f,%.6f", lat, lon] : @"";
 
+  struct in_addr curIpA;
+  NSString *ipLine = getCurrentEn0IPv4(&curIpA) ? [NSString stringWithFormat:@"\n🌐 รีโมตมือถือ: http://%s (หรือ http://cardash.local)", inet_ntoa(curIpA)] : @"";
   if ([kind isEqualToString:@"trips"]) {
     NSMutableString *ms = [NSMutableString stringWithFormat:
       @"📊 สรุปค่าน้ำมัน & การเดินทาง (30 วัน)\n"
       "• ระยะทางรวม: %.1f กม. (%ld ทริป)\n"
       "• ค่าน้ำมันคำนวณตามทริป: ฿%.0f (%.1f ลิตร)\n"
-      "• บิลเติมน้ำมันจริง (30 วัน): ฿%.0f (%.1f ลิตร • %ld ครั้ง)\n"
-      "• ประหยัดเฉลี่ย: %@ km/L (เรต %@ ฿/L)\n",
+      "• บิลเติมน้ำมันจริง (30 วัน): ฿%.0f (%.2f ลิตร • %ld ครั้ง)\n"
+      "• ประหยัดเฉลี่ย: %@ km/L (%@ • %@ ฿/L)\n",
       [ch[@"sum30Km"] doubleValue], (long)[ch[@"sum30Trips"] integerValue],
       [ch[@"sum30Cost"] doubleValue], [ch[@"sum30Fuel"] doubleValue],
       [ch[@"refuel30Baht"] doubleValue], [ch[@"refuel30Liters"] doubleValue], (long)[ch[@"refuel30Count"] integerValue],
-      ch[@"avgKmL"] ?: @"--", ch[@"fuelPrice"] ?: @"38.14"];
+      ch[@"avgKmL"] ?: @"--", ch[@"fuelType"] ?: @"แก๊สโซฮอล์ 95", ch[@"fuelPrice"] ?: @"30.50"];
+    NSArray *rfs = [ch[@"refuels"] isKindOfClass:[NSArray class]] ? ch[@"refuels"] : @[];
+    for (NSUInteger i = 0; i < MIN((NSUInteger)3, rfs.count); i++) {
+      NSDictionary *rf = rfs[i];
+      [ms appendFormat:@"⛽ %@ [%@]: ฿%.0f (%.2fL @ %.2f)\n", rf[@"date"], rf[@"ftype"] ?: @"น้ำมัน", [rf[@"baht"] doubleValue], [rf[@"liters"] doubleValue], [rf[@"ppl"] doubleValue]];
+    }
     NSArray *days = [ch[@"days"] isKindOfClass:[NSArray class]] ? ch[@"days"] : @[];
     for (NSUInteger i = 0; i < MIN((NSUInteger)5, days.count); i++) {
       NSDictionary *dy = days[i];
@@ -1896,13 +1981,13 @@ static NSString *formatPriusReportText(NSString *kind) {
     "• แบตไฮบริด: SOC %@%% • ΔV %@V • %@°C (พัดลม %@)\n"
     "• เครื่องยนต์: %@°C • INV %@°C • แบต 12V %@V\n"
     "• จอ iPad: แบต %ld%% • %@V • %@°C (%@)\n"
-    "• น้ำมันคงเหลือ: %@ L (วิ่งได้ ~%@ กม.)%@",
+    "• น้ำมันคงเหลือ: %@ L (วิ่งได้ ~%@ กม.)%@%@",
     hdr,
     live[@"trip"] ?: @"0.0 KM", live[@"fuelCost"] ?: @"0.0", live[@"kmPerL"] ?: @"--",
     live[@"soc"] ?: @"--", live[@"hvDeltaV"] ?: @"0.00", live[@"hvC"] ?: @"--", live[@"fan"] ?: @"AUTO",
     live[@"ect"] ?: @"--", live[@"invC"] ?: @"--", live[@"aux12v"] ?: @"--",
     (long)ipPct, pmu[@"v"] ?: @"--", pmu[@"c"] ?: @"--", ipSt,
-    live[@"fuelL"] ?: @"--", live[@"rangeKm"] ?: @"--", mapUrl];
+    live[@"fuelL"] ?: @"--", live[@"rangeKm"] ?: @"--", ipLine, mapUrl];
 }
 
 static BOOL sendTelegramSummaryPush(NSString *kind) {
