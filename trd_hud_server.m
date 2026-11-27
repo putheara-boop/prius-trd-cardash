@@ -302,7 +302,10 @@ static NSString *const kHUDHTML =
 "      <button class=\"rbtn\" style=\"-webkit-flex:0 0 112px;flex:0 0 112px;\" onclick=\"saveRealOdo()\">💾 ตั้งไมล์รถ</button>\n"
 "    </div>\n"
 "    <div id=\"maintListBox\"></div>\n"
-"    <div class=\"row\" style=\"margin-top:10px;margin-bottom:0;\">\n"
+"    <div class=\"row\" style=\"margin-top:10px;\">\n"
+"      <button class=\"rbtn\" onclick=\"pushTelegramNow()\">📲 ส่งรายงานเข้า Telegram ตอนนี้</button>\n"
+"    </div>\n"
+"    <div class=\"row\" style=\"margin-bottom:0;\">\n"
 "      <button class=\"rbtn green\" onclick=\"cleanIpadCacheRemote()\">🧹 เคลียร์แคช & คืนแรม iPad (ประวัติอยู่ครบ 100%)</button>\n"
 "    </div>\n"
 "  </div>\n"
@@ -411,6 +414,19 @@ static NSString *const kHUDHTML =
 "  var x = new XMLHttpRequest();\n"
 "  x.open('GET', '/api/carhealth?op=clean_cache&t=' + Date.now(), true);\n"
 "  x.onload = function(){ showCarToast('✅ เคลียร์แคชและคืนแรม iPad เรียบร้อย! (ประวัติทริป/คิวเพลง/หมุดแผนที่อยู่ครบ 100%)'); };\n"
+"  x.send();\n"
+"}\n"
+"function pushTelegramNow(){\n"
+"  showCarToast('📲 กำลังส่งสรุปสถานะรถและค่าน้ำมันเข้า Telegram...');\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/carhealth?op=tg_push&t=' + Date.now(), true);\n"
+"  x.onload = function(){\n"
+"    try {\n"
+"      var r = JSON.parse(x.responseText);\n"
+"      if(r.tgSent) showCarToast('✅ ส่งรายงานเข้าแชต @cardash_monitor_bot เรียบร้อยครับ!');\n"
+"      else showCarToast('⚠️ เปิดบอท @cardash_monitor_bot ใน Telegram แล้วกด Start 1 ครั้งเพื่อผูกบัญชีครับ');\n"
+"    } catch(e){ showCarToast('📲 ส่งคำสั่งเข้า Telegram แล้วครับ'); }\n"
+"  };\n"
 "  x.send();\n"
 "}\n"
 "function loadCarHealthDetail(){\n"
@@ -1023,6 +1039,8 @@ static NSString *mutateSharedQueueJSON(NSDictionary *params) {
 }
 
 static NSString *const kMaintStatePath = @"/var/mobile/codex-car/maintenance-state.plist";
+static NSString *const kTelegramCfgPath = @"/var/mobile/codex-car/telegram-config.plist";
+static BOOL sendTelegramSummaryPush(NSString *kind);
 
 static NSString *buildCarHealthJSON(NSDictionary *params) {
   @autoreleasepool {
@@ -1066,6 +1084,10 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
         posix_spawn(&pid, "/bin/sh", NULL, NULL, argv, environ);
       });
     }
+    BOOL tgSent = NO;
+    if ([op isEqualToString:@"tg_push"]) {
+      tgSent = sendTelegramSummaryPush(@"manual");
+    }
 
     NSDictionary *hist = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/trip-daily-history.plist"];
     NSDictionary *daysDict = [hist[@"days"] isKindOfClass:[NSDictionary class]] ? hist[@"days"] : @{};
@@ -1103,7 +1125,8 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
       @"activeDays": @(activeDays),
       @"avgKmL": avgKmL,
       @"days": recentDays,
-      @"maint": maint
+      @"maint": maint,
+      @"tgSent": @(tgSent)
     };
     NSData *jd = [NSJSONSerialization dataWithJSONObject:out options:0 error:nil];
     return jd ? ([[NSString alloc] initWithData:jd encoding:NSUTF8StringEncoding] ?: @"{}") : @"{}";
@@ -1570,6 +1593,201 @@ static void startDynamicHostnameResponders(void) {
   });
 }
 
+static BOOL postTelegramMessage(NSString *token, NSString *chatId, NSString *text) {
+  if (!token.length || !chatId.length || !text.length) return NO;
+  NSURL *u = [NSURL URLWithString:[NSString stringWithFormat:@"https://api.telegram.org/bot%@/sendMessage", token]];
+  if (!u) return NO;
+  NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:6.0];
+  req.HTTPMethod = @"POST";
+  [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+  NSDictionary *kb = @{
+    @"keyboard": @[
+      @[@{@"text": @"🚗 สถานะรถสด"}, @{@"text": @"📊 สรุปค่าน้ำมัน"}],
+      @[@{@"text": @"🛠️ เช็กระยะรถ"}]
+    ],
+    @"resize_keyboard": @YES
+  };
+  NSDictionary *body = @{@"chat_id": chatId, @"text": text, @"reply_markup": kb};
+  req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+  dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+  __block BOOL ok = NO;
+  [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *d, NSURLResponse *r, NSError *e){
+    if (d.length > 0 && !e) {
+      NSDictionary *jr = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+      ok = [jr[@"ok"] boolValue];
+    }
+    dispatch_semaphore_signal(sem);
+  }] resume];
+  dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.5 * NSEC_PER_SEC)));
+  return ok;
+}
+
+static NSString *tryAutoDiscoverTelegramChatId(NSString *token) {
+  if (!token.length) return nil;
+  NSURL *u = [NSURL URLWithString:[NSString stringWithFormat:@"https://api.telegram.org/bot%@/getUpdates?limit=10&timeout=0", token]];
+  if (!u) return nil;
+  dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+  __block NSString *foundChat = nil;
+  __block NSInteger lastUpdId = 0;
+  [[[NSURLSession sharedSession] dataTaskWithURL:u completionHandler:^(NSData *d, NSURLResponse *r, NSError *e){
+    if (d.length > 0 && !e) {
+      NSDictionary *jr = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+      NSArray *res = [jr[@"result"] isKindOfClass:[NSArray class]] ? jr[@"result"] : @[];
+      for (NSDictionary *upd in res) {
+        if (![upd isKindOfClass:[NSDictionary class]]) continue;
+        NSInteger uid = [upd[@"update_id"] integerValue];
+        if (uid > lastUpdId) lastUpdId = uid;
+        NSDictionary *msg = [upd[@"message"] isKindOfClass:[NSDictionary class]] ? upd[@"message"] : nil;
+        NSDictionary *chat = [msg[@"chat"] isKindOfClass:[NSDictionary class]] ? msg[@"chat"] : nil;
+        if (chat[@"id"]) foundChat = [NSString stringWithFormat:@"%@", chat[@"id"]];
+      }
+    }
+    dispatch_semaphore_signal(sem);
+  }] resume];
+  dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)));
+  if (foundChat.length > 0) {
+    NSMutableDictionary *cfg = [[NSDictionary dictionaryWithContentsOfFile:kTelegramCfgPath] mutableCopy] ?: [NSMutableDictionary dictionary];
+    cfg[@"chatId"] = foundChat;
+    if (lastUpdId > 0) cfg[@"offset"] = @(lastUpdId + 1);
+    [cfg writeToFile:kTelegramCfgPath atomically:YES];
+  }
+  return foundChat;
+}
+
+static NSString *formatPriusReportText(NSString *kind) {
+  NSDictionary *live = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/hud-live.plist"] ?: @{};
+  NSDictionary *ch = [NSJSONSerialization JSONObjectWithData:[buildCarHealthJSON(@{}) dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] ?: @{};
+  double lat = [live[@"lat"] doubleValue];
+  double lon = [live[@"lon"] doubleValue];
+  NSString *mapUrl = (fabs(lat) > 0.5 && fabs(lon) > 0.5) ? [NSString stringWithFormat:@"\n📍 พิกัดรถ: https://maps.google.com/?q=%.6f,%.6f", lat, lon] : @"";
+
+  if ([kind isEqualToString:@"trips"]) {
+    NSMutableString *ms = [NSMutableString stringWithFormat:
+      @"📊 สรุปค่าน้ำมัน & การเดินทาง (30 วัน)\n"
+      "• ระยะทางรวม: %.1f กม. (%ld ทริป)\n"
+      "• ค่าน้ำมันรวม: ฿%.0f (%.1f ลิตร)\n"
+      "• ประหยัดเฉลี่ย: %@ km/L\n",
+      [ch[@"sum30Km"] doubleValue], (long)[ch[@"sum30Trips"] integerValue],
+      [ch[@"sum30Cost"] doubleValue], [ch[@"sum30Fuel"] doubleValue],
+      ch[@"avgKmL"] ?: @"--"];
+    NSArray *days = [ch[@"days"] isKindOfClass:[NSArray class]] ? ch[@"days"] : @[];
+    for (NSUInteger i = 0; i < MIN((NSUInteger)5, days.count); i++) {
+      NSDictionary *dy = days[i];
+      [ms appendFormat:@"📅 %@: %.1f กม. • ฿%.0f\n", dy[@"date"], [dy[@"km"] doubleValue], [dy[@"cost"] doubleValue]];
+    }
+    return ms;
+  }
+  if ([kind isEqualToString:@"maint"]) {
+    double curOdo = [ch[@"currentOdo"] doubleValue];
+    NSMutableString *ms = [NSMutableString stringWithFormat:@"🛠️ เช็กระยะ PRIUS TRD (ไมล์ %.0f กม.)\n", curOdo];
+    for (NSDictionary *m in (ch[@"maint"] ?: @[])) {
+      double used = MAX(0.0, curOdo - [m[@"lastOdo"] doubleValue]);
+      double rem = MAX(0.0, [m[@"interval"] doubleValue] - used);
+      [ms appendFormat:@"• %@: เหลืออีก %.0f กม.\n", m[@"title"], rem];
+    }
+    return ms;
+  }
+  NSString *hdr = [kind isEqualToString:@"park"] ? @"🏁 สรุปทริปหลังจอดรถ PRIUS TRD" : @"🚗 สถานะ PRIUS TRD ล่าสุด";
+  return [NSString stringWithFormat:
+    @"%@\n"
+    "• ทริปนี้: %@ • ค่าน้ำมัน ฿%@ (%@ km/L)\n"
+    "• แบตไฮบริด: SOC %@%% • ΔV %@V • %@°C (พัดลม %@)\n"
+    "• เครื่องยนต์: %@°C • INV %@°C • แบต 12V %@V\n"
+    "• น้ำมันคงเหลือ: %@ L (วิ่งได้ ~%@ กม.)%@",
+    hdr,
+    live[@"trip"] ?: @"0.0 KM", live[@"fuelCost"] ?: @"0.0", live[@"kmPerL"] ?: @"--",
+    live[@"soc"] ?: @"--", live[@"hvDeltaV"] ?: @"0.00", live[@"hvC"] ?: @"--", live[@"fan"] ?: @"AUTO",
+    live[@"ect"] ?: @"--", live[@"invC"] ?: @"--", live[@"aux12v"] ?: @"--",
+    live[@"fuelL"] ?: @"--", live[@"rangeKm"] ?: @"--", mapUrl];
+}
+
+static BOOL sendTelegramSummaryPush(NSString *kind) {
+  NSDictionary *cfg = [NSDictionary dictionaryWithContentsOfFile:kTelegramCfgPath];
+  NSString *token = [cfg[@"token"] isKindOfClass:[NSString class]] ? cfg[@"token"] : @"";
+  if (!token.length) return NO;
+  NSString *chatId = [cfg[@"chatId"] isKindOfClass:[NSString class]] ? cfg[@"chatId"] : @"";
+  if (!chatId.length) chatId = tryAutoDiscoverTelegramChatId(token);
+  if (!chatId.length) return NO;
+  return postTelegramMessage(token, chatId, formatPriusReportText(kind ?: @"status"));
+}
+
+static void startTelegramNotifierService(void) {
+  static int sParkTok = 0;
+  notify_register_dispatch("com.codex.trd.telegram.park", &sParkTok, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(int t){
+    sendTelegramSummaryPush(@"park");
+  });
+  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+    while (1) {
+      @autoreleasepool {
+        NSDictionary *pwr = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/sb-power-state.plist"];
+        if (pwr && pwr[@"screenIsOn"] && ![pwr[@"screenIsOn"] boolValue]) {
+          sleep(12);
+          continue;
+        }
+        NSDictionary *cfg = [NSDictionary dictionaryWithContentsOfFile:kTelegramCfgPath];
+        NSString *token = [cfg[@"token"] isKindOfClass:[NSString class]] ? cfg[@"token"] : @"";
+        if (!token.length) {
+          sleep(15);
+          continue;
+        }
+        NSString *savedChat = [cfg[@"chatId"] isKindOfClass:[NSString class]] ? cfg[@"chatId"] : @"";
+        NSInteger offset = [cfg[@"offset"] integerValue];
+        NSString *uStr = [NSString stringWithFormat:@"https://api.telegram.org/bot%@/getUpdates?offset=%ld&timeout=10", token, (long)offset];
+        NSURL *u = [NSURL URLWithString:uStr];
+        if (u) {
+          dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+          __block NSData *respData = nil;
+          [[[NSURLSession sharedSession] dataTaskWithURL:u completionHandler:^(NSData *d, NSURLResponse *r, NSError *e){
+            respData = d;
+            dispatch_semaphore_signal(sem);
+          }] resume];
+          dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(13.0 * NSEC_PER_SEC)));
+          if (respData.length > 0) {
+            NSDictionary *jr = [NSJSONSerialization JSONObjectWithData:respData options:0 error:nil];
+            NSArray *res = [jr[@"result"] isKindOfClass:[NSArray class]] ? jr[@"result"] : @[];
+            if (res.count > 0) {
+              NSMutableDictionary *mut = [cfg mutableCopy] ?: [NSMutableDictionary dictionary];
+              for (NSDictionary *upd in res) {
+                if (![upd isKindOfClass:[NSDictionary class]]) continue;
+                NSInteger uid = [upd[@"update_id"] integerValue];
+                if (uid >= offset) offset = uid + 1;
+                NSDictionary *msg = [upd[@"message"] isKindOfClass:[NSDictionary class]] ? upd[@"message"] : nil;
+                NSDictionary *chat = [msg[@"chat"] isKindOfClass:[NSDictionary class]] ? msg[@"chat"] : nil;
+                NSString *cid = chat[@"id"] ? [NSString stringWithFormat:@"%@", chat[@"id"]] : @"";
+                if (!cid.length) continue;
+                if (!savedChat.length) {
+                  savedChat = cid;
+                  mut[@"chatId"] = cid;
+                }
+                if (![cid isEqualToString:savedChat]) continue;
+                NSString *txt = [msg[@"text"] isKindOfClass:[NSString class]] ? msg[@"text"] : @"";
+                if ([txt hasPrefix:@"/start"]) {
+                  postTelegramMessage(token, cid, [@"✅ เชื่อมต่อ PRIUS TRD CarDash สำเร็จ!\nระบบจะส่งสรุปทริปและพิกัดจุดจอดให้อัตโนมัติเมื่อดับเครื่อง หรือกดปุ่มด้านล่างดูข้อมูลได้ตลอดเวลาครับ\n\n" stringByAppendingString:formatPriusReportText(@"status")]);
+                } else if ([txt containsString:@"ค่าน้ำมัน"] || [txt hasPrefix:@"/trips"]) {
+                  postTelegramMessage(token, cid, formatPriusReportText(@"trips"));
+                } else if ([txt containsString:@"เช็กระยะ"] || [txt hasPrefix:@"/maint"]) {
+                  postTelegramMessage(token, cid, formatPriusReportText(@"maint"));
+                } else if ([txt containsString:@"maps.app.goo.gl"] || [txt containsString:@"google.com/maps"]) {
+                  NSDictionary *cmdDict = @{@"token": [NSUUID UUID].UUIDString ?: @"tg", @"action": @"nav", @"value": txt, @"mode": @"carplay", @"autoStart": @YES, @"at": @([[NSDate date] timeIntervalSince1970])};
+                  [cmdDict writeToFile:@"/var/mobile/codex-car/mobile-cmd.plist" atomically:YES];
+                  notify_post("com.codex.trd.mobile.cmd");
+                  notify_post("com.codex.trd.launch.cardash");
+                  postTelegramMessage(token, cid, @"📍 ส่งลิงก์ Google Maps ขึ้นจอ CarDash เริ่มนำทางแล้วครับ!");
+                } else {
+                  postTelegramMessage(token, cid, formatPriusReportText(@"status"));
+                }
+              }
+              mut[@"offset"] = @(offset);
+              [mut writeToFile:kTelegramCfgPath atomically:YES];
+            }
+          }
+        }
+      }
+      sleep(3);
+    }
+  });
+}
+
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
     signal(SIGPIPE, SIG_IGN);
@@ -1578,6 +1796,7 @@ int main(int argc, const char *argv[]) {
     startListenerOnPort(8080);
     startListenerOnPort(8088);
     startDynamicHostnameResponders();
+    startTelegramNotifierService();
     NSNetService *bonjour = [[NSNetService alloc] initWithDomain:@"local." type:@"_http._tcp." name:@"cardash" port:80];
     [bonjour scheduleInRunLoop:[NSRunLoop mainRunLoop] forMode:NSDefaultRunLoopMode];
     [bonjour publish];

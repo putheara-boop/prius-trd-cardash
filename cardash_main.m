@@ -5790,12 +5790,17 @@ static NSUInteger gTRDUpdateTicks=0;
   double hRangeKm=[self estimatedRangeKmForFuelLiters:hObd.fuelRemainingLiters];
   NSString *hFanStr=(hObd.activeHVFanCommanded>0)?[NSString stringWithFormat:@"L%ld",(long)hObd.activeHVFanCommanded]:@"AUTO";
   double totalOdoKm=[[NSUserDefaults standardUserDefaults] doubleForKey:@"TRDTotalOdometer"];
+  double curLat=self.fix?self.fix.coordinate.latitude:[[NSUserDefaults standardUserDefaults] doubleForKey:@"TRDLastKnownLat"];
+  double curLon=self.fix?self.fix.coordinate.longitude:[[NSUserDefaults standardUserDefaults] doubleForKey:@"TRDLastKnownLon"];
   double deltaV=(hObd.hvBlockMaxV>0 && hObd.hvBlockMinV>0)?MAX(0.0,hObd.hvBlockMaxV-hObd.hvBlockMinV):0.0;
   NSDictionary *hudLive=@{
    @"speed":@(hSpd),
    @"gear":hGear,
    @"clock":self.clock.text?:@"",
    @"trip":hTrip,
+   @"tripKmNum":@(hTripKm),
+   @"lat":@(curLat),
+   @"lon":@(curLon),
    @"weather":hWeather,
    @"fuelCost":[NSString stringWithFormat:@"%.1f",hCost],
    @"kmPerL":[NSString stringWithFormat:@"%.1f",hKmL],
@@ -7219,6 +7224,9 @@ static NSUInteger gTRDUpdateTicks=0;
    if(!strongSelf || gen!=strongSelf.unplugCheckGeneration)return;
    if([UIDevice currentDevice].batteryState!=UIDeviceBatteryStateUnplugged)return;
    // Confirmed unplug: immediately stop background GPS/BLE & idleTimerDisabled, clean caches safely, show trip summary
+   if(strongSelf.trip.meters >= 100.0){
+    notify_post("com.codex.trd.telegram.park");
+   }
    strongSelf.isCarSessionActive=NO;
    [UIApplication sharedApplication].idleTimerDisabled=NO;
    if([strongSelf.gps respondsToSelector:@selector(setAllowsBackgroundLocationUpdates:)])strongSelf.gps.allowsBackgroundLocationUpdates=NO;
