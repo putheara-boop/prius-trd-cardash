@@ -202,7 +202,7 @@ static NSString *const kHUDHTML =
 "      <span class=\"chip\" onclick=\"sendCmd('eq','Pop')\">🎤 Pop</span>\n"
 "      <span class=\"chip\" onclick=\"sendCmd('eq','Dance')\">🔊 Bass/Dance</span>\n"
 "      <span class=\"chip\" onclick=\"sendCmd('eq','Jazz')\">🎷 Jazz</span>\n"
-"      <span class=\"chip\" onclick=\"sendCmd('eq','Voice')\">🗣️ เสียงพูดชัด</span>\n"
+"      <span class=\"chip\" onclick=\"sendCmd('eq','Classical')\">🗣️ เสียงใส/คลาสสิก</span>\n"
 "    </div>\n"
 "    <div class=\"toast\" id=\"mediaToast\"></div>\n"
 "  </div>\n"
@@ -946,7 +946,7 @@ static void handleClientSocket(int clientFd) {
       if (action.length > 0) {
         if (([action isEqualToString:@"youtube_search"] || [action isEqualToString:@"youtube_queue"]) && value.length > 0) {
           needStopCam = YES;
-          notify_post("com.codex.trd.network.internet");
+          notify_post("com.codex.trd.network.internet.force");
           notify_post("com.codex.trd.music.pause");
           [@{@"bundle": @"com.himais0giiiin.ytnine", @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
           if ([action isEqualToString:@"youtube_queue"]) {
@@ -965,7 +965,7 @@ static void handleClientSocket(int clientFd) {
         } else if (([action isEqualToString:@"music_search"] || [action isEqualToString:@"music_queue"]) && value.length > 0) {
           // Direct zero-bounce dispatch straight to audioNINJA!
           needStopCam = YES;
-          notify_post("com.codex.trd.network.internet");
+          notify_post("com.codex.trd.network.internet.force");
           notify_post("com.codex.trd.youtube.pause");
           [@{@"bundle": @"com.legacymusic.app", @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
           if ([action isEqualToString:@"music_queue"]) {
@@ -997,7 +997,7 @@ static void handleClientSocket(int clientFd) {
               notify_post("com.codex.trd.launch.h109viewer");
             } else {
               needStopCam = YES;
-              notify_post("com.codex.trd.network.internet");
+              notify_post("com.codex.trd.network.internet.force");
               if ([value isEqualToString:@"youtube"]) {
                 notify_post("com.codex.trd.music.pause");
                 [@{@"bundle": @"com.himais0giiiin.ytnine", @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
@@ -1012,7 +1012,7 @@ static void handleClientSocket(int clientFd) {
             }
           } else if ([action isEqualToString:@"nav"]) {
             needStopCam = YES;
-            notify_post("com.codex.trd.network.internet");
+            notify_post("com.codex.trd.network.internet.force");
             notify_post("com.codex.trd.launch.cardash");
           } else if ([action isEqualToString:@"music_cmd"]) {
             NSDictionary *lm = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/last-media.plist"];
