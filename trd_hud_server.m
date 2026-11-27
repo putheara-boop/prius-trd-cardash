@@ -8,6 +8,34 @@
 #include <signal.h>
 #include <errno.h>
 #include <notify.h>
+#include <spawn.h>
+
+extern char **environ;
+
+static void stopH109ViewerIfRunning(void) {
+  pid_t pid = 0;
+  char *argv[] = { (char *)"/usr/bin/killall", (char *)"-9", (char *)"H109Viewer", NULL };
+  posix_spawn(&pid, "/usr/bin/killall", NULL, NULL, argv, environ);
+}
+
+static NSString *extractDirectYTVideoID(NSString *input) {
+  NSString *s = [input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (!s.length) return nil;
+  if (s.length == 11) {
+    NSRegularExpression *idOnly = [NSRegularExpression regularExpressionWithPattern:@"^[A-Za-z0-9_-]{11}$" options:0 error:nil];
+    if ([idOnly numberOfMatchesInString:s options:0 range:NSMakeRange(0, s.length)] == 1) return s;
+  }
+  NSArray *pats = @[
+    @"(?:youtu\\.be/|youtube\\.com/(?:shorts/|embed/|live/|v/))([A-Za-z0-9_-]{11})",
+    @"[?&]v=([A-Za-z0-9_-]{11})"
+  ];
+  for (NSString *p in pats) {
+    NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:p options:NSRegularExpressionCaseInsensitive error:nil];
+    NSTextCheckingResult *m = [re firstMatchInString:s options:0 range:NSMakeRange(0, s.length)];
+    if (m && m.numberOfRanges >= 2) return [s substringWithRange:[m rangeAtIndex:1]];
+  }
+  return nil;
+}
 
 static NSString *const kHUDHTML =
 @"<!DOCTYPE html>\n"
@@ -51,6 +79,20 @@ static NSString *const kHUDHTML =
 ".tel-val{font-size:18px;color:#fff;font-weight:900;margin-top:2px;font-variant-numeric:tabular-nums;}\n"
 ".tel-sub{font-size:11px;color:#22ff88;font-weight:700;margin-top:2px;}\n"
 ".song-banner{background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.25);border-radius:10px;padding:9px 11px;margin-bottom:9px;font-size:13px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}\n"
+".sr-box{display:none;background:#060b12;border:1px solid rgba(0,229,255,0.35);border-radius:12px;margin:8px 0;max-height:250px;overflow-y:auto;-webkit-overflow-scrolling:touch;}\n"
+".sr-row{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:space-between;justify-content:space-between;padding:9px 10px;border-bottom:1px solid rgba(255,255,255,0.08);gap:8px;}\n"
+".sr-row:last-child{border-bottom:none;}\n"
+".sr-txt{-webkit-flex:1;flex:1;min-width:0;font-size:13px;font-weight:700;color:#eaf6ff;line-height:1.35;}\n"
+".sr-sub{font-size:11px;color:#7fa8c4;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}\n"
+".q-mini{border:1px solid rgba(0,229,255,0.45);background:rgba(0,200,255,0.18);color:#fff;font-size:12px;font-weight:800;padding:7px 10px;border-radius:9px;cursor:pointer;white-space:nowrap;}\n"
+".q-mini.yt{background:rgba(230,25,45,0.28);border-color:#ff5566;}\n"
+".q-wrap{background:rgba(6,13,22,0.92);border:1px solid rgba(34,255,136,0.32);border-radius:12px;padding:10px;margin-top:9px;}\n"
+".q-hdr{display:-webkit-flex;display:flex;-webkit-justify-content:space-between;justify-content:space-between;-webkit-align-items:center;align-items:center;font-size:12px;font-weight:900;color:#22ff88;margin-bottom:6px;}\n"
+".q-item{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;padding:7px 8px;border-radius:8px;background:rgba(255,255,255,0.04);margin-bottom:5px;gap:7px;}\n"
+".q-item.playing{background:rgba(34,255,136,0.16);border:1px solid rgba(34,255,136,0.5);}\n"
+".q-num{font-size:12px;font-weight:900;color:#00e5ff;min-width:20px;}\n"
+".q-name{-webkit-flex:1;flex:1;font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}\n"
+".q-del{border:none;background:rgba(255,60,80,0.2);color:#ff7b88;font-size:12px;font-weight:900;padding:4px 8px;border-radius:7px;cursor:pointer;}\n"
 "/* === HUD VIEW === */\n"
 "#hudView{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#000;padding:46px 18px 10px;-webkit-flex-direction:column;flex-direction:column;-webkit-justify-content:space-between;justify-content:space-between;-webkit-user-select:none;user-select:none;}\n"
 "#hudView.mirror{-webkit-transform:scaleX(-1);transform:scaleX(-1);}\n"
@@ -103,18 +145,18 @@ static NSString *const kHUDHTML =
 "    </div>\n"
 "    <input class=\"inp\" id=\"mapInput\" type=\"text\" placeholder=\"วางลิงก์ Google Maps หรือพิมพ์ชื่อสถานที่...\" autocomplete=\"off\">\n"
 "    <div class=\"row\">\n"
-"      <button class=\"rbtn green\" onclick=\"pasteAndSendMap()\">📋 วางลิงก์ & นำทางเลย</button>\n"
-"      <button class=\"rbtn primary\" onclick=\"sendMap(1)\">🚀 เริ่มนำทางบนรถ</button>\n"
+"      <button class=\"rbtn green\" onclick=\"pasteAndSendMap('carplay')\">📋 วางลิงก์ → จอ CarPlay</button>\n"
+"      <button class=\"rbtn primary\" onclick=\"sendMap(1,'carplay')\">🎛️ นำทางโหมด CarPlay</button>\n"
 "    </div>\n"
 "    <div class=\"row\">\n"
-"      <button class=\"rbtn\" onclick=\"sendMap(0)\">📌 ปักหมุดดูเส้นทางก่อน</button>\n"
-"      <button class=\"rbtn\" id=\"gpsBoostBtn\" onclick=\"togglePhoneGPS()\">🛰️ ส่ง GPS มือถือช่วยนำทาง: OFF</button>\n"
+"      <button class=\"rbtn\" onclick=\"sendMap(1,'maps')\">🗺️ นำทางเต็มจอ</button>\n"
+"      <button class=\"rbtn\" id=\"gpsBoostBtn\" onclick=\"togglePhoneGPS()\">🛰️ ส่ง GPS มือถือช่วย: OFF</button>\n"
 "    </div>\n"
 "    <div class=\"chips\" id=\"quickMapChips\">\n"
-"      <span class=\"chip\" onclick=\"quickDest('ปั๊มน้ำมัน บางจาก ปตท.')\">⛽ ปั๊มน้ำมันใกล้ฉัน</span>\n"
-"      <span class=\"chip\" onclick=\"quickDest('7-Eleven เซเว่น')\">🏪 7-Eleven</span>\n"
-"      <span class=\"chip\" onclick=\"quickDest('คาเฟ่ อเมซอน จุดพักรถ')\">☕ คาเฟ่ / จุดพักรถ</span>\n"
-"      <span class=\"chip\" onclick=\"quickDest('ร้านอาหารใกล้ฉัน')\">🍜 ร้านอาหาร</span>\n"
+"      <span class=\"chip\" onclick=\"quickDest('ปั๊มน้ำมัน')\">⛽ ปั๊มน้ำมันใกล้ฉัน</span>\n"
+"      <span class=\"chip\" onclick=\"quickDest('7-Eleven')\">🏪 7-Eleven</span>\n"
+"      <span class=\"chip\" onclick=\"quickDest('Cafe Amazon')\">☕ คาเฟ่ / จุดพักรถ</span>\n"
+"      <span class=\"chip\" onclick=\"quickDest('ร้านอาหาร')\">🍜 ร้านอาหาร</span>\n"
 "    </div>\n"
 "    <div class=\"chips\" id=\"recentChips\" style=\"margin-top:6px;\"></div>\n"
 "    <div class=\"toast\" id=\"mapToast\"></div>\n"
@@ -123,7 +165,7 @@ static NSString *const kHUDHTML =
 "\n"
 "  <div class=\"card\">\n"
 "    <div class=\"card-hdr\">\n"
-"      <div class=\"card-title\">🎵 รีโมตเพลง & ค้นหาเพลงเข้าจอรถ</div>\n"
+"      <div class=\"card-title\">🎵 รีโมตเพลง & YouTube ขึ้นจอรถ</div>\n"
 "      <div style=\"font-size:11px;color:#8bb4cc;font-weight:700;\" id=\"clockMini\">--:--</div>\n"
 "    </div>\n"
 "    <div class=\"song-banner\" id=\"remoteSongTxt\">🎵 กำลังซิงก์ชื่อเพลงจากรถ...</div>\n"
@@ -132,11 +174,29 @@ static NSString *const kHUDHTML =
 "      <button class=\"rbtn green\" onclick=\"sendCmd('music_cmd','toggle')\">⏯ เล่น / หยุด</button>\n"
 "      <button class=\"rbtn\" onclick=\"sendCmd('music_cmd','next')\">⏭ ถัดไป</button>\n"
 "    </div>\n"
-"    <div class=\"row\" style=\"margin-top:6px;\">\n"
-"      <input class=\"inp\" id=\"songInput\" type=\"text\" placeholder=\"พิมพ์ชื่อเพลง / ศิลปิน เล่นบนรถ...\" style=\"margin-bottom:0;-webkit-flex:1;flex:1;\">\n"
-"      <button class=\"rbtn primary\" style=\"-webkit-flex:0 0 112px;flex:0 0 112px;\" onclick=\"sendSongSearch()\">▶ เล่นเพลง</button>\n"
+"    <div class=\"row\" style=\"margin-top:4px;\">\n"
+"      <input class=\"inp\" id=\"songInput\" type=\"text\" placeholder=\"พิมพ์ชื่อเพลง / ศิลปิน (มีเดาคำอัตโนมัติ)...\" style=\"margin-bottom:0;-webkit-flex:1;flex:1;\" oninput=\"onSongTyping()\" onkeydown=\"if(event.keyCode===13)searchYTList();\">\n"
+"      <button class=\"rbtn\" style=\"-webkit-flex:0 0 92px;flex:0 0 92px;padding:10px 6px;\" onclick=\"searchYTList()\">🔍 ค้นหา</button>\n"
 "    </div>\n"
-"    <div class=\"chips\" style=\"margin-top:8px;\">\n"
+"    <div class=\"chips\" id=\"ytSuggestChips\" style=\"display:none;margin:5px 0 3px;\"></div>\n"
+"    <div class=\"row\" style=\"margin-top:7px;\">\n"
+"      <button class=\"rbtn\" onclick=\"addInputToQueue()\">➕ เพิ่มคิว</button>\n"
+"      <button class=\"rbtn green\" onclick=\"sendSongSearch()\">🎵 เล่นเพลง</button>\n"
+"      <button class=\"rbtn primary\" onclick=\"sendYouTubeSearch()\">📺 YouTube</button>\n"
+"    </div>\n"
+"    <div class=\"sr-box\" id=\"ytResultsBox\"></div>\n"
+"    <div class=\"q-wrap\" id=\"queueWrap\">\n"
+"      <div class=\"q-hdr\">\n"
+"        <span id=\"queueCountTxt\">📋 คิวเพลงเล่นต่อเนื่อง (0 เพลง)</span>\n"
+"        <span style=\"color:#ff7b88;cursor:pointer;font-size:11px;\" onclick=\"clearSongQueue()\">🗑️ ล้างคิว</span>\n"
+"      </div>\n"
+"      <div id=\"queueListBox\"><div class=\"hint\" style=\"margin:2px 0 6px;\">กด 🔍 ค้นหา แล้วแตะ <b>+คิว</b> เรียงเพลง 1, 2, 3, 4 เพื่อเล่นต่อเนื่องได้เลยครับ</div></div>\n"
+"      <div class=\"row\" id=\"queuePlayRow\" style=\"display:none;margin-top:7px;margin-bottom:0;\">\n"
+"        <button class=\"rbtn green\" onclick=\"playFullQueue('music',0)\">🎵 เล่นคิวต่อเนื่อง (แอปเพลง)</button>\n"
+"        <button class=\"rbtn primary\" onclick=\"playFullQueue('yt',0)\">📺 เล่นคิวบน YouTube</button>\n"
+"      </div>\n"
+"    </div>\n"
+"    <div class=\"chips\" style=\"margin-top:6px;\">\n"
 "      <span class=\"chip\" onclick=\"sendCmd('eq','Flat')\">🎚️ Flat</span>\n"
 "      <span class=\"chip\" onclick=\"sendCmd('eq','Rock')\">🎸 Rock</span>\n"
 "      <span class=\"chip\" onclick=\"sendCmd('eq','Pop')\">🎤 Pop</span>\n"
@@ -144,6 +204,7 @@ static NSString *const kHUDHTML =
 "      <span class=\"chip\" onclick=\"sendCmd('eq','Jazz')\">🎷 Jazz</span>\n"
 "      <span class=\"chip\" onclick=\"sendCmd('eq','Voice')\">🗣️ เสียงพูดชัด</span>\n"
 "    </div>\n"
+"    <div class=\"toast\" id=\"mediaToast\"></div>\n"
 "  </div>\n"
 "\n"
 "  <div class=\"card\">\n"
@@ -157,10 +218,16 @@ static NSString *const kHUDHTML =
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">ความร้อนเครื่อง / อินเวอร์เตอร์</div><div class=\"tel-val\" id=\"tEct\">--°C</div><div class=\"tel-sub\" id=\"tInv\">INV --°C • แบต 12V --V</div></div>\n"
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">น้ำมันเหลือ / ทริปนี้</div><div class=\"tel-val\" id=\"tFuel\">-- L</div><div class=\"tel-sub\" id=\"tCost\">฿0.0 • -- km/L</div></div>\n"
 "    </div>\n"
-"    <div class=\"row\" style=\"margin-top:10px;margin-bottom:0;\">\n"
+"    <div class=\"row\" style=\"margin-top:10px;\">\n"
 "      <button class=\"rbtn\" onclick=\"sendCmd('screen','home')\">🏠 หน้าหลัก</button>\n"
 "      <button class=\"rbtn\" onclick=\"sendCmd('screen','drive')\">🏎️ Drive</button>\n"
 "      <button class=\"rbtn\" onclick=\"sendCmd('screen','maps')\">🗺️ แผนที่</button>\n"
+"      <button class=\"rbtn\" onclick=\"sendCmd('screen','carplay')\">🎛️ CarPlay</button>\n"
+"    </div>\n"
+"    <div class=\"row\" style=\"margin-bottom:0;\">\n"
+"      <button class=\"rbtn green\" onclick=\"sendCmd('screen','music')\">🎵 แอปเพลง</button>\n"
+"      <button class=\"rbtn primary\" onclick=\"sendCmd('screen','youtube')\">📺 YouTube</button>\n"
+"      <button class=\"rbtn\" onclick=\"sendCmd('screen','camera')\">📷 กล้องรถ</button>\n"
 "    </div>\n"
 "    <div class=\"hint\" style=\"margin-top:8px;\">🔒 ปลอดภัย 100%: ทำงานเฉพาะตอนเปิดสวิตช์รถ เมื่อดับเครื่องไอแพดจะพักระบบอัตโนมัติ ไม่ดึงไฟแบตเตอรี่รถยนต์</div>\n"
 "  </div>\n"
@@ -252,57 +319,213 @@ static NSString *const kHUDHTML =
 "    });\n"
 "  } catch(e){}\n"
 "}\n"
-"function sendCmd(action, value, autoStart, cb){\n"
+"function sendCmd(action, value, autoStart, mode, cb){\n"
 "  var xhr = new XMLHttpRequest();\n"
-"  var url = '/api/cmd?action=' + encodeURIComponent(action) + '&value=' + encodeURIComponent(value || '') + '&auto=' + (autoStart ? '1' : '0') + '&t=' + Date.now();\n"
+"  var url = '/api/cmd?action=' + encodeURIComponent(action) + '&value=' + encodeURIComponent(value || '') + '&auto=' + (autoStart ? '1' : '0') + '&mode=' + encodeURIComponent(mode || '') + '&t=' + Date.now();\n"
 "  xhr.open('GET', url, true);\n"
 "  xhr.onload = function(){ if(cb) cb(xhr.status === 200); };\n"
 "  xhr.onerror = function(){ if(cb) cb(false); };\n"
 "  xhr.send();\n"
 "}\n"
-"function sendMap(autoStart){\n"
+"function sendMap(autoStart, mode){\n"
 "  var v = (document.getElementById('mapInput').value || '').trim();\n"
 "  if(!v){ showToast('⚠️ กรุณาวางลิงก์ Google Maps หรือพิมพ์ชื่อสถานที่ก่อนครับ'); return; }\n"
 "  saveRecent(v);\n"
-"  showToast('🚀 ส่งเข้าจอรถแล้ว! กำลังดึงพิกัดและเปิดนำทางบน CarDash...');\n"
-"  sendCmd('nav', v, autoStart, function(ok){\n"
-"    if(ok) showToast('✅ ส่งพิกัดเข้าจอ CarDash สำเร็จ!');\n"
+"  showToast('🚀 ส่งเข้าจอ CarDash แล้ว! ปิดจอมือถือได้เลยครับ');\n"
+"  sendCmd('nav', v, autoStart, mode || 'carplay', function(ok){\n"
+"    if(ok) showToast('✅ เส้นทาง Apple CarPlay ขึ้นจอรถเรียบร้อย! ปิดมือถือได้เลย');\n"
 "  });\n"
 "}\n"
 "function quickDest(q){\n"
 "  document.getElementById('mapInput').value = q;\n"
-"  sendMap(1);\n"
+"  sendMap(1, 'carplay');\n"
 "}\n"
-"function pasteAndSendMap(){\n"
+"function pasteAndSendMap(mode){\n"
 "  if(navigator.clipboard && navigator.clipboard.readText){\n"
 "    navigator.clipboard.readText().then(function(txt){\n"
 "      if(txt && txt.trim().length > 0){\n"
 "        document.getElementById('mapInput').value = txt.trim();\n"
-"        sendMap(1);\n"
+"        sendMap(1, mode || 'carplay');\n"
 "      } else {\n"
 "        document.getElementById('mapInput').focus();\n"
 "        showToast('📋 แตะค้างที่ช่องด้านบนแล้วกด วาง (Paste) ได้เลยครับ');\n"
 "      }\n"
 "    }).catch(function(){\n"
 "      var v = (document.getElementById('mapInput').value || '').trim();\n"
-"      if(v.length > 0){ sendMap(1); return; }\n"
+"      if(v.length > 0){ sendMap(1, mode || 'carplay'); return; }\n"
 "      document.getElementById('mapInput').focus();\n"
-"      showToast('📋 แตะค้างในช่องข้อความเพื่อวางลิงก์ Google Maps แล้วกดเริ่มนำทางครับ');\n"
+"      showToast('📋 แตะค้างในช่องข้อความเพื่อวางลิงก์ Google Maps แล้วกดนำทางครับ');\n"
 "    });\n"
 "  } else {\n"
 "    var v = (document.getElementById('mapInput').value || '').trim();\n"
-"    if(v.length > 0){ sendMap(1); return; }\n"
+"    if(v.length > 0){ sendMap(1, mode || 'carplay'); return; }\n"
 "    document.getElementById('mapInput').focus();\n"
-"    showToast('📋 แตะค้างในช่องข้อความเพื่อวางลิงก์ Google Maps แล้วกดเริ่มนำทางครับ');\n"
+"    showToast('📋 แตะค้างในช่องข้อความเพื่อวางลิงก์ Google Maps แล้วกดนำทางครับ');\n"
 "  }\n"
+"}\n"
+"var songQueue = [];\n"
+"var activeQueueIdx = -1;\n"
+"try { songQueue = JSON.parse(localStorage.getItem('trd_song_queue_v1') || '[]'); } catch(e){ songQueue = []; }\n"
+"function saveSongQueue(){ try { localStorage.setItem('trd_song_queue_v1', JSON.stringify(songQueue)); } catch(e){} renderSongQueue(); }\n"
+"function renderSongQueue(){\n"
+"  var box = document.getElementById('queueListBox');\n"
+"  var cnt = document.getElementById('queueCountTxt');\n"
+"  var prow = document.getElementById('queuePlayRow');\n"
+"  cnt.innerText = '📋 คิวเพลงเล่นต่อเนื่อง (' + songQueue.length + ' เพลง)';\n"
+"  if(!songQueue.length){\n"
+"    box.innerHTML = '<div class=\"hint\" style=\"margin:2px 0 4px;\">กด 🔍 ค้นหา แล้วแตะ <b>+คิว</b> เรียงเพลง 1, 2, 3, 4 เพื่อเล่นต่อเนื่องโดยไม่ต้องค้นหาซ้ำครับ</div>';\n"
+"    prow.style.display = 'none';\n"
+"    return;\n"
+"  }\n"
+"  prow.style.display = '-webkit-flex'; prow.style.display = 'flex';\n"
+"  box.innerHTML = '';\n"
+"  songQueue.forEach(function(it, idx){\n"
+"    var row = document.createElement('div');\n"
+"    row.className = 'q-item' + (idx === activeQueueIdx ? ' playing' : '');\n"
+"    var num = document.createElement('span');\n"
+"    num.className = 'q-num';\n"
+"    num.innerText = (idx === activeQueueIdx ? '▶' : (idx + 1) + '.');\n"
+"    var nm = document.createElement('div');\n"
+"    nm.className = 'q-name';\n"
+"    nm.innerText = it.title;\n"
+"    nm.onclick = function(){ playFullQueue(lastQueueMode || 'yt', idx); };\n"
+"    var ytB = document.createElement('button');\n"
+"    ytB.className = 'q-mini yt';\n"
+"    ytB.innerText = '📺';\n"
+"    ytB.onclick = function(){ playFullQueue('yt', idx); };\n"
+"    var del = document.createElement('button');\n"
+"    del.className = 'q-del';\n"
+"    del.innerText = '✕';\n"
+"    del.onclick = function(){ songQueue.splice(idx, 1); if(activeQueueIdx === idx) activeQueueIdx = -1; else if(activeQueueIdx > idx) activeQueueIdx--; saveSongQueue(); };\n"
+"    row.appendChild(num); row.appendChild(nm); row.appendChild(ytB); row.appendChild(del);\n"
+"    box.appendChild(row);\n"
+"  });\n"
+"}\n"
+"var lastQueueMode = 'yt';\n"
+"function addTrackObjToQueue(id, title){\n"
+"  if(songQueue.length >= 25){ showMediaToast('⚠️ คิวเต็ม 25 เพลงแล้วครับ'); return; }\n"
+"  songQueue.push({id: id || '', title: title});\n"
+"  saveSongQueue();\n"
+"  showMediaToast('➕ เพิ่มลำดับที่ ' + songQueue.length + ': ' + title);\n"
+"}\n"
+"var sugTimer = null;\n"
+"function onSongTyping(){\n"
+"  if(sugTimer) clearTimeout(sugTimer);\n"
+"  var v = (document.getElementById('songInput').value || '').trim();\n"
+"  var sbox = document.getElementById('ytSuggestChips');\n"
+"  if(v.length < 2 || v.indexOf('http') === 0){ sbox.style.display = 'none'; return; }\n"
+"  sugTimer = setTimeout(function(){\n"
+"    var x = new XMLHttpRequest();\n"
+"    x.open('GET', '/api/ytsuggest?q=' + encodeURIComponent(v) + '&t=' + Date.now(), true);\n"
+"    x.onload = function(){\n"
+"      if(x.status === 200){\n"
+"        try {\n"
+"          var arr = JSON.parse(x.responseText);\n"
+"          if(!arr || !arr.length){ sbox.style.display = 'none'; return; }\n"
+"          sbox.innerHTML = '';\n"
+"          arr.slice(0, 6).forEach(function(w){\n"
+"            var c = document.createElement('span'); c.className = 'chip'; c.innerText = '✨ ' + w;\n"
+"            c.onclick = function(){ document.getElementById('songInput').value = w; sbox.style.display = 'none'; searchYTList(); };\n"
+"            sbox.appendChild(c);\n"
+"          });\n"
+"          sbox.style.display = '-webkit-flex'; sbox.style.display = 'flex';\n"
+"        } catch(e){}\n"
+"      }\n"
+"    };\n"
+"    x.send();\n"
+"  }, 220);\n"
+"}\n"
+"function addInputToQueue(){\n"
+"  var s = (document.getElementById('songInput').value || '').trim();\n"
+"  if(!s){ showMediaToast('⚠️ พิมพ์ชื่อเพลงก่อนกด +เพิ่มคิว ครับ'); document.getElementById('songInput').focus(); return; }\n"
+"  document.getElementById('songInput').value = '';\n"
+"  document.getElementById('ytSuggestChips').style.display = 'none';\n"
+"  showMediaToast('🔍 กำลังเทียบชื่อเพลงที่ถูกต้องเข้าคิว...');\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/ytsearch?q=' + encodeURIComponent(s) + '&t=' + Date.now(), true);\n"
+"  x.onload = function(){\n"
+"    try {\n"
+"      var arr = JSON.parse(x.responseText);\n"
+"      if(arr && arr.length > 0){ addTrackObjToQueue(arr[0].id, arr[0].title); return; }\n"
+"    } catch(e){}\n"
+"    addTrackObjToQueue('', s);\n"
+"  };\n"
+"  x.onerror = function(){ addTrackObjToQueue('', s); };\n"
+"  x.send();\n"
+"}\n"
+"function clearSongQueue(){\n"
+"  songQueue = []; activeQueueIdx = -1; saveSongQueue();\n"
+"  showMediaToast('🗑️ ล้างคิวเพลงเรียบร้อยครับ');\n"
+"}\n"
+"function playFullQueue(target, startIdx){\n"
+"  if(!songQueue.length) return;\n"
+"  lastQueueMode = target;\n"
+"  var idx = startIdx || 0;\n"
+"  activeQueueIdx = idx;\n"
+"  renderSongQueue();\n"
+"  var tokens = songQueue.map(function(x){ return (x.id && x.id.length === 11) ? (x.id + '::' + x.title.replace(/\\|\\|/g,' ')) : x.title.replace(/\\|\\|/g,' '); });\n"
+"  var joined = tokens.join('||');\n"
+"  if(target === 'yt'){\n"
+"    sendCmd('youtube_queue', joined, 1, String(idx));\n"
+"    showMediaToast('📺 เริ่มเล่นคิว YouTube เพลงที่ ' + (idx + 1) + '/' + songQueue.length + ' ต่อเนื่องครับ!');\n"
+"  } else {\n"
+"    sendCmd('music_queue', joined, 1, String(idx));\n"
+"    showMediaToast('🎵 เริ่มเล่นคิวแอปเพลง ' + (idx + 1) + '/' + songQueue.length + ' ต่อเนื่องครับ!');\n"
+"  }\n"
+"}\n"
+"function searchYTList(){\n"
+"  var s = (document.getElementById('songInput').value || '').trim();\n"
+"  if(!s){ showMediaToast('⚠️ พิมพ์ชื่อเพลงหรือศิลปินที่ต้องการค้นหาก่อนครับ'); document.getElementById('songInput').focus(); return; }\n"
+"  var box = document.getElementById('ytResultsBox');\n"
+"  box.style.display = 'block';\n"
+"  box.innerHTML = '<div class=\"sr-row\"><div class=\"sr-txt\">🔍 กำลังค้นหา \"' + s + '\"...</div></div>';\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/ytsearch?q=' + encodeURIComponent(s) + '&t=' + Date.now(), true);\n"
+"  x.onload = function(){\n"
+"    if(x.status === 200){\n"
+"      try {\n"
+"        var arr = JSON.parse(x.responseText);\n"
+"        if(!arr || !arr.length){ box.innerHTML = '<div class=\"sr-row\"><div class=\"sr-txt\">ไม่พบรายการ ลองพิมพ์คำอื่นครับ</div></div>'; return; }\n"
+"        box.innerHTML = '';\n"
+"        arr.forEach(function(it){\n"
+"          var r = document.createElement('div'); r.className = 'sr-row';\n"
+"          var tx = document.createElement('div'); tx.className = 'sr-txt';\n"
+"          tx.innerText = it.title;\n"
+"          if(it.sub){ var sb = document.createElement('div'); sb.className = 'sr-sub'; sb.innerText = it.sub; tx.appendChild(sb); }\n"
+"          var bAdd = document.createElement('button'); bAdd.className = 'q-mini'; bAdd.innerText = '➕ คิว';\n"
+"          bAdd.onclick = function(){ addTrackObjToQueue(it.id, it.title); };\n"
+"          var bYT = document.createElement('button'); bYT.className = 'q-mini yt'; bYT.innerText = '📺 เล่น';\n"
+"          bYT.onclick = function(){ sendCmd('youtube_search', it.id, 1); showMediaToast('📺 เล่นบน YouTube: ' + it.title); box.style.display = 'none'; };\n"
+"          r.appendChild(tx); r.appendChild(bAdd); r.appendChild(bYT);\n"
+"          box.appendChild(r);\n"
+"        });\n"
+"      } catch(e){ box.innerHTML = '<div class=\"sr-row\"><div class=\"sr-txt\">เกิดข้อผิดพลาดในการอ่านผลลัพธ์</div></div>'; }\n"
+"    }\n"
+"  };\n"
+"  x.onerror = function(){ box.innerHTML = '<div class=\"sr-row\"><div class=\"sr-txt\">เชื่อมต่อค้นหาไม่สำเร็จ</div></div>'; };\n"
+"  x.send();\n"
+"}\n"
+"function showMediaToast(msg){\n"
+"  var t = document.getElementById('mediaToast');\n"
+"  if(!t){ showToast(msg); return; }\n"
+"  t.innerText = msg; t.style.display = 'block';\n"
+"  setTimeout(function(){ t.style.display = 'none'; }, 4200);\n"
 "}\n"
 "function sendSongSearch(){\n"
 "  var s = (document.getElementById('songInput').value || '').trim();\n"
-"  if(!s) return;\n"
+"  if(!s){ if(songQueue.length > 0){ playFullQueue('music', 0); return; } showMediaToast('⚠️ พิมพ์ชื่อเพลงหรือเลือกเข้าคิวก่อนครับ'); document.getElementById('songInput').focus(); return; }\n"
 "  sendCmd('music_search', s, 1);\n"
-"  showToast('🎵 กำลังค้นหาและเล่นเพลง: ' + s);\n"
+"  showMediaToast('🎵 ส่งไปเล่นเพลงบน audioNINJA แล้ว: ' + s);\n"
 "  document.getElementById('songInput').value = '';\n"
 "}\n"
+"function sendYouTubeSearch(){\n"
+"  var s = (document.getElementById('songInput').value || '').trim();\n"
+"  if(!s){ if(songQueue.length > 0){ playFullQueue('yt', 0); return; } sendCmd('screen','youtube'); showMediaToast('📺 เปิดหน้าแอป YouTube บนไอแพดแล้วครับ'); return; }\n"
+"  sendCmd('youtube_search', s, 1);\n"
+"  showMediaToast('📺 กำลังเปิดวิดีโอ YouTube บนไอแพด: ' + s);\n"
+"  document.getElementById('songInput').value = '';\n"
+"}\n"
+"renderSongQueue();\n"
 "function togglePhoneGPS(){\n"
 "  var btn = document.getElementById('gpsBoostBtn');\n"
 "  if(gpsWatchId !== null){\n"
@@ -430,6 +653,104 @@ static NSDictionary *parseQueryParams(NSString *query) {
   return dict;
 }
 
+static void collectYTVideoRenderers(id node, NSMutableArray *out, NSMutableSet *seen) {
+  if (!node || out.count >= 8) return;
+  if ([node isKindOfClass:[NSDictionary class]]) {
+    NSDictionary *d = (NSDictionary *)node;
+    NSDictionary *vr = [d[@"videoRenderer"] isKindOfClass:[NSDictionary class]] ? d[@"videoRenderer"] : nil;
+    if (vr) {
+      NSString *vid = [vr[@"videoId"] isKindOfClass:[NSString class]] ? vr[@"videoId"] : @"";
+      if (vid.length == 11 && ![seen containsObject:vid]) {
+        NSString *title = @"";
+        NSDictionary *tDict = [vr[@"title"] isKindOfClass:[NSDictionary class]] ? vr[@"title"] : nil;
+        if ([tDict[@"simpleText"] isKindOfClass:[NSString class]]) {
+          title = tDict[@"simpleText"];
+        } else if ([tDict[@"runs"] isKindOfClass:[NSArray class]] && [tDict[@"runs"] count] > 0) {
+          NSMutableString *ms = [NSMutableString string];
+          for (id r in tDict[@"runs"]) {
+            if ([r isKindOfClass:[NSDictionary class]] && [r[@"text"] isKindOfClass:[NSString class]]) [ms appendString:r[@"text"]];
+          }
+          title = ms;
+        }
+        NSString *dur = @"";
+        NSDictionary *lDict = [vr[@"lengthText"] isKindOfClass:[NSDictionary class]] ? vr[@"lengthText"] : nil;
+        if ([lDict[@"simpleText"] isKindOfClass:[NSString class]]) dur = lDict[@"simpleText"];
+        NSString *chan = @"";
+        NSDictionary *oDict = [vr[@"ownerText"] isKindOfClass:[NSDictionary class]] ? vr[@"ownerText"] : nil;
+        if ([oDict[@"runs"] isKindOfClass:[NSArray class]] && [oDict[@"runs"] count] > 0) {
+          id r0 = oDict[@"runs"][0];
+          if ([r0 isKindOfClass:[NSDictionary class]] && [r0[@"text"] isKindOfClass:[NSString class]]) chan = r0[@"text"];
+        }
+        if (title.length > 0) {
+          [seen addObject:vid];
+          NSString *sub = (chan.length && dur.length) ? [NSString stringWithFormat:@"%@ • %@", chan, dur] : (chan.length ? chan : dur);
+          [out addObject:@{@"id": vid, @"title": title, @"sub": sub ?: @""}];
+        }
+      }
+      return;
+    }
+    for (id k in d) {
+      collectYTVideoRenderers(d[k], out, seen);
+      if (out.count >= 8) return;
+    }
+  } else if ([node isKindOfClass:[NSArray class]]) {
+    for (id it in (NSArray *)node) {
+      collectYTVideoRenderers(it, out, seen);
+      if (out.count >= 8) return;
+    }
+  }
+}
+
+static NSString *performYTSearchJSON(NSString *q) {
+  NSString *clean = [q stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (!clean.length) return @"[]";
+  NSURL *u = [NSURL URLWithString:@"https://www.youtube.com/youtubei/v1/search?prettyPrint=false"];
+  NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:5.0];
+  req.HTTPMethod = @"POST";
+  [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+  NSDictionary *body = @{
+    @"context": @{@"client": @{@"clientName": @"WEB", @"clientVersion": @"2.20240726.00.00", @"hl": @"th", @"gl": @"TH"}},
+    @"query": clean
+  };
+  req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+  dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+  __block NSData *respData = nil;
+  [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *d, NSURLResponse *r, NSError *e){
+    respData = d;
+    dispatch_semaphore_signal(sem);
+  }] resume];
+  dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.2 * NSEC_PER_SEC)));
+  if (!respData.length) return @"[]";
+  id root = [NSJSONSerialization JSONObjectWithData:respData options:0 error:nil];
+  NSMutableArray *items = [NSMutableArray array];
+  collectYTVideoRenderers(root, items, [NSMutableSet set]);
+  NSData *out = [NSJSONSerialization dataWithJSONObject:items options:0 error:nil];
+  return out ? ([[NSString alloc] initWithData:out encoding:NSUTF8StringEncoding] ?: @"[]") : @"[]";
+}
+
+static NSString *performYTSuggestJSON(NSString *q) {
+  NSString *clean = [q stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (!clean.length) return @"[]";
+  NSString *enc = [clean stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]] ?: @"";
+  NSURL *u = [NSURL URLWithString:[NSString stringWithFormat:@"https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&hl=th&q=%@", enc]];
+  if (!u) return @"[]";
+  NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:2.5];
+  dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+  __block NSData *respData = nil;
+  [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *d, NSURLResponse *r, NSError *e){
+    respData = d;
+    dispatch_semaphore_signal(sem);
+  }] resume];
+  dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.7 * NSEC_PER_SEC)));
+  if (!respData.length) return @"[]";
+  id root = [NSJSONSerialization JSONObjectWithData:respData options:0 error:nil];
+  if ([root isKindOfClass:[NSArray class]] && [root count] >= 2 && [root[1] isKindOfClass:[NSArray class]]) {
+    NSData *out = [NSJSONSerialization dataWithJSONObject:root[1] options:0 error:nil];
+    if (out) return [[NSString alloc] initWithData:out encoding:NSUTF8StringEncoding] ?: @"[]";
+  }
+  return @"[]";
+}
+
 static NSString *buildLiveHUDJSON(void) {
   @autoreleasepool {
     static NSDateFormatter *df = nil;
@@ -483,6 +804,7 @@ static NSString *buildLiveHUDJSON(void) {
 
 static void handleClientSocket(int clientFd) {
   @autoreleasepool {
+    fcntl(clientFd, F_SETFD, FD_CLOEXEC);
     int nodelay = 1;
     setsockopt(clientFd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
     struct timeval tv = { .tv_sec = 4, .tv_usec = 0 };
@@ -511,24 +833,123 @@ static void handleClientSocket(int clientFd) {
     if ([path isEqualToString:@"/api/hud"]) {
       contentType = @"application/json; charset=utf-8";
       bodyData = [buildLiveHUDJSON() dataUsingEncoding:NSUTF8StringEncoding];
+    } else if ([path isEqualToString:@"/api/ytsearch"]) {
+      contentType = @"application/json; charset=utf-8";
+      NSDictionary *params = parseQueryParams(query);
+      bodyData = [performYTSearchJSON(params[@"q"] ?: @"") dataUsingEncoding:NSUTF8StringEncoding];
+    } else if ([path isEqualToString:@"/api/ytsuggest"]) {
+      contentType = @"application/json; charset=utf-8";
+      NSDictionary *params = parseQueryParams(query);
+      bodyData = [performYTSuggestJSON(params[@"q"] ?: @"") dataUsingEncoding:NSUTF8StringEncoding];
     } else if ([path isEqualToString:@"/api/cmd"]) {
       contentType = @"application/json; charset=utf-8";
       NSDictionary *params = parseQueryParams(query);
       NSString *action = params[@"action"] ?: @"";
       NSString *value = params[@"value"] ?: @"";
+      NSString *mode = params[@"mode"] ?: @"";
       BOOL autoStart = [params[@"auto"] isEqualToString:@"1"];
+      BOOL needStopCam = NO;
       if (action.length > 0) {
-        NSDictionary *cmdDict = @{
-          @"token": [NSUUID UUID].UUIDString ?: @"cmd",
-          @"action": action,
-          @"value": value,
-          @"autoStart": @(autoStart),
-          @"at": @([[NSDate date] timeIntervalSince1970])
-        };
-        [cmdDict writeToFile:@"/var/mobile/codex-car/mobile-cmd.plist" atomically:YES];
-        notify_post("com.codex.trd.mobile.cmd");
+        if (([action isEqualToString:@"youtube_search"] || [action isEqualToString:@"youtube_queue"]) && value.length > 0) {
+          needStopCam = YES;
+          notify_post("com.codex.trd.network.internet");
+          notify_post("com.codex.trd.music.pause");
+          [@{@"bundle": @"com.himais0giiiin.ytnine", @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
+          if ([action isEqualToString:@"youtube_queue"]) {
+            NSArray *items = [value componentsSeparatedByString:@"||"];
+            NSInteger startIdx = MAX(0, [mode integerValue]);
+            [@{@"pending": @YES, @"items": items, @"startIndex": @(startIdx), @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/youtube-search.plist" atomically:YES];
+          } else {
+            NSString *vid = extractDirectYTVideoID(value) ?: @"";
+            [@{@"pending": @YES, @"videoId": vid, @"query": value, @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/youtube-search.plist" atomically:YES];
+          }
+          notify_post("com.codex.trd.launch.ytnine");
+          notify_post("com.codex.trd.youtube.search");
+          dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.75 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            notify_post("com.codex.trd.youtube.search");
+          });
+        } else if (([action isEqualToString:@"music_search"] || [action isEqualToString:@"music_queue"]) && value.length > 0) {
+          // Direct zero-bounce dispatch straight to audioNINJA!
+          needStopCam = YES;
+          notify_post("com.codex.trd.network.internet");
+          notify_post("com.codex.trd.youtube.pause");
+          [@{@"bundle": @"com.legacymusic.app", @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
+          if ([action isEqualToString:@"music_queue"]) {
+            NSArray *items = [value componentsSeparatedByString:@"||"];
+            NSInteger startIdx = MAX(0, [mode integerValue]);
+            [@{@"pending": @YES, @"items": items, @"startIndex": @(startIdx), @"query": items.firstObject ?: value, @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/voice-search.plist" atomically:YES];
+          } else {
+            [@{@"pending": @YES, @"query": value, @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/voice-search.plist" atomically:YES];
+          }
+          notify_post("com.codex.trd.launch.legacymusic");
+          notify_post("com.codex.trd.music.voicesearch");
+          dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.95 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            notify_post("com.codex.trd.music.voicesearch");
+          });
+        } else {
+          NSDictionary *cmdDict = @{
+            @"token": [NSUUID UUID].UUIDString ?: @"cmd",
+            @"action": action,
+            @"value": value,
+            @"mode": mode,
+            @"autoStart": @(autoStart),
+            @"at": @([[NSDate date] timeIntervalSince1970])
+          };
+          [cmdDict writeToFile:@"/var/mobile/codex-car/mobile-cmd.plist" atomically:YES];
+          notify_post("com.codex.trd.mobile.cmd");
+
+          if ([action isEqualToString:@"screen"]) {
+            if ([value isEqualToString:@"camera"]) {
+              notify_post("com.codex.trd.launch.h109viewer");
+            } else {
+              needStopCam = YES;
+              notify_post("com.codex.trd.network.internet");
+              if ([value isEqualToString:@"youtube"]) {
+                notify_post("com.codex.trd.music.pause");
+                [@{@"bundle": @"com.himais0giiiin.ytnine", @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
+                notify_post("com.codex.trd.launch.ytnine");
+              } else if ([value isEqualToString:@"music"]) {
+                notify_post("com.codex.trd.youtube.pause");
+                [@{@"bundle": @"com.legacymusic.app", @"at": [NSDate date]} writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
+                notify_post("com.codex.trd.launch.legacymusic");
+              } else {
+                notify_post("com.codex.trd.launch.cardash");
+              }
+            }
+          } else if ([action isEqualToString:@"nav"]) {
+            needStopCam = YES;
+            notify_post("com.codex.trd.network.internet");
+            notify_post("com.codex.trd.launch.cardash");
+          } else if ([action isEqualToString:@"music_cmd"]) {
+            NSDictionary *lm = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/last-media.plist"];
+            BOOL isYT = [lm[@"bundle"] isEqualToString:@"com.himais0giiiin.ytnine"];
+            if (isYT) {
+              if ([value isEqualToString:@"next"]) notify_post("com.codex.trd.youtube.next");
+              else if ([value isEqualToString:@"prev"]) notify_post("com.codex.trd.youtube.previous");
+              else notify_post("com.codex.trd.youtube.toggle");
+            }
+          }
+        }
       }
       bodyData = [@"{\"ok\":true}" dataUsingEncoding:NSUTF8StringEncoding];
+      NSString *cmdHdr = [NSString stringWithFormat:
+        @"HTTP/1.1 200 OK\r\n"
+        "Content-Type: %@\r\n"
+        "Content-Length: %lu\r\n"
+        "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n"
+        "Pragma: no-cache\r\n"
+        "Expires: 0\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Connection: close\r\n\r\n",
+        contentType, (unsigned long)bodyData.length];
+      NSData *cmdHdrData = [cmdHdr dataUsingEncoding:NSUTF8StringEncoding];
+      if (sendAllBytes(clientFd, cmdHdrData.bytes, cmdHdrData.length)) {
+        sendAllBytes(clientFd, bodyData.bytes, bodyData.length);
+      }
+      shutdown(clientFd, SHUT_WR);
+      close(clientFd);
+      if (needStopCam) stopH109ViewerIfRunning();
+      return;
     } else if ([path isEqualToString:@"/api/gps"]) {
       contentType = @"application/json; charset=utf-8";
       NSDictionary *params = parseQueryParams(query);
@@ -555,7 +976,9 @@ static void handleClientSocket(int clientFd) {
       @"HTTP/1.1 200 OK\r\n"
       "Content-Type: %@\r\n"
       "Content-Length: %lu\r\n"
-      "Cache-Control: no-store, no-cache, must-revalidate\r\n"
+      "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n"
+      "Pragma: no-cache\r\n"
+      "Expires: 0\r\n"
       "Access-Control-Allow-Origin: *\r\n"
       "Connection: close\r\n\r\n",
       contentType, (unsigned long)bodyData.length];
@@ -565,10 +988,6 @@ static void handleClientSocket(int clientFd) {
       sendAllBytes(clientFd, bodyData.bytes, bodyData.length);
     }
     shutdown(clientFd, SHUT_WR);
-    struct timeval drainTv = { .tv_sec = 0, .tv_usec = 120000 };
-    setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&drainTv, sizeof(drainTv));
-    char drain[512];
-    while (recv(clientFd, drain, sizeof(drain), 0) > 0) {}
     close(clientFd);
   }
 }

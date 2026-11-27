@@ -256,7 +256,7 @@
   #speed-unit { font-size: 11px; color: #e6192d; font-weight: 900; }
   #speed-sub { font-size: 10px; color: #888d9a; font-weight: bold; margin-top: 2px; }
   
-  /* Zoom controls */
+  /* Zoom & Cockpit Compass/Rotate controls */
   .leaflet-bar a {
     background-color: rgba(14, 15, 20, 0.94) !important;
     color: #fff !important;
@@ -266,6 +266,40 @@
     border-radius: 8px !important; margin-bottom: 6px !important;
     box-shadow: 0 4px 12px rgba(0,0,0,0.6) !important;
   }
+  #cockpit-nav-tools {
+    position: absolute; right: 10px; bottom: 118px; z-index: 1002;
+    display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column;
+    align-items: center; pointer-events: auto;
+  }
+  .cnav-btn {
+    width: 44px; height: 44px; border-radius: 22px;
+    background: rgba(12, 15, 22, 0.95);
+    border: 1.5px solid rgba(0, 240, 255, 0.42);
+    color: #ffffff; font-size: 16px; font-weight: 900;
+    margin-bottom: 7px; cursor: pointer;
+    display: -webkit-flex; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.65);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cnav-btn:active, .cnav-btn.active {
+    background: rgba(0, 200, 255, 0.25);
+    border-color: #00f0ff;
+    box-shadow: 0 0 14px rgba(0, 240, 255, 0.55);
+  }
+  .rot-pair {
+    display: -webkit-flex; display: flex; gap: 5px; margin-bottom: 7px;
+  }
+  .rot-mini {
+    width: 40px; height: 36px; border-radius: 10px;
+    background: rgba(12, 15, 22, 0.95);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #aef4ff; font-size: 16px; font-weight: 900;
+    cursor: pointer; display: -webkit-flex; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.6);
+  }
+  .rot-mini:active { background: #e6192d; color: #fff; border-color: #ff4b5b; }
+  /* Counter-rotate markers when map canvas rotates so text/pins stay upright */
+  #map { -webkit-transform-origin: 50% 50%; transform-origin: 50% 50%; }
   
   /* Modal Dialog for Home/Work set */
   #modal-overlay {
@@ -409,6 +443,28 @@
   <div id="speed-sub">GPS SPEED</div>
 </div>
 
+<!-- Always-Visible Apple CarPlay Style Compass, Rotate Left/Right & Recenter Controls -->
+<div id="cockpit-nav-tools">
+  <button class="cnav-btn active" id="btn-compass" onclick="toggleHeadingUp()" title="เข็มทิศ / หมุนตามหัวรถ">
+    <svg id="compass-dial-svg" viewBox="0 0 40 40" width="34" height="34">
+      <circle cx="20" cy="20" r="17" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.5"/>
+      <polygon points="20,5 24,20 20,17 16,20" fill="#ff2a3a"/>
+      <polygon points="20,35 24,20 20,23 16,20" fill="#e2e8f0"/>
+      <text x="20" y="13" fill="#ffffff" font-size="6.5" font-weight="900" text-anchor="middle">N</text>
+    </svg>
+  </button>
+  <div class="rot-pair">
+    <button class="rot-mini" id="btn-rot-left" onclick="rotateMapStep(-30)">↺</button>
+    <button class="rot-mini" id="btn-rot-right" onclick="rotateMapStep(30)">↻</button>
+  </div>
+  <button class="cnav-btn active" id="btn-follow-car" onclick="recenterFollow()" title="จับตำแหน่งรถ">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#00f0ff" d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
+  </button>
+  <button class="cnav-btn" id="btn-overview" onclick="toggleOverview()" style="display:none;" title="ดูภาพรวมเส้นทาง">
+    <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#ffffff" d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
+  </button>
+</div>
+
 <!-- Modal Dialog -->
 <div id="modal-overlay">
   <div class="modal-box">
@@ -465,20 +521,30 @@ var map = L.map('map', {
 
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-// TRD Arrow Marker SVG
-var arrowSvg = '<svg class="car-marker-icon" id="car-svg" viewBox="0 0 44 44" width="44" height="44" style="-webkit-transform:translateZ(0);">' +
-  '<circle cx="22" cy="22" r="20" fill="rgba(230,25,45,0.25)" stroke="#e6192d" stroke-width="2.5"/>' +
-  '<polygon points="22,6 34,34 22,27 10,34" fill="#ff2035" stroke="#ffffff" stroke-width="2.5"/>' +
+// High-Contrast Pearl White Toyota Prius TRD Sportivo Top-Down Car Marker SVG
+var arrowSvg = '<svg class="car-marker-icon" id="car-svg" viewBox="0 0 60 60" width="58" height="58" style="-webkit-transform:translateZ(0);">' +
+  '<circle cx="30" cy="30" r="26" fill="rgba(0,229,255,0.22)" stroke="#00f0ff" stroke-width="2.2"/>' +
+  '<path d="M22,12 L16,1 L44,1 L38,12 Z" fill="rgba(0,240,255,0.38)"/>' +
+  '<rect x="18" y="9" width="24" height="42" rx="10" ry="10" fill="#f8fafc" stroke="#0b1120" stroke-width="2.2"/>' +
+  '<rect x="28.5" y="10" width="3" height="40" fill="#e6192d"/>' +
+  '<path d="M20.5,16 Q30,11.5 39.5,16 L37.5,24.5 L22.5,24.5 Z" fill="#0284c7"/>' +
+  '<rect x="21.5" y="25" width="17" height="12" rx="2.5" fill="#0f172a"/>' +
+  '<path d="M22.5,38 L37.5,38 L38.5,44.5 Q30,46.5 21.5,44.5 Z" fill="#334155"/>' +
+  '<rect x="20" y="10.5" width="5.5" height="3" rx="1.2" fill="#00f0ff"/>' +
+  '<rect x="34.5" y="10.5" width="5.5" height="3" rx="1.2" fill="#00f0ff"/>' +
+  '<rect x="20.5" y="47" width="19" height="3" rx="1.3" fill="#ff1e35"/>' +
+  '<rect x="15" y="19" width="3" height="5.5" rx="1.2" fill="#f8fafc" stroke="#0b1120" stroke-width="1"/>' +
+  '<rect x="42" y="19" width="3" height="5.5" rx="1.2" fill="#f8fafc" stroke="#0b1120" stroke-width="1"/>' +
   '</svg>';
 
 var carIcon = L.divIcon({
   className: 'car-icon-wrapper',
   html: arrowSvg,
-  iconSize: [44, 44],
-  iconAnchor: [22, 22]
+  iconSize: [58, 58],
+  iconAnchor: [29, 29]
 });
 
-var carMarker = L.marker([lastLat, lastLng], { icon: carIcon }).addTo(map);
+var carMarker = L.marker([lastLat, lastLng], { icon: carIcon, zIndexOffset: 1000 }).addTo(map);
 
 // Destination Pin Icon
 var destPinSvg = '<svg viewBox="0 0 34 46" width="34" height="46">' +
@@ -525,34 +591,112 @@ function toggleSound() {
 }
 
 var headingUp = true;
+var manualBearing = null;
+var isOverviewMode = false;
 var routeCoords = [];
 var offRouteHits = 0;
 var lastRerouteAt = 0;
 
+function activeMapBearing() {
+  if (manualBearing !== null) return manualBearing;
+  if (headingUp && tracking) return lastHeading;
+  return 0;
+}
+
 function applyMapRotation(deg) {
   var mapEl = document.getElementById('map');
   if (!mapEl) return;
-  if (headingUp && tracking) {
-    var rot = 'rotate(' + (-deg) + 'deg) scale(1.42)';
+  var brg = (typeof deg === 'number' && manualBearing === null && headingUp && tracking) ? deg : activeMapBearing();
+  if (Math.abs(brg) > 0.5) {
+    var rot = 'rotate(' + (-brg) + 'deg) scale(1.42)';
     mapEl.style.webkitTransform = rot;
     mapEl.style.transform = rot;
-    mapEl.style.webkitTransition = '-webkit-transform 0.35s linear';
-    mapEl.style.transition = 'transform 0.35s linear';
+    mapEl.style.webkitTransition = '-webkit-transform 0.28s ease-out';
+    mapEl.style.transition = 'transform 0.28s ease-out';
   } else {
     mapEl.style.webkitTransform = 'none';
     mapEl.style.transform = 'none';
   }
+  var dial = document.getElementById('compass-dial-svg');
+  if (dial) {
+    dial.style.webkitTransform = 'rotate(' + (-brg) + 'deg)';
+    dial.style.transform = 'rotate(' + (-brg) + 'deg)';
+  }
+  var svg = document.getElementById('car-svg');
+  if (svg) {
+    svg.style.webkitTransform = 'rotate(' + lastHeading + 'deg)';
+    svg.style.transform = 'rotate(' + lastHeading + 'deg)';
+  }
+}
+
+function rotateMapStep(deltaDeg) {
+  var cur = activeMapBearing();
+  manualBearing = ((cur + deltaDeg) % 360 + 360) % 360;
+  headingUp = false;
+  var bc = document.getElementById('btn-compass');
+  if (bc) bc.className = 'cnav-btn';
+  applyMapRotation(manualBearing);
 }
 
 function toggleHeadingUp() {
-  headingUp = !headingUp;
-  var b = document.getElementById('btn-heading');
-  if (b) {
-    b.className = headingUp ? 'trd-btn active' : 'trd-btn';
-    b.textContent = headingUp ? '🧭 หมุนตามรถ' : '🧭 ทิศเหนือ';
+  if (manualBearing !== null) {
+    manualBearing = null;
+    headingUp = false;
+  } else {
+    headingUp = !headingUp;
   }
+  var bc = document.getElementById('btn-compass');
+  if (bc) bc.className = headingUp ? 'cnav-btn active' : 'cnav-btn';
   applyMapRotation(lastHeading);
 }
+
+function recenterFollow() {
+  tracking = true;
+  isOverviewMode = false;
+  manualBearing = null;
+  _lastPanLat = lastLat; _lastPanLng = lastLng;
+  var bf = document.getElementById('btn-follow-car');
+  if (bf) bf.className = 'cnav-btn active';
+  var br = document.getElementById('btn-recenter');
+  if (br) br.className = 'trd-btn active';
+  map.setView([lastLat, lastLng], navActive ? 17 : 16, { animate: false });
+  applyMapRotation(lastHeading);
+}
+
+function toggleOverview() {
+  if (!routeLine) return;
+  isOverviewMode = !isOverviewMode;
+  var bo = document.getElementById('btn-overview');
+  if (isOverviewMode) {
+    tracking = false;
+    manualBearing = 0;
+    if (bo) bo.className = 'cnav-btn active';
+    var bf = document.getElementById('btn-follow-car');
+    if (bf) bf.className = 'cnav-btn';
+    applyMapRotation(0);
+    map.fitBounds(routeLine.getBounds(), { padding: [70, 70], animate: false });
+  } else {
+    if (bo) bo.className = 'cnav-btn';
+    recenterFollow();
+  }
+}
+
+// Two-finger twist gesture support on iPad WebView (just like Google Maps!)
+(function(){
+  var startGestureBrg = 0;
+  var mapEl = document.getElementById('map');
+  if (!mapEl) return;
+  mapEl.addEventListener('gesturestart', function(e) {
+    startGestureBrg = activeMapBearing();
+  }, false);
+  mapEl.addEventListener('gesturechange', function(e) {
+    if (typeof e.rotation === 'number' && Math.abs(e.rotation) > 3) {
+      manualBearing = ((startGestureBrg - e.rotation) % 360 + 360) % 360;
+      headingUp = false;
+      applyMapRotation(manualBearing);
+    }
+  }, false);
+})();
 
 function minDistToRouteMeters(lat, lng) {
   if (!routeCoords || routeCoords.length === 0) return 0;
@@ -891,47 +1035,56 @@ function drawRoute(route) {
     lineJoin: 'round'
   }).addTo(map);
   
-  map.fitBounds(routeLine.getBounds(), { padding: [60, 60], animate: false });
+  var ovBtn = document.getElementById('btn-overview');
+  if (ovBtn) ovBtn.style.display = '-webkit-flex';
+  isOverviewMode = false;
+  tracking = true;
+  manualBearing = null;
+  map.setView([lastLat, lastLng], 17, { animate: false });
+  applyMapRotation(lastHeading);
   
-  navSteps = route.legs[0].steps;
-  currentStepIdx = 0;
+  navSteps = route.legs[0].steps || [];
+  // Skip trivial 0-35m "depart" stub step so banner immediately shows the real upcoming turn & road name!
+  currentStepIdx = (navSteps.length > 1 && (navSteps[0].distance || 0) < 40 && (!navSteps[0].name || navSteps[0].maneuver.type === 'depart')) ? 1 : 0;
   navActive = true;
   lastChimeStep = -1;
   
   var totalKm = (route.distance / 1000).toFixed(1);
-  var totalMins = Math.round(route.duration / 60);
+  var totalMins = Math.max(1, Math.round(route.duration / 60));
   
-  // Calculate ETA clock
+  // Calculate ETA clock (includes Apple MKDirections live traffic!)
   var etaDate = new Date(Date.now() + route.duration * 1000);
   var etaH = ('0' + etaDate.getHours()).slice(-2);
   var etaM = ('0' + etaDate.getMinutes()).slice(-2);
+  var destTitleTxt = (selectedDest && selectedDest.title) ? (selectedDest.title + ' • ') : '';
   
-  document.getElementById('nav-summary').textContent = 'รวม ' + totalKm + ' กม. • ถึงประมาณ ' + etaH + ':' + etaM + ' น. (' + totalMins + ' นาที)';
+  document.getElementById('nav-summary').textContent = destTitleTxt + 'รวม ' + totalKm + ' กม. • ถึง ' + etaH + ':' + etaM + ' น. (' + totalMins + ' นาที)';
   
-  if (navSteps.length > 0) {
-    showStep(navSteps[0]);
+  if (navSteps.length > currentStepIdx) {
+    showStep(navSteps[currentStepIdx]);
   }
   document.getElementById('nav-banner').style.display = '-webkit-flex';
   document.getElementById('nav-banner').style.display = 'flex';
 }
 
 function showStep(step) {
-  var m = step.maneuver;
+  var m = step.maneuver || {};
   var type = (m.type || '').toLowerCase();
   var mod = (m.modifier || '').toLowerCase();
   var iconSvg = maneuverSvgs.straight;
   
-  if (type === 'turn' || type === 'fork') {
-    if (mod.indexOf('left') >= 0) iconSvg = maneuverSvgs.left;
-    else if (mod.indexOf('right') >= 0) iconSvg = maneuverSvgs.right;
+  if (mod.indexOf('uturn') >= 0 || type.indexOf('uturn') >= 0) {
+    iconSvg = maneuverSvgs.uturn;
+  } else if (type.indexOf('roundabout') >= 0 || type.indexOf('rotary') >= 0 || mod.indexOf('roundabout') >= 0) {
+    iconSvg = maneuverSvgs.roundabout;
   } else if (mod.indexOf('slight left') >= 0) {
     iconSvg = maneuverSvgs.slight_left;
   } else if (mod.indexOf('slight right') >= 0) {
     iconSvg = maneuverSvgs.slight_right;
-  } else if (mod.indexOf('uturn') >= 0) {
-    iconSvg = maneuverSvgs.uturn;
-  } else if (type.indexOf('roundabout') >= 0 || type.indexOf('rotary') >= 0) {
-    iconSvg = maneuverSvgs.roundabout;
+  } else if (mod.indexOf('left') >= 0) {
+    iconSvg = maneuverSvgs.left;
+  } else if (mod.indexOf('right') >= 0) {
+    iconSvg = maneuverSvgs.right;
   } else if (type === 'arrive') {
     iconSvg = maneuverSvgs.arrive;
   }
@@ -940,10 +1093,10 @@ function showStep(step) {
   var distStr = (dist >= 1000) ? (dist / 1000).toFixed(1) + ' กม.' : dist + ' ม.';
   
   document.getElementById('nav-icon-box').innerHTML = iconSvg;
-  document.getElementById('nav-dist-next').textContent = 'อีก ' + distStr;
+  document.getElementById('nav-dist-next').textContent = (type === 'arrive') ? 'จุดหมายข้างหน้า' : ('อีก ' + distStr);
   
-  var roadName = step.name ? ('เข้าสู่ ' + step.name) : 'ตามเส้นทาง';
-  if (type === 'arrive') roadName = 'ถึงจุดหมายปลายทาง';
+  var roadName = step.instruction || (step.name ? ('เข้าสู่ ' + step.name) : 'ขับตามเส้นทางหลัก');
+  if (type === 'arrive') roadName = (selectedDest && selectedDest.title) ? ('ถึง ' + selectedDest.title) : 'ถึงจุดหมายปลายทาง';
   document.getElementById('nav-street').textContent = roadName;
 }
 
@@ -958,11 +1111,13 @@ function cancelNavigation() {
   
   document.getElementById('nav-banner').style.display = 'none';
   document.getElementById('dest-card').style.display = 'none';
+  var ovBtn = document.getElementById('btn-overview');
+  if (ovBtn) { ovBtn.style.display = 'none'; ovBtn.className = 'cnav-btn'; }
   document.getElementById('search-container').style.display = 'block';
   document.getElementById('layer-bar').style.display = '-webkit-flex';
   document.getElementById('layer-bar').style.display = 'flex';
   
-  recenter();
+  recenterFollow();
 }
 
 // Enter key in search box
@@ -992,6 +1147,11 @@ bindFastTap('btn-traffic', function() { setMode('traffic'); });
 bindFastTap('btn-sat', function() { setMode('sat'); });
 bindFastTap('btn-night', function() { setMode('night'); });
 bindFastTap('btn-recenter', function() { recenter(); });
+bindFastTap('btn-compass', function() { toggleHeadingUp(); });
+bindFastTap('btn-rot-left', function() { rotateMapStep(-30); });
+bindFastTap('btn-rot-right', function() { rotateMapStep(30); });
+bindFastTap('btn-follow-car', function() { recenterFollow(); });
+bindFastTap('btn-overview', function() { toggleOverview(); });
 
 (function() {
   var startX = 0, startY = 0, fastTarget = null;

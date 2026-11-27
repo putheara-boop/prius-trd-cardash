@@ -2,6 +2,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 #include <dlfcn.h>
 #include <unistd.h>
 #include <math.h>
@@ -434,7 +435,7 @@ static void TRDReturnToCarDashNowWithBgTask(UIBackgroundTaskIdentifier bgTask){
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.90*NSEC_PER_SEC)),dispatch_get_main_queue(),fireReturn);
  if(bgTask != UIBackgroundTaskInvalid){
   UIBackgroundTaskIdentifier holdTask = bgTask;
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(25.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(165.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
    [[UIApplication sharedApplication] endBackgroundTask:holdTask];
   });
  }
@@ -442,14 +443,16 @@ static void TRDReturnToCarDashNowWithBgTask(UIBackgroundTaskIdentifier bgTask){
 
 static void TRDWaitAndReturnToCarDash(id<TRDLTPlayerController> player, int triesLeft, UIBackgroundTaskIdentifier bgTask){
  if(triesLeft <= 0){
-  // Never stay stuck on audioNINJA screen even if YouTube stream buffers slowly!
-  TRDReturnToCarDashNowWithBgTask(bgTask);
+  // Only return to CarDash if audio is actually playing; if still buffering, give AVPlayer time so iOS never suspends silent app!
+  BOOL playingNow = [player respondsToSelector:@selector(isPlaying)] && [player isPlaying];
+  if(playingNow) TRDReturnToCarDashNowWithBgTask(bgTask);
+  else if(bgTask != UIBackgroundTaskInvalid) [[UIApplication sharedApplication] endBackgroundTask:bgTask];
   return;
  }
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.35*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
   BOOL playing = [player respondsToSelector:@selector(isPlaying)] && [player isPlaying];
   double ct = [player respondsToSelector:@selector(currentTime)] ? [player currentTime] : 0.0;
-  if(playing && isfinite(ct) && ct >= 0.45){
+  if(playing && isfinite(ct) && ct >= 0.85){
    TRDReturnToCarDashNowWithBgTask(bgTask);
   } else {
    TRDWaitAndReturnToCarDash(player, triesLeft - 1, bgTask);
@@ -464,17 +467,19 @@ static void TRDHandleVoiceSearchIfPending(void){
   NSDictionary *req=[NSDictionary dictionaryWithContentsOfFile:VoiceSearchPlist];
   if(![req isKindOfClass:[NSDictionary class]])return;
   if(![req[@"pending"] boolValue])return;
+  NSArray *rawItems = [req[@"items"] isKindOfClass:[NSArray class]] ? req[@"items"] : nil;
+  NSInteger startIdx = [req[@"startIndex"] integerValue];
   NSString *q=[req[@"query"] isKindOfClass:[NSString class]]?req[@"query"]:@"";
   q=[q stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
   NSDate *at=[req[@"at"] isKindOfClass:[NSDate class]]?req[@"at"]:nil;
-  if(!q.length || (at && [at timeIntervalSinceNow] < -35.0))return;
+  if((!q.length && !rawItems.count) || (at && [at timeIntervalSinceNow] < -40.0))return;
 
   gVoiceSearchHandling = YES;
   NSMutableDictionary *done=[req mutableCopy];
   done[@"pending"]=@NO;
   done[@"pickedAt"]=[NSDate date];
   [done writeToFile:VoiceSearchPlist atomically:YES];
-  [@{@"status":@"searching",@"query":q,@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+  [@{@"status":@"searching",@"query":q?:@"queue",@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
 
   __block UIBackgroundTaskIdentifier bgTask = UIBackgroundTaskInvalid;
   bgTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
@@ -487,19 +492,86 @@ static void TRDHandleVoiceSearchIfPending(void){
   Class ytCls=NSClassFromString(@"LTYouTubeClient");
   if(!ytCls || ![ytCls respondsToSelector:@selector(sharedClient)]){
    gVoiceSearchHandling = NO;
-   [@{@"status":@"no_yt_client",@"query":q,@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+   [@{@"status":@"no_yt_client",@"query":q?:@"",@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
    TRDReturnToCarDashNowWithBgTask(bgTask);
    return;
   }
   id<TRDLTYouTubeClient> yt=[ytCls sharedClient];
+
+  // Multi-song Playlist Queue Mode (1, 2, 3, 4 continuous playback!)
+  if(rawItems.count > 0){
+   NSUInteger cap = MIN((NSUInteger)25, rawItems.count);
+   NSMutableArray *slots = [NSMutableArray arrayWithCapacity:cap];
+   for(NSUInteger i=0; i<cap; i++) [slots addObject:[NSNull null]];
+   dispatch_group_t grp = dispatch_group_create();
+   Class trackCls = NSClassFromString(@"LTTrack");
+   for(NSUInteger i=0; i<cap; i++){
+    NSString *entry = [rawItems[i] isKindOfClass:[NSString class]] ? rawItems[i] : @"";
+    NSString *vid = nil, *title = entry;
+    NSRange sep = [entry rangeOfString:@"::"];
+    if(sep.location == 11){
+     vid = [entry substringToIndex:11];
+     title = [entry substringFromIndex:13];
+    }
+    if(vid.length == 11 && trackCls && [trackCls instancesRespondToSelector:NSSelectorFromString(@"setVideoId:")]){
+     @try {
+      id tr = [trackCls new];
+      [tr setValue:vid forKey:@"videoId"];
+      if(title.length) [tr setValue:title forKey:@"title"];
+      slots[i] = tr;
+      continue;
+     } @catch(NSException *e){}
+    }
+    NSString *searchQ = title.length ? title : entry;
+    if(!searchQ.length) continue;
+    dispatch_group_enter(grp);
+    [yt searchVideosWithQuery:searchQ completion:^(NSArray *tracks, NSError *err){
+     dispatch_async(dispatch_get_main_queue(), ^{
+      if(tracks.count > 0) slots[i] = tracks[0];
+      dispatch_group_leave(grp);
+     });
+    }];
+   }
+   dispatch_group_notify(grp, dispatch_get_main_queue(), ^{
+    gVoiceSearchHandling = NO;
+    NSMutableArray *finalTracks = [NSMutableArray array];
+    NSInteger mappedStart = 0;
+    for(NSUInteger i=0; i<cap; i++){
+     if((NSInteger)i == startIdx) mappedStart = (NSInteger)finalTracks.count;
+     if(slots[i] != [NSNull null]) [finalTracks addObject:slots[i]];
+    }
+    if(finalTracks.count > 0){
+     if(mappedStart >= (NSInteger)finalTracks.count) mappedStart = 0;
+     @try {
+      AVAudioSession *sess = [AVAudioSession sharedInstance];
+      [sess setCategory:AVAudioSessionCategoryPlayback error:nil];
+      [sess setActive:YES error:nil];
+     } @catch(NSException *e){}
+     TRDNormalizeNinjaOutput();
+     Class plCls=NSClassFromString(@"LTPlayerController");
+     id<TRDLTPlayerController> player=(plCls && [plCls respondsToSelector:@selector(sharedController)])?[plCls sharedController]:nil;
+     if(player && [player respondsToSelector:@selector(playQueue:atIndex:)]){
+      TRDVoiceSearchInFlight = YES;
+      [player playQueue:finalTracks atIndex:mappedStart];
+      TRDVoiceSearchInFlight = NO;
+      TRDSaveQueue();
+      [@{@"status":@"playing_queue",@"count":@(finalTracks.count),@"index":@(mappedStart),@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
+      TRDWaitAndReturnToCarDash(player, 28, bgTask);
+      return;
+     }
+    }
+    if(bgTask != UIBackgroundTaskInvalid) [[UIApplication sharedApplication] endBackgroundTask:bgTask];
+   });
+   return;
+  }
+
   __block BOOL searchFinished = NO;
-  // Hard 6.5s timeout so slow mobile internet NEVER leaves audioNINJA stuck on screen!
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(6.5*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(10.0*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
    if(!searchFinished){
     searchFinished = YES;
     gVoiceSearchHandling = NO;
     [@{@"status":@"timeout",@"query":q,@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
-    TRDReturnToCarDashNowWithBgTask(bgTask);
+    if(bgTask != UIBackgroundTaskInvalid) [[UIApplication sharedApplication] endBackgroundTask:bgTask];
    }
   });
   [yt searchVideosWithQuery:q completion:^(NSArray *tracks, NSError *error){
@@ -522,12 +594,12 @@ static void TRDHandleVoiceSearchIfPending(void){
       TRDVoiceSearchInFlight = NO;
       TRDSaveQueue();
       [@{@"status":@"playing",@"query":q,@"count":@(tracks.count),@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
-      TRDWaitAndReturnToCarDash(player, 12, bgTask);
+      TRDWaitAndReturnToCarDash(player, 28, bgTask);
       return;
      }
     }
     [@{@"status":@"not_found",@"query":q,@"error":error.localizedDescription?:@"empty",@"at":[NSDate date]} writeToFile:VoiceSearchLog atomically:YES];
-    TRDReturnToCarDashNowWithBgTask(bgTask);
+    if(bgTask != UIBackgroundTaskInvalid) [[UIApplication sharedApplication] endBackgroundTask:bgTask];
    });
   }];
  });
@@ -537,6 +609,12 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
  NSString *bundle=NSBundle.mainBundle.bundleIdentifier;NSString *name=nil,*selector=nil;IMP replacement=NULL;IMP *original=NULL;const char *a=NULL,*b=NULL;
  if([@[@"com.legacymusic.app",@"com.himais0giiiin.ytnine",@"com.codex.poddash",@"com.google.ios.youtube"]containsObject:bundle]){
   networkRouteObserver=[[NSNotificationCenter defaultCenter]addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note){
+   [UIDevice currentDevice].batteryMonitoringEnabled = YES;
+   UIDeviceBatteryState bst = [UIDevice currentDevice].batteryState;
+   [UIApplication sharedApplication].idleTimerDisabled = (bst == UIDeviceBatteryStateCharging || bst == UIDeviceBatteryStateFull);
+   if((bst == UIDeviceBatteryStateCharging || bst == UIDeviceBatteryStateFull) && [UIScreen mainScreen].brightness < 0.35f){
+    [UIScreen mainScreen].brightness = 0.90f;
+   }
    [@{@"bundle":NSBundle.mainBundle.bundleIdentifier,@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/last-media.plist" atomically:YES];
    notify_post("com.codex.trd.network.internet");
    [TRDFloatingHome installIfNeeded];
@@ -689,7 +767,123 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   });
  }
  else if([bundle isEqual:@"com.himais0giiiin.ytnine"]){
-  static int ytToggleTok=0,ytPauseTok=0,ytPlayTok=0,ytNextTok=0,ytPrevTok=0,ytRefreshTok=0;
+  static int ytToggleTok=0,ytPauseTok=0,ytPlayTok=0,ytNextTok=0,ytPrevTok=0,ytRefreshTok=0,ytSearchTok=0;
+  static BOOL sYTSearchInFlight = NO;
+  static NSMutableArray *sYTQueueItems = nil;
+  static NSInteger sYTQueueIdx = -1;
+  void (^playYTVideoID)(NSString *) = ^(NSString *vid){
+   if(vid.length != 11) return;
+   dispatch_async(dispatch_get_main_queue(), ^{
+    @try {
+     AVAudioSession *ytSess=[AVAudioSession sharedInstance];
+     [ytSess setCategory:AVAudioSessionCategoryPlayback error:nil];
+     [ytSess setActive:YES error:nil];
+    } @catch(NSException *e){}
+    NSURL *u=[NSURL URLWithString:[NSString stringWithFormat:@"ytnine://watch?v=%@", vid]];
+    UIApplication *app=[UIApplication sharedApplication];
+    id appDel=app.delegate;
+    if(u && [appDel respondsToSelector:@selector(application:openURL:sourceApplication:annotation:)]){
+     [appDel application:app openURL:u sourceApplication:@"com.codex.cardash" annotation:@{}];
+    } else if(u && [appDel respondsToSelector:@selector(application:openURL:options:)]){
+     [appDel application:app openURL:u options:@{}];
+    } else if(u){
+     [app openURL:u];
+    }
+    [@{@"status":@"playing",@"videoId":vid,@"queueIdx":@(sYTQueueIdx),@"queueCount":@(sYTQueueItems ? sYTQueueItems.count : 0),@"at":[NSDate date]} writeToFile:@"/var/mobile/codex-car/youtube-search-state.plist" atomically:YES];
+   });
+  };
+  void (^playYTQueueEntry)(NSString *) = ^(NSString *entry){
+   NSString *clean = [entry stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+   if(!clean.length) return;
+   NSRange sep = [clean rangeOfString:@"::"];
+   if(sep.location == 11){
+    playYTVideoID([clean substringToIndex:11]);
+    return;
+   }
+   if(clean.length == 11 && [[NSRegularExpression regularExpressionWithPattern:@"^[A-Za-z0-9_-]{11}$" options:0 error:nil] numberOfMatchesInString:clean options:0 range:NSMakeRange(0, 11)] == 1){
+    playYTVideoID(clean);
+    return;
+   }
+   sYTSearchInFlight = YES;
+   NSURL *apiURL = [NSURL URLWithString:@"https://www.youtube.com/youtubei/v1/search?prettyPrint=false"];
+   NSMutableURLRequest *ytReq = [NSMutableURLRequest requestWithURL:apiURL cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:6.0];
+   ytReq.HTTPMethod = @"POST";
+   [ytReq setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+   NSDictionary *body = @{
+    @"context": @{@"client": @{@"clientName": @"WEB", @"clientVersion": @"2.20240726.00.00", @"hl": @"th", @"gl": @"TH"}},
+    @"query": clean
+   };
+   ytReq.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+   [[[NSURLSession sharedSession] dataTaskWithRequest:ytReq completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err){
+    sYTSearchInFlight = NO;
+    NSString *foundVid = nil;
+    if(data.length > 0){
+     NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+     if(jsonStr.length > 0){
+      NSRegularExpression *re1 = [NSRegularExpression regularExpressionWithPattern:@"\"videoRenderer\":\\{\"videoId\":\"([A-Za-z0-9_-]{11})\"" options:0 error:nil];
+      NSTextCheckingResult *m1 = [re1 firstMatchInString:jsonStr options:0 range:NSMakeRange(0, jsonStr.length)];
+      if(m1 && m1.numberOfRanges >= 2){
+       foundVid = [jsonStr substringWithRange:[m1 rangeAtIndex:1]];
+      } else {
+       NSRegularExpression *re2 = [NSRegularExpression regularExpressionWithPattern:@"\"videoId\":\"([A-Za-z0-9_-]{11})\"" options:0 error:nil];
+       NSTextCheckingResult *m2 = [re2 firstMatchInString:jsonStr options:0 range:NSMakeRange(0, jsonStr.length)];
+       if(m2 && m2.numberOfRanges >= 2) foundVid = [jsonStr substringWithRange:[m2 rangeAtIndex:1]];
+      }
+     }
+    }
+    if(foundVid.length == 11){
+     playYTVideoID(foundVid);
+    } else {
+     [@{@"status":@"not_found",@"query":clean,@"error":err.localizedDescription?:@"empty",@"at":[NSDate date]} writeToFile:@"/var/mobile/codex-car/youtube-search-state.plist" atomically:YES];
+    }
+   }] resume];
+  };
+  void (^handlePendingYTSearch)(void) = ^{
+   if(sYTSearchInFlight) return;
+   NSDictionary *req=[NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/youtube-search.plist"];
+   if(![req isKindOfClass:[NSDictionary class]] || ![req[@"pending"] boolValue]) return;
+   NSDate *at=[req[@"at"] isKindOfClass:[NSDate class]]?req[@"at"]:nil;
+   if(at && [at timeIntervalSinceNow] < -35.0) return;
+   NSMutableDictionary *done=[req mutableCopy];
+   done[@"pending"]=@NO;
+   [done writeToFile:@"/var/mobile/codex-car/youtube-search.plist" atomically:YES];
+   NSArray *items=[req[@"items"] isKindOfClass:[NSArray class]]?req[@"items"]:nil;
+   if(items.count > 0){
+    sYTQueueItems = [items mutableCopy];
+    sYTQueueIdx = MAX(0, MIN((NSInteger)items.count - 1, [req[@"startIndex"] integerValue]));
+    playYTQueueEntry(sYTQueueItems[sYTQueueIdx]);
+    return;
+   }
+   sYTQueueItems = nil;
+   sYTQueueIdx = -1;
+   NSString *vid=[req[@"videoId"] isKindOfClass:[NSString class]]?req[@"videoId"]:@"";
+   NSString *q=[req[@"query"] isKindOfClass:[NSString class]]?[req[@"query"] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]:@"";
+   if(vid.length == 11){
+    playYTVideoID(vid);
+   } else if(q.length > 0){
+    playYTQueueEntry(q);
+   }
+  };
+  // Auto-advance to next song in custom YouTube queue when current MV finishes!
+  [[NSNotificationCenter defaultCenter] addObserverForName:AVPlayerItemDidPlayToEndTimeNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *n){
+   if(sYTQueueItems.count > 0 && sYTQueueIdx + 1 < (NSInteger)sYTQueueItems.count){
+    id yt = TRDYouTubePlayback();
+    id avp = (yt && [yt respondsToSelector:@selector(player)]) ? [yt player] : nil;
+    if([avp isKindOfClass:[AVPlayer class]] && ((AVPlayer *)avp).currentItem == n.object){
+     sYTQueueIdx++;
+     playYTQueueEntry(sYTQueueItems[sYTQueueIdx]);
+    }
+   }
+  }];
+  notify_register_dispatch("com.codex.trd.youtube.search",&ytSearchTok,dispatch_get_main_queue(),^(int t){
+   handlePendingYTSearch();
+  });
+  [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *n){
+   handlePendingYTSearch();
+  }];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.75*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+   handlePendingYTSearch();
+  });
   notify_register_dispatch("com.codex.trd.music.refresh",&ytRefreshTok,dispatch_get_main_queue(),^(int t){
    id yt=TRDYouTubePlayback();
    if(yt && TRDYouTubeIsCurrentlyPlaying(yt)){
@@ -706,8 +900,22 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   notify_register_dispatch("com.codex.trd.youtube.toggle",&ytToggleTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(2,@"darwin-toggle");});
   notify_register_dispatch("com.codex.trd.youtube.pause",&ytPauseTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(1,@"darwin-pause");});
   notify_register_dispatch("com.codex.trd.youtube.play",&ytPlayTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(0,@"darwin-play");});
-  notify_register_dispatch("com.codex.trd.youtube.next",&ytNextTok,dispatch_get_main_queue(),^(int t){[roadAudio next:nil];});
-  notify_register_dispatch("com.codex.trd.youtube.previous",&ytPrevTok,dispatch_get_main_queue(),^(int t){[roadAudio previous:nil];});
+  notify_register_dispatch("com.codex.trd.youtube.next",&ytNextTok,dispatch_get_main_queue(),^(int t){
+   if(sYTQueueItems.count > 0 && sYTQueueIdx + 1 < (NSInteger)sYTQueueItems.count){
+    sYTQueueIdx++;
+    playYTQueueEntry(sYTQueueItems[sYTQueueIdx]);
+   } else {
+    [roadAudio next:nil];
+   }
+  });
+  notify_register_dispatch("com.codex.trd.youtube.previous",&ytPrevTok,dispatch_get_main_queue(),^(int t){
+   if(sYTQueueItems.count > 0 && sYTQueueIdx > 0){
+    sYTQueueIdx--;
+    playYTQueueEntry(sYTQueueItems[sYTQueueIdx]);
+   } else {
+    [roadAudio previous:nil];
+   }
+  });
   dispatch_async(dispatch_get_main_queue(),^{[TRDRoadAudio install];});
   name=@"YTPlayback";selector=@"loadWatch:startAt:";replacement=(IMP)YouTube;original=(IMP *)&oldYT;a="@";b="d";
  }

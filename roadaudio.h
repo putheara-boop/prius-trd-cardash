@@ -331,8 +331,8 @@ if(player){
   } @catch(NSException *e){}
   if(next)[player nextTrack];else [player previousTrack];
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.18*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
-   if([player respondsToSelector:@selector(playerIsPlaying)] && ![player playerIsPlaying]){
-    if([player respondsToSelector:@selector(togglePlayPause)])[(id)player performSelector:@selector(togglePlayPause)];
+   if([player respondsToSelector:@selector(isPlaying)] && ![player isPlaying]){
+    if([player respondsToSelector:@selector(play)])[(id)player performSelector:@selector(play)];
    }
   });
   delivered=YES;

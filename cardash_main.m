@@ -2513,6 +2513,7 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 -(void)updateMapCarForce:(BOOL)force;
 -(void)executeOrQueueMapJS:(NSString *)js;
 -(void)openMapToLat:(double)lat lon:(double)lon name:(NSString *)name address:(NSString *)address autoStart:(BOOL)autoStart;
+-(void)openCarPlayToLat:(double)lat lon:(double)lon name:(NSString *)name address:(NSString *)address autoStart:(BOOL)autoStart;
 -(void)openMapWithSearchQuery:(NSString *)query;
 -(void)loadMapHTML;
 -(UIWebView *)ensureMapWebView;
@@ -2768,6 +2769,80 @@ static void TRDSendMediaRemoteExternal(int cmd, void (^fallback)(void)){
 -(void)handleReverseDisengaged;
 -(void)playReverseBeep;
 @end
+
+static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *outLon, NSString **outPlaceName);
+
+@interface TRDFastRedirectDelegate : NSObject <NSURLSessionTaskDelegate>
+@property (nonatomic, copy) NSString *interceptedURL;
+@end
+@implementation TRDFastRedirectDelegate
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task willPerformHTTPRedirection:(NSHTTPURLResponse *)response newRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURLRequest *))completionHandler {
+ double lat = 0, lon = 0;
+ NSString *nm = nil;
+ NSString *uStr = request.URL.absoluteString ?: @"";
+ if (TRDExtractLatLonFromText(uStr, &lat, &lon, &nm)) {
+  self.interceptedURL = uStr;
+  completionHandler(nil);
+  return;
+ }
+ completionHandler(request);
+}
+@end
+
+static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *outLon, NSString **outPlaceName) {
+ if(!text.length) return NO;
+ NSArray *patterns = @[
+  @"!3d(-?\\d+\\.\\d+)!4d(-?\\d+\\.\\d+)",
+  @"[?&](?:q|query|ll|daddr|destination|center|viewpoint)=(-?\\d+\\.\\d+)(?:,|%2C|\\s)+(-?\\d+\\.\\d+)",
+  @"/search/(-?\\d+\\.\\d+)(?:,|%2C|\\+|\\s)+(-?\\d+\\.\\d+)",
+  @"@(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)",
+  @"(?:^|[\\s(])(-?\\d{1,2}\\.\\d{4,})\\s*,\\s*(-?\\d{1,3}\\.\\d{4,})(?:$|[\\s)])"
+ ];
+ if(outPlaceName && (!*outPlaceName || (*outPlaceName).length == 0)){
+  NSRegularExpression *placeRe = [NSRegularExpression regularExpressionWithPattern:@"/maps/place/([^/@?&]+)" options:NSRegularExpressionCaseInsensitive error:nil];
+  NSTextCheckingResult *pm = [placeRe firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
+  if(pm && pm.numberOfRanges >= 2){
+   NSString *rawP = [text substringWithRange:[pm rangeAtIndex:1]];
+   rawP = [[rawP stringByReplacingOccurrencesOfString:@"+" withString:@" "] stringByRemovingPercentEncoding] ?: rawP;
+   rawP = [rawP stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+   if(rawP.length > 0 && ![rawP hasPrefix:@"http"]) *outPlaceName = rawP;
+  }
+ }
+ for(NSString *pat in patterns){
+  NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:pat options:NSRegularExpressionCaseInsensitive error:nil];
+  NSTextCheckingResult *m = [re firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
+  if(m && m.numberOfRanges >= 3){
+   double lat = [[text substringWithRange:[m rangeAtIndex:1]] doubleValue];
+   double lon = [[text substringWithRange:[m rangeAtIndex:2]] doubleValue];
+   if(fabs(lat) >= 0.5 && fabs(lat) <= 90.0 && fabs(lon) >= 0.5 && fabs(lon) <= 180.0){
+    if(outLat) *outLat = lat;
+    if(outLon) *outLon = lon;
+    return YES;
+   }
+  }
+ }
+ return NO;
+}
+
+static NSString *TRDExtractYouTubeVideoID(NSString *input) {
+ NSString *s = [input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+ if(!s.length) return nil;
+ if(s.length == 11){
+  NSRegularExpression *idOnly = [NSRegularExpression regularExpressionWithPattern:@"^[A-Za-z0-9_-]{11}$" options:0 error:nil];
+  if([idOnly numberOfMatchesInString:s options:0 range:NSMakeRange(0, s.length)] == 1) return s;
+ }
+ NSArray *pats = @[
+  @"(?:youtu\\.be/|youtube\\.com/(?:shorts/|embed/|live/|v/))([A-Za-z0-9_-]{11})",
+  @"[?&]v=([A-Za-z0-9_-]{11})"
+ ];
+ for(NSString *p in pats){
+  NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:p options:NSRegularExpressionCaseInsensitive error:nil];
+  NSTextCheckingResult *m = [re firstMatchInString:s options:0 range:NSMakeRange(0, s.length)];
+  if(m && m.numberOfRanges >= 2) return [s substringWithRange:[m rangeAtIndex:1]];
+ }
+ return nil;
+}
+
 @implementation Dashboard
 
 -(void)homeTripSlotTapped:(UIButton *)btn{
@@ -7732,7 +7807,7 @@ static NSData *TRDBuildLoudBeepWAVData(void){
  }] resume];
 }
 
--(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations{self.gpsUpdates++;self.gpsError=nil;self.fix=[locations lastObject];BOOL wasRunning=self.trip.running;for(CLLocation *fix in locations){double fixKmh=(fix&&fix.speed>=0)?(fix.speed*3.6):0.0;if(fixKmh>=2.0&&fix.horizontalAccuracy>=0&&fix.horizontalAccuracy<=45.0){[self.trip accept:fix now:[NSDate date]];}else{[self.trip breakSegment];}}if(wasRunning!=self.trip.running||!self.lastTripSavedAt||-[self.lastTripSavedAt timeIntervalSinceNow]>=5)[self saveTrip];double spd=(self.fix.speed>=0)?(self.fix.speed*3.6):0;if(spd>=2.0)[[TRDOBDClient sharedClient] integrateFallbackFuelForDistanceKm:(self.trip.meters/1000.0) speedKmh:spd dtSeconds:1.0];
+-(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations{self.gpsUpdates++;self.gpsError=nil;self.fix=[locations lastObject];if(self.fix && fabs(self.fix.coordinate.latitude)>0.5 && fabs(self.fix.coordinate.longitude)>0.5){NSUserDefaults *ud=[NSUserDefaults standardUserDefaults];[ud setDouble:self.fix.coordinate.latitude forKey:@"TRDLastKnownLat"];[ud setDouble:self.fix.coordinate.longitude forKey:@"TRDLastKnownLon"];}BOOL wasRunning=self.trip.running;for(CLLocation *fix in locations){double fixKmh=(fix&&fix.speed>=0)?(fix.speed*3.6):0.0;if(fixKmh>=2.0&&fix.horizontalAccuracy>=0&&fix.horizontalAccuracy<=45.0){[self.trip accept:fix now:[NSDate date]];}else{[self.trip breakSegment];}}if(wasRunning!=self.trip.running||!self.lastTripSavedAt||-[self.lastTripSavedAt timeIntervalSinceNow]>=5)[self saveTrip];double spd=(self.fix.speed>=0)?(self.fix.speed*3.6):0;if(spd>=2.0)[[TRDOBDClient sharedClient] integrateFallbackFuelForDistanceKm:(self.trip.meters/1000.0) speedKmh:spd dtSeconds:1.0];
  [self trackOdometerUpdates];
  [self checkSpeedCamerasNearLocation:self.fix];
  if(!self.hasFetchedWeather && self.fix && self.fix.horizontalAccuracy>0 && self.fix.horizontalAccuracy<=1000){
@@ -8127,6 +8202,17 @@ static NSData *TRDBuildLoudBeepWAVData(void){
                   lat, lon, jsName, jsAddr, autoStart ? @"true" : @"false"];
   [self executeOrQueueMapJS:js];
 }
+-(void)openCarPlayToLat:(double)lat lon:(double)lon name:(NSString *)name address:(NSString *)address autoStart:(BOOL)autoStart{
+  self.mapNavigationAuthorized = YES;
+  self.navGuardUntil = 0;
+  [self openCarPlay];
+  if(self.carplayGridMode)[self toggleCarPlayGrid];
+  NSString *jsName = TRDJSStringLiteral(name ?: @"จุดหมาย");
+  NSString *jsAddr = TRDJSStringLiteral(address ?: @"");
+  NSString *js = [NSString stringWithFormat:@"if(window.selectLocation){window.selectLocation(%.6f,%.6f,%@,%@);if(%@&&window.startNavigation){window.startNavigation();}}",
+                  lat, lon, jsName, jsAddr, autoStart ? @"true" : @"false"];
+  [self executeOrQueueMapJS:js];
+}
 -(void)openMapWithSearchQuery:(NSString *)query{
   self.mapNavigationAuthorized = YES;
   self.navGuardUntil = 0;
@@ -8143,17 +8229,75 @@ static NSData *TRDBuildLoudBeepWAVData(void){
 -(void)updateMapCar{[self updateMapCarForce:NO];}
 -(void)updateMapCarForce:(BOOL)force{if((!self.mapMode&&!self.carplayMode)||!self.mapWebView||!self.mapWebView.request||self.mapWebView.loading)return;if(!self.fix)return;static CLLocationDegrees lastLat=0,lastLng=0;static double lastKmh=-999;static UIWebView *lastWebView=nil;CLLocationDegrees lat=self.fix.coordinate.latitude;CLLocationDegrees lng=self.fix.coordinate.longitude;double kmh=(self.fix.speed>=0)?(self.fix.speed*3.6):-1;if(!force&&lastWebView==self.mapWebView&&fabs(lat-lastLat)<0.000015&&fabs(lng-lastLng)<0.000015&&fabs(kmh-lastKmh)<2.0)return;lastWebView=self.mapWebView;lastLat=lat;lastLng=lng;lastKmh=kmh;BOOL courseValid=self.fix.course>=0&&self.fix.course<360&&kmh>=5&&self.fix.horizontalAccuracy>=0&&self.fix.horizontalAccuracy<=25&&fabs([self.fix.timestamp timeIntervalSinceNow])<5;double course=courseValid?self.fix.course:-1;NSString *js=[NSString stringWithFormat:@"if(window.updateCar){window.updateCar(%f,%f,%f,%f);}",lat,lng,course,kmh];[self.mapWebView stringByEvaluatingJavaScriptFromString:js];}
 -(BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)type{NSString *scheme=request.URL.scheme;if([scheme isEqualToString:@"cardash-route"]){NSString *coords=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchRouteWithCoords:coords];return NO;}if([scheme isEqualToString:@"cardash-search"]){NSString *query=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];[self fetchSearchWithQuery:query];return NO;}if([scheme isEqualToString:@"cardash-navspeak"]){NSString *phrase=[[request.URL.resourceSpecifier stringByReplacingOccurrencesOfString:@"//" withString:@""]stringByRemovingPercentEncoding];if(phrase.length)[self speakQuickAlert:phrase];return NO;}return YES;}
+static void TRDClassifyTurnInstruction(NSString *inst, NSString **outType, NSString **outMod) {
+  NSString *s = (inst ?: @"").lowercaseString;
+  NSString *tp = @"turn", *md = @"straight";
+  if ([s containsString:@"กลับรถ"] || [s containsString:@"u-turn"] || [s containsString:@"uturn"]) {
+    tp = @"turn"; md = @"uturn";
+  } else if ([s containsString:@"วงเวียน"] || [s containsString:@"roundabout"]) {
+    tp = @"roundabout"; md = @"straight";
+  } else if ([s containsString:@"เบี่ยงซ้าย"] || [s containsString:@"ชิดซ้าย"] || [s containsString:@"slight left"] || [s containsString:@"keep left"]) {
+    tp = @"fork"; md = @"slight left";
+  } else if ([s containsString:@"เบี่ยงขวา"] || [s containsString:@"ชิดขวา"] || [s containsString:@"slight right"] || [s containsString:@"keep right"]) {
+    tp = @"fork"; md = @"slight right";
+  } else if ([s containsString:@"ซ้าย"] || [s containsString:@"left"]) {
+    tp = @"turn"; md = @"left";
+  } else if ([s containsString:@"ขวา"] || [s containsString:@"right"]) {
+    tp = @"turn"; md = @"right";
+  }
+  if (outType) *outType = tp;
+  if (outMod) *outMod = md;
+}
+
+-(void)dispatchOSRMBackupFrom:(CLLocationCoordinate2D)src to:(CLLocationCoordinate2D)dst coords:(NSString *)coords{
+  NSString *urlStr=[NSString stringWithFormat:@"https://router.project-osrm.org/route/v1/driving/%@?overview=full&geometries=geojson&steps=true",coords];
+  NSURL *url=[NSURL URLWithString:urlStr];
+  __weak Dashboard *weak=self;
+  void (^straightFallback)(void) = ^{
+    CLLocation *l1 = [[CLLocation alloc] initWithLatitude:src.latitude longitude:src.longitude];
+    CLLocation *l2 = [[CLLocation alloc] initWithLatitude:dst.latitude longitude:dst.longitude];
+    double dist = [l1 distanceFromLocation:l2];
+    double dur = MAX(60.0, dist / (40000.0 / 3600.0));
+    NSDictionary *rp = @{@"routes":@[@{
+      @"distance": @(dist), @"duration": @(dur),
+      @"geometry": @{@"coordinates": @[@[@(src.longitude), @(src.latitude)], @[@(dst.longitude), @(dst.latitude)]]},
+      @"legs": @[@{@"steps": @[
+        @{@"distance":@(dist), @"name":@"มุ่งหน้าไปยังจุดหมาย", @"instruction":@"มุ่งหน้าไปยังจุดหมาย", @"maneuver":@{@"type":@"turn",@"modifier":@"straight",@"location":@[@(dst.longitude),@(dst.latitude)]}},
+        @{@"distance":@(0), @"name":@"ถึงจุดหมายปลายทาง", @"instruction":@"ถึงจุดหมายปลายทาง", @"maneuver":@{@"type":@"arrive",@"modifier":@"",@"location":@[@(dst.longitude),@(dst.latitude)]}}
+      ]}]
+    }]};
+    NSData *d = [NSJSONSerialization dataWithJSONObject:rp options:0 error:nil];
+    NSString *j = d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : @"{\"routes\":[]}";
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}", j]];
+    });
+  };
+  if(!url){ straightFallback(); return; }
+  NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:2.8];
+  [[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){
+    NSString *json=(data&&!err)?[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding]:nil;
+    if(json.length && [json rangeOfString:@"\"routes\""].location!=NSNotFound){
+      dispatch_async(dispatch_get_main_queue(),^{
+        [weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}",json]];
+      });
+    } else {
+      straightFallback();
+    }
+  }]resume];
+}
+
 -(void)dispatchFallbackRouteFrom:(CLLocationCoordinate2D)src to:(CLLocationCoordinate2D)dst{
+  // Official Apple CarPlay MapKit Routing Engine (Primary Thailand Highway & Live Traffic Router!)
   MKPlacemark *p1 = [[MKPlacemark alloc] initWithCoordinate:src addressDictionary:nil];
   MKPlacemark *p2 = [[MKPlacemark alloc] initWithCoordinate:dst addressDictionary:nil];
   MKDirectionsRequest *req = [[MKDirectionsRequest alloc] init];
   req.source = [[MKMapItem alloc] initWithPlacemark:p1];
   req.destination = [[MKMapItem alloc] initWithPlacemark:p2];
   req.transportType = MKDirectionsTransportTypeAutomobile;
+  req.requestsAlternateRoutes = NO;
   MKDirections *dirs = [[MKDirections alloc] initWithRequest:req];
   __weak Dashboard *weak = self;
   [dirs calculateDirectionsWithCompletionHandler:^(MKDirectionsResponse *resp, NSError *err){
-    NSDictionary *routePayload = nil;
     MKRoute *mkRoute = resp.routes.firstObject;
     if(mkRoute && mkRoute.polyline.pointCount > 0){
       NSUInteger cnt = mkRoute.polyline.pointCount;
@@ -8166,89 +8310,70 @@ static NSData *TRDBuildLoudBeepWAVData(void){
         }
         free(pts);
         NSMutableArray *stepsArr = [NSMutableArray array];
-        for(MKRouteStep *st in mkRoute.steps){
-          CLLocationCoordinate2D sc = (st.polyline.pointCount > 0) ? st.polyline.coordinate : src;
+        double prevDist = 0.0;
+        for(NSUInteger idx=0; idx<mkRoute.steps.count; idx++){
+          MKRouteStep *st = mkRoute.steps[idx];
+          NSString *inst = [st.instructions stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] ?: @"";
+          if(idx == 0 && inst.length == 0){
+            prevDist = st.distance;
+            continue;
+          }
+          // Exact intersection coordinate is points[0] of this MKRouteStep's polyline!
+          CLLocationCoordinate2D sc = (st.polyline.pointCount > 0) ? MKCoordinateForMapPoint(st.polyline.points[0]) : src;
+          NSString *tp = @"turn", *md = @"straight";
+          TRDClassifyTurnInstruction(inst, &tp, &md);
+          double distToTurn = (prevDist > 1.0) ? prevDist : st.distance;
+          prevDist = st.distance;
           [stepsArr addObject:@{
-            @"distance": @(st.distance),
-            @"name": st.instructions ?: @"",
-            @"maneuver": @{@"type": @"turn", @"modifier": @"", @"location": @[@(sc.longitude), @(sc.latitude)]}
+            @"distance": @(distToTurn),
+            @"name": inst.length ? inst : (mkRoute.name ?: @"เส้นทางหลัก"),
+            @"instruction": inst.length ? inst : [NSString stringWithFormat:@"ขับตาม %@", mkRoute.name ?: @"เส้นทางหลัก"],
+            @"maneuver": @{@"type": tp, @"modifier": md, @"location": @[@(sc.longitude), @(sc.latitude)]}
           }];
         }
-        if(stepsArr.count == 0){
-          [stepsArr addObject:@{@"distance":@(mkRoute.distance), @"name":@"มุ่งหน้าสู่จุดหมาย", @"maneuver":@{@"type":@"depart",@"modifier":@"",@"location":@[@(src.longitude),@(src.latitude)]}}];
-        }
-        [stepsArr addObject:@{@"distance":@(0), @"name":@"ถึงจุดหมายปลายทาง", @"maneuver":@{@"type":@"arrive",@"modifier":@"",@"location":@[@(dst.longitude),@(dst.latitude)]}}];
-        routePayload = @{@"routes":@[@{
+        [stepsArr addObject:@{
+          @"distance": @(MAX(0.0, prevDist)),
+          @"name": @"ถึงจุดหมายปลายทาง",
+          @"instruction": @"ถึงจุดหมายปลายทาง",
+          @"maneuver": @{@"type": @"arrive", @"modifier": @"", @"location": @[@(dst.longitude), @(dst.latitude)]}
+        }];
+        NSDictionary *routePayload = @{@"routes":@[@{
           @"distance": @(mkRoute.distance),
           @"duration": @(mkRoute.expectedTravelTime),
           @"geometry": @{@"coordinates": coordArr},
           @"legs": @[@{@"steps": stepsArr}]
         }]};
-        [[TRDOBDClient sharedClient] obdLog:@"MKDirections fallback OK: %.0f m (%lu pts)", mkRoute.distance, (unsigned long)cnt];
+        [[TRDOBDClient sharedClient] obdLog:@"Apple CarPlay MKDirections OK: %.1f km, %.0f min (%lu pts)", mkRoute.distance/1000.0, mkRoute.expectedTravelTime/60.0, (unsigned long)cnt];
+        NSData *d = [NSJSONSerialization dataWithJSONObject:routePayload options:0 error:nil];
+        NSString *json = d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : @"{\"routes\":[]}";
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}", json]];
+        });
+        return;
       }
     }
-    if(!routePayload){
-      CLLocation *l1 = [[CLLocation alloc] initWithLatitude:src.latitude longitude:src.longitude];
-      CLLocation *l2 = [[CLLocation alloc] initWithLatitude:dst.latitude longitude:dst.longitude];
-      double dist = [l1 distanceFromLocation:l2];
-      double dur = MAX(60.0, dist / (35000.0 / 3600.0));
-      [[TRDOBDClient sharedClient] obdLog:@"MKDirections failed (%@) -> straight fallback %.0f m", err.localizedDescription?:@"offline", dist];
-      routePayload = @{@"routes":@[@{
-        @"distance": @(dist),
-        @"duration": @(dur),
-        @"geometry": @{@"coordinates": @[@[@(src.longitude), @(src.latitude)], @[@(dst.longitude), @(dst.latitude)]]},
-        @"legs": @[@{@"steps": @[
-          @{@"distance":@(dist), @"name":@"มุ่งหน้าไปยังจุดหมาย", @"maneuver":@{@"type":@"depart",@"modifier":@"",@"location":@[@(src.longitude),@(src.latitude)]}},
-          @{@"distance":@(0), @"name":@"ถึงจุดหมายปลายทาง", @"maneuver":@{@"type":@"arrive",@"modifier":@"",@"location":@[@(dst.longitude),@(dst.latitude)]}}
-        ]}]
-      }]};
-    }
-    NSData *d = [NSJSONSerialization dataWithJSONObject:routePayload options:0 error:nil];
-    NSString *json = d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : @"{\"routes\":[]}";
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}", json]];
-    });
+    NSString *coordPair = [NSString stringWithFormat:@"%.6f,%.6f;%.6f,%.6f", src.longitude, src.latitude, dst.longitude, dst.latitude];
+    [weak dispatchOSRMBackupFrom:src to:dst coords:coordPair];
   }];
 }
 -(void)fetchRouteWithCoords:(NSString *)coords{
   NSArray *pairs = [coords componentsSeparatedByString:@";"];
-  CLLocationCoordinate2D src = CLLocationCoordinate2DMake(13.7563, 100.5018);
-  CLLocationCoordinate2D dst = src;
-  BOOL hasCoords = NO;
   if(pairs.count >= 2){
     NSArray *p1 = [pairs[0] componentsSeparatedByString:@","];
     NSArray *p2 = [pairs[1] componentsSeparatedByString:@","];
     if(p1.count == 2 && p2.count == 2){
-      src = CLLocationCoordinate2DMake([p1[1] doubleValue], [p1[0] doubleValue]);
-      dst = CLLocationCoordinate2DMake([p2[1] doubleValue], [p2[0] doubleValue]);
-      hasCoords = (fabs(src.latitude) > 0.001 && fabs(dst.latitude) > 0.001);
+      CLLocationCoordinate2D src = CLLocationCoordinate2DMake([p1[1] doubleValue], [p1[0] doubleValue]);
+      CLLocationCoordinate2D dst = CLLocationCoordinate2DMake([p2[1] doubleValue], [p2[0] doubleValue]);
+      if(fabs(src.latitude) > 0.001 && fabs(dst.latitude) > 0.001){
+        // Primary: Official Apple CarPlay MKDirections engine (accurate main Thai highways + live traffic!)
+        [self dispatchFallbackRouteFrom:src to:dst];
+        return;
+      }
     }
   }
-  NSString *urlStr=[NSString stringWithFormat:@"http://router.project-osrm.org/route/v1/driving/%@?overview=full&geometries=geojson&steps=true",coords];
-  NSURL *url=[NSURL URLWithString:urlStr];
-  if(!url){
-    if(hasCoords) [self dispatchFallbackRouteFrom:src to:dst];
-    else dispatch_async(dispatch_get_main_queue(),^{ [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.onNativeRoute){window.onNativeRoute({routes:[]});}"]; });
-    return;
-  }
-  NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:4.0];
-  [req setValue:@"CarDash/1.6 (iPad; iOS 9.3.6)" forHTTPHeaderField:@"User-Agent"];
-  __weak Dashboard *weak=self;
-  [[[NSURLSession sharedSession]dataTaskWithRequest:req completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){
-    NSString *json=(data&&!err)?[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding]:nil;
-    if(json.length && [json rangeOfString:@"\"routes\""].location!=NSNotFound){
-      [[TRDOBDClient sharedClient] obdLog:@"OSRM route OK (%lu bytes)", (unsigned long)data.length];
-      dispatch_async(dispatch_get_main_queue(),^{
-        [weak.mapWebView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"if(window.onNativeRoute){window.onNativeRoute(%@);}",json]];
-      });
-    }else{
-      [[TRDOBDClient sharedClient] obdLog:@"OSRM route unavailable (%@), switching to MKDirections", err.localizedDescription?:@"empty"];
-      dispatch_async(dispatch_get_main_queue(),^{
-        if(hasCoords) [weak dispatchFallbackRouteFrom:src to:dst];
-        else [weak.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.onNativeRoute){window.onNativeRoute({routes:[]});}"];
-      });
-    }
-  }]resume];
+  dispatch_async(dispatch_get_main_queue(),^{
+    [self.mapWebView stringByEvaluatingJavaScriptFromString:@"if(window.onNativeRoute){window.onNativeRoute({routes:[]});}"];
+  });
 }
 -(void)fetchSearchWithQuery:(NSString *)query{
   if(!query.length)return;
@@ -10546,76 +10671,84 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  [self presentSettingsMenu:m];
 }
 
-static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *outLon, NSString **outPlaceName) {
- if(!text.length) return NO;
- NSArray *patterns = @[
-  @"!3d(-?\\d+\\.\\d+)!4d(-?\\d+\\.\\d+)",
-  @"[?&](?:q|query|ll|daddr|destination|center|viewpoint)=(-?\\d+\\.\\d+)(?:,|%2C|\\s)+(-?\\d+\\.\\d+)",
-  @"/search/(-?\\d+\\.\\d+)(?:,|%2C|\\+|\\s)+(-?\\d+\\.\\d+)",
-  @"@(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)",
-  @"(?:^|[\\s(])(-?\\d{1,2}\\.\\d{4,})\\s*,\\s*(-?\\d{1,3}\\.\\d{4,})(?:$|[\\s)])"
- ];
- if(outPlaceName && (!*outPlaceName || (*outPlaceName).length == 0)){
-  NSRegularExpression *placeRe = [NSRegularExpression regularExpressionWithPattern:@"/maps/place/([^/@?&]+)" options:NSRegularExpressionCaseInsensitive error:nil];
-  NSTextCheckingResult *pm = [placeRe firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
-  if(pm && pm.numberOfRanges >= 2){
-   NSString *rawP = [text substringWithRange:[pm rangeAtIndex:1]];
-   rawP = [[rawP stringByReplacingOccurrencesOfString:@"+" withString:@" "] stringByRemovingPercentEncoding] ?: rawP;
-   rawP = [rawP stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-   if(rawP.length > 0 && ![rawP hasPrefix:@"http"]) *outPlaceName = rawP;
-  }
- }
- for(NSString *pat in patterns){
-  NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:pat options:NSRegularExpressionCaseInsensitive error:nil];
-  NSTextCheckingResult *m = [re firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
-  if(m && m.numberOfRanges >= 3){
-   double lat = [[text substringWithRange:[m rangeAtIndex:1]] doubleValue];
-   double lon = [[text substringWithRange:[m rangeAtIndex:2]] doubleValue];
-   if(fabs(lat) >= 0.5 && fabs(lat) <= 90.0 && fabs(lon) >= 0.5 && fabs(lon) <= 180.0){
-    if(outLat) *outLat = lat;
-    if(outLon) *outLon = lon;
-    return YES;
-   }
-  }
- }
- return NO;
-}
-
 -(void)navigateByPlaceQueryFromMobile:(NSString *)query fallbackName:(NSString *)fallbackName autoStart:(BOOL)autoStart{
  NSString *cleanQ = [query stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
  if(!cleanQ.length) return;
- CLLocationDegrees baseLat = self.fix ? self.fix.coordinate.latitude : 13.7563;
- CLLocationDegrees baseLon = self.fix ? self.fix.coordinate.longitude : 100.5018;
- CLLocation *curLoc = self.fix ?: [[CLLocation alloc] initWithLatitude:baseLat longitude:baseLon];
- MKLocalSearchRequest *req = [[MKLocalSearchRequest alloc] init];
- req.naturalLanguageQuery = cleanQ;
- req.region = MKCoordinateRegionMakeWithDistance(CLLocationCoordinate2DMake(baseLat, baseLon), 80000, 80000);
- MKLocalSearch *search = [[MKLocalSearch alloc] initWithRequest:req];
- __weak typeof(self) weakSelf = self;
- [search startWithCompletionHandler:^(MKLocalSearchResponse *resp, NSError *err){
-  dispatch_async(dispatch_get_main_queue(), ^{
-   Dashboard *v = weakSelf;
-   if(!v) return;
-   MKMapItem *best = nil;
-   double bestDist = 1e15;
-   for(MKMapItem *it in resp.mapItems){
-    if(!it.placemark.location) continue;
-    double d = [curLoc distanceFromLocation:it.placemark.location];
-    if(d < bestDist){ bestDist = d; best = it; }
-   }
-   if(best){
-    NSString *nm = best.name.length ? best.name : (fallbackName.length ? fallbackName : cleanQ);
-    NSString *ad = best.placemark.title.length ? best.placemark.title : @"📱 ค้นหาจากมือถือ";
-    [v openMapToLat:best.placemark.coordinate.latitude lon:best.placemark.coordinate.longitude name:nm address:ad autoStart:autoStart];
-    [v showVoiceToast:[NSString stringWithFormat:@"📍 นำทางไป: %@", nm] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.58 alpha:1.0] autoHide:4.0];
-   } else {
-    [v openMapWithSearchQuery:cleanQ];
-   }
-  });
- }];
+ NSDictionary *lastCmd = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/mobile-cmd.plist"];
+ BOOL useCarPlay = [[lastCmd[@"mode"] isKindOfClass:[NSString class]] ? lastCmd[@"mode"] : @"" isEqualToString:@"carplay"];
+ CLLocation *sysLoc = self.fix ?: [[CLLocationManager alloc] init].location;
+ NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+ double savedLat = [ud doubleForKey:@"TRDLastKnownLat"];
+ double savedLon = [ud doubleForKey:@"TRDLastKnownLon"];
+ CLLocationDegrees baseLat = sysLoc ? sysLoc.coordinate.latitude : ((fabs(savedLat) > 0.5) ? savedLat : 14.0750);
+ CLLocationDegrees baseLon = sysLoc ? sysLoc.coordinate.longitude : ((fabs(savedLon) > 0.5) ? savedLon : 100.6450);
+ CLLocation *curLoc = [[CLLocation alloc] initWithLatitude:baseLat longitude:baseLon];
+
+ void (^runSearchWithRadius)(CLLocationDistance, BOOL) = ^(CLLocationDistance radiusM, BOOL allowWiderRetry){
+  MKLocalSearchRequest *req = [[MKLocalSearchRequest alloc] init];
+  req.naturalLanguageQuery = cleanQ;
+  req.region = MKCoordinateRegionMakeWithDistance(CLLocationCoordinate2DMake(baseLat, baseLon), radiusM, radiusM);
+  MKLocalSearch *search = [[MKLocalSearch alloc] initWithRequest:req];
+  __weak typeof(self) weakSelf = self;
+  [search startWithCompletionHandler:^(MKLocalSearchResponse *resp, NSError *err){
+   dispatch_async(dispatch_get_main_queue(), ^{
+    Dashboard *v = weakSelf;
+    if(!v) return;
+    MKMapItem *best = nil;
+    double bestDist = 1e15;
+    for(MKMapItem *it in resp.mapItems){
+     if(!it.placemark.location) continue;
+     double d = [curLoc distanceFromLocation:it.placemark.location];
+     if(d <= radiusM * 1.6 && d < bestDist){ bestDist = d; best = it; }
+    }
+    if(best){
+     NSString *nm = best.name.length ? best.name : (fallbackName.length ? fallbackName : cleanQ);
+     NSString *ad = best.placemark.title.length ? best.placemark.title : @"📱 ค้นหาใกล้รถ";
+     if(useCarPlay) [v openCarPlayToLat:best.placemark.coordinate.latitude lon:best.placemark.coordinate.longitude name:nm address:ad autoStart:autoStart];
+     else [v openMapToLat:best.placemark.coordinate.latitude lon:best.placemark.coordinate.longitude name:nm address:ad autoStart:autoStart];
+     [v showVoiceToast:[NSString stringWithFormat:@"📍 %@ (ห่าง %.1f กม.)", nm, bestDist / 1000.0] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.58 alpha:1.0] autoHide:4.0];
+    } else if(allowWiderRetry){
+     MKLocalSearchRequest *req2 = [[MKLocalSearchRequest alloc] init];
+     req2.naturalLanguageQuery = cleanQ;
+     req2.region = MKCoordinateRegionMakeWithDistance(CLLocationCoordinate2DMake(baseLat, baseLon), 22000, 22000);
+     [[[MKLocalSearch alloc] initWithRequest:req2] startWithCompletionHandler:^(MKLocalSearchResponse *r2, NSError *e2){
+      dispatch_async(dispatch_get_main_queue(), ^{
+       Dashboard *v2 = weakSelf;
+       if(!v2) return;
+       MKMapItem *b2 = nil; double d2Best = 1e15;
+       for(MKMapItem *it in r2.mapItems){
+        if(!it.placemark.location) continue;
+        double d = [curLoc distanceFromLocation:it.placemark.location];
+        if(d < d2Best){ d2Best = d; b2 = it; }
+       }
+       if(b2){
+        NSString *nm = b2.name.length ? b2.name : cleanQ;
+        NSString *ad = b2.placemark.title.length ? b2.placemark.title : @"📱 ค้นหาจากมือถือ";
+        if(useCarPlay) [v2 openCarPlayToLat:b2.placemark.coordinate.latitude lon:b2.placemark.coordinate.longitude name:nm address:ad autoStart:autoStart];
+        else [v2 openMapToLat:b2.placemark.coordinate.latitude lon:b2.placemark.coordinate.longitude name:nm address:ad autoStart:autoStart];
+        [v2 showVoiceToast:[NSString stringWithFormat:@"📍 %@ (ห่าง %.1f กม.)", nm, d2Best / 1000.0] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.58 alpha:1.0] autoHide:4.0];
+       } else {
+        [v2 openMapWithSearchQuery:cleanQ];
+       }
+      });
+     }];
+    } else {
+     [v openMapWithSearchQuery:cleanQ];
+    }
+   });
+  }];
+ };
+ runSearchWithRadius(6000.0, YES);
 }
 
 -(void)resolveAndNavigateMobileInput:(NSString *)rawInput autoStart:(BOOL)autoStart{
+ NSDictionary *lastCmd = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/mobile-cmd.plist"];
+ BOOL useCarPlay = [[lastCmd[@"mode"] isKindOfClass:[NSString class]] ? lastCmd[@"mode"] : @"" isEqualToString:@"carplay"];
+ void (^openTargetMap)(Dashboard *, double, double, NSString *, NSString *, BOOL) = ^(Dashboard *d, double lt, double ln, NSString *nm, NSString *ad, BOOL go){
+  if(useCarPlay)[d openCarPlayToLat:lt lon:ln name:nm address:ad autoStart:go];
+  else [d openMapToLat:lt lon:ln name:nm address:ad autoStart:go];
+ };
+
  NSString *trimmed = [rawInput stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
  if(!trimmed.length) return;
 
@@ -10633,7 +10766,7 @@ static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *out
  NSString *placeName = sharedTitle;
  if(TRDExtractLatLonFromText(trimmed, &lat, &lon, &placeName)){
   NSString *finalName = placeName.length ? placeName : @"📍 หมุดจาก Google Maps มือถือ";
-  [self openMapToLat:lat lon:lon name:finalName address:@"📱 ส่งตรงจาก Google Maps มือถือ" autoStart:autoStart];
+  openTargetMap(self, lat, lon, finalName, @"📱 ส่งตรงจาก Google Maps มือถือ", autoStart);
   [self showVoiceToast:[NSString stringWithFormat:@"📍 รับพิกัดจากมือถือ: %@", finalName] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.58 alpha:1.0] autoHide:4.0];
   return;
  }
@@ -10641,12 +10774,20 @@ static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *out
  if(urlString.length > 0){
   NSURL *u = [NSURL URLWithString:urlString];
   if(u){
-   [self showVoiceToast:@"📱 กำลังดึงพิกัดจากลิงก์ Google Maps มือถือ..." color:[UIColor colorWithRed:0.25 green:0.92 blue:1.0 alpha:1.0] autoHide:3.5];
-   NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:6.5];
+   // Pre-open target map view immediately (<50ms visual response!) while 302 redirect resolves!
+   self.mapNavigationAuthorized = YES;
+   self.navGuardUntil = 0;
+   if(useCarPlay){ [self openCarPlay]; if(self.carplayGridMode)[self toggleCarPlayGrid]; }
+   else { [self openMap]; }
+   [self showVoiceToast:@"📱 กำลังดึงพิกัดจากลิงก์ Google Maps มือถือ..." color:[UIColor colorWithRed:0.25 green:0.92 blue:1.0 alpha:1.0] autoHide:2.5];
+   NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:5.5];
    [req setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
+   TRDFastRedirectDelegate *redirDel = [TRDFastRedirectDelegate new];
+   NSURLSession *fastSess = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration ephemeralSessionConfiguration] delegate:redirDel delegateQueue:nil];
    __weak typeof(self) weakSelf = self;
-   [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err){
-    NSString *finalURL = resp.URL.absoluteString ?: urlString;
+   [[fastSess dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err){
+    [fastSess finishTasksAndInvalidate];
+    NSString *finalURL = redirDel.interceptedURL.length ? redirDel.interceptedURL : (resp.URL.absoluteString ?: urlString);
     NSString *html = data.length ? ([[NSString alloc] initWithData:[data subdataWithRange:NSMakeRange(0, MIN((NSUInteger)65536, data.length))] encoding:NSUTF8StringEncoding] ?: @"") : @"";
     double rLat = 0, rLon = 0;
     NSString *rName = sharedTitle;
@@ -10669,7 +10810,7 @@ static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *out
      if(!v) return;
      if(found){
       NSString *bestName = rName.length ? rName : @"📍 หมุดจาก Google Maps มือถือ";
-      [v openMapToLat:rLat lon:rLon name:bestName address:@"📱 ส่งตรงจาก Google Maps มือถือ" autoStart:autoStart];
+      openTargetMap(v, rLat, rLon, bestName, @"📱 ส่งตรงจาก Google Maps มือถือ", autoStart);
       [v showVoiceToast:[NSString stringWithFormat:@"📍 นำทางไป: %@", bestName] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.58 alpha:1.0] autoHide:4.0];
      } else if(rName.length > 0){
       [v navigateByPlaceQueryFromMobile:rName fallbackName:rName autoStart:autoStart];
@@ -10717,9 +10858,11 @@ static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *out
   else if([val isEqualToString:@"prev"]){ [self miniPrev]; }
   else { [self miniPlay]; }
  } else if([action isEqualToString:@"music_search"] && val.length > 0){
+  notify_post("com.codex.trd.youtube.pause");
+  self.youtubeSource = NO;
   NSDictionary *req = @{@"pending": @YES, @"query": val, @"at": [NSDate date]};
   [req writeToFile:@"/var/mobile/codex-car/voice-search.plist" atomically:YES];
-  [self showVoiceToast:[NSString stringWithFormat:@"📱 มือถือสั่งเล่นเพลง: %@", val] color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:3.5];
+  [self showVoiceToast:[NSString stringWithFormat:@"🎵 เล่นเพลง (audioNINJA): %@", val] color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:3.5];
   notify_post("com.codex.trd.music.voicesearch");
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
    [self send:@"com.legacymusic.app"];
@@ -10728,10 +10871,27 @@ static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *out
   [self applyEQPreset:val];
   [self showVoiceToast:[NSString stringWithFormat:@"🎚️ เปลี่ยนโทนเสียงเป็น %@", val] color:[UIColor colorWithRed:0.25 green:0.95 blue:1.0 alpha:1.0] autoHide:2.5];
  } else if([action isEqualToString:@"screen"]){
-  if([val isEqualToString:@"home"]) [self homePage];
-  else if([val isEqualToString:@"drive"]){ if(!self.driveMode)[self toggleDrive]; }
-  else if([val isEqualToString:@"maps"]){ self.mapNavigationAuthorized = YES; [self openMap]; }
-  else if([val isEqualToString:@"carplay"]){ self.mapNavigationAuthorized = YES; [self openCarPlay]; }
+  [self.settingsSheet dismiss];
+  [self hideFeatureExplanation];
+  self.navGuardUntil = 0;
+  if([val isEqualToString:@"home"]){
+   [self homePage];
+  } else if([val isEqualToString:@"drive"]){
+   self.mapMode = NO; self.carplayMode = NO; self.carplayGridMode = NO; self.tripMode = NO; self.musicMode = NO;
+   self.mapContainer.hidden = YES;
+   if(!self.driveMode) [self toggleDrive];
+   else [self.view setNeedsLayout];
+  } else if([val isEqualToString:@"maps"]){
+   self.mapNavigationAuthorized = YES; [self openMap];
+  } else if([val isEqualToString:@"carplay"]){
+   self.mapNavigationAuthorized = YES; [self openCarPlay];
+  } else if([val isEqualToString:@"youtube"]){
+   [self openYouTubeSource];
+  } else if([val isEqualToString:@"music"]){
+   [self send:@"com.legacymusic.app"];
+  } else if([val isEqualToString:@"camera"]){
+   [self openCamera];
+  }
  }
 }
 
@@ -10851,11 +11011,16 @@ static BOOL TRDExtractLatLonFromText(NSString *text, double *outLat, double *out
  if([url.host isEqualToString:@"home"]){
   BOOL wasDrive=v.driveMode;
   BOOL wasCarPlay=v.carplayMode;
+  BOOL wasMap=v.mapMode;
   TRDOBDClient *obdRet=[TRDOBDClient sharedClient];
   double spdNow=(obdRet.isConnected && obdRet.obdInitialized)?MAX(0.0,obdRet.currentSpeedKmh):((v.fix && v.fix.speed>=0)?(v.fix.speed*3.6):0.0);
   BOOL movingNow=(spdNow>=3.0);
   if(wasCarPlay && ![url.path isEqualToString:@"/force"]){
    v.carplayMode=YES;
+   [v.view setNeedsLayout];
+   [v refreshNowPlaying];
+  } else if(wasMap && ![url.path isEqualToString:@"/force"]){
+   v.mapMode=YES;
    [v.view setNeedsLayout];
    [v refreshNowPlaying];
   } else {
