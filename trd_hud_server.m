@@ -345,7 +345,19 @@ static NSString *const kHUDHTML =
 "    </div>\n"
 "    <div class=\"tel-grid\" style=\"margin-bottom:10px;\">\n"
 "      <div class=\"tel-box\"><div class=\"tel-lbl\">ระยะทางสะสม (30 วัน)</div><div class=\"tel-val\" id=\"sum30Km\">0.0 กม.</div><div class=\"tel-sub\" id=\"sum30Trips\">0 ทริป</div></div>\n"
-"      <div class=\"tel-box\"><div class=\"tel-lbl\">ค่าน้ำมันรวม (30 วัน)</div><div class=\"tel-val\" id=\"sum30Cost\">฿0</div><div class=\"tel-sub\" id=\"sum30Fuel\">0.0 ลิตร • -- km/L</div></div>\n"
+"      <div class=\"tel-box\"><div class=\"tel-lbl\">ค่าน้ำมันตามทริป (30 วัน)</div><div class=\"tel-val\" id=\"sum30Cost\">฿0</div><div class=\"tel-sub\" id=\"sum30Fuel\">0.0 ลิตร • -- km/L</div></div>\n"
+"    </div>\n"
+"    <div class=\"q-wrap\" style=\"margin-top:0;margin-bottom:10px;\">\n"
+"      <div class=\"q-hdr\"><span>⛽ บันทึกบิลเติมน้ำมันหน้าปั๊ม</span><span id=\"refuelRateBadge\" style=\"color:#22ff88;font-size:11px;\">เรตคำนวณ -- ฿/L</span></div>\n"
+"      <div class=\"row\" style=\"margin-bottom:6px;\">\n"
+"        <input class=\"inp\" id=\"refuelBaht\" type=\"number\" inputmode=\"decimal\" placeholder=\"ยอดเงิน (บาท) เช่น 800\" style=\"margin-bottom:0;-webkit-flex:1;flex:1;\">\n"
+"        <input class=\"inp\" id=\"refuelLiters\" type=\"number\" inputmode=\"decimal\" placeholder=\"จำนวนลิตร (ถ้าทราบ)\" style=\"margin-bottom:0;-webkit-flex:1;flex:1;\">\n"
+"      </div>\n"
+"      <div class=\"row\" style=\"margin-bottom:4px;\">\n"
+"        <button class=\"rbtn green\" onclick=\"saveRefuelLog()\">💾 บันทึกเติมน้ำมัน & ซิงก์ราคา/ลิตร</button>\n"
+"      </div>\n"
+"      <div id=\"refuelSummaryTxt\" class=\"hint\" style=\"margin:4px 0 4px;color:#bfeaff;\">ยอดเติมจริงเดือนนี้: ฿0 (0 ครั้ง)</div>\n"
+"      <div id=\"refuelListBox\"></div>\n"
 "    </div>\n"
 "    <div id=\"dailyTripList\"><div class=\"hint\">กำลังโหลดประวัติการเดินทางรายวัน...</div></div>\n"
 "  </div>\n"
@@ -459,6 +471,31 @@ static NSString *const kHUDHTML =
 "  x.onload = function(){ document.getElementById('odoInput').value = ''; showCarToast('✅ บันทึกเลขไมล์รถ ' + v.toLocaleString() + ' กม. เรียบร้อย!'); loadCarHealthDetail(); };\n"
 "  x.send();\n"
 "}\n"
+"function saveRefuelLog(){\n"
+"  var b = Number((document.getElementById('refuelBaht').value || '').trim());\n"
+"  var l = Number((document.getElementById('refuelLiters').value || '').trim());\n"
+"  if(!b || b <= 0){ showCarToast('⚠️ กรุณาใส่ยอดเงินที่เติมน้ำมัน (บาท) ก่อนครับ'); return; }\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/carhealth?op=add_refuel&baht=' + encodeURIComponent(b) + '&liters=' + encodeURIComponent(l || 0) + '&t=' + Date.now(), true);\n"
+"  x.onload = function(){\n"
+"    document.getElementById('refuelBaht').value = '';\n"
+"    document.getElementById('refuelLiters').value = '';\n"
+"    try {\n"
+"      var r = JSON.parse(x.responseText);\n"
+"      if(r.syncedPrice && Number(r.syncedPrice) >= 10) sendCmd('set_fuel_price', String(r.syncedPrice), 1);\n"
+"    } catch(e){}\n"
+"    showCarToast('✅ บันทึกบิลเติมน้ำมัน ฿' + Math.round(b).toLocaleString() + ' เรียบร้อย!');\n"
+"    loadCarHealthDetail();\n"
+"  };\n"
+"  x.send();\n"
+"}\n"
+"function delRefuelItem(id){\n"
+"  if(!confirm('ลบบิลเติมน้ำมันรายการนี้ใช่ไหมครับ?')) return;\n"
+"  var x = new XMLHttpRequest();\n"
+"  x.open('GET', '/api/carhealth?op=del_refuel&id=' + encodeURIComponent(id) + '&t=' + Date.now(), true);\n"
+"  x.onload = function(){ showCarToast('🗑️ ลบรายการเติมน้ำมันแล้วครับ'); loadCarHealthDetail(); };\n"
+"  x.send();\n"
+"}\n"
 "function resetMaintItem(key, label){\n"
 "  if(!confirm('บันทึกว่าเพิ่งเปลี่ยน/ทำรายการ \"' + label + '\" ที่เลขไมล์ปัจจุบันใช่ไหมครับ?')) return;\n"
 "  var x = new XMLHttpRequest();\n"
@@ -499,6 +536,18 @@ static NSString *const kHUDHTML =
 "      document.getElementById('sum30Trips').innerText = (r.sum30Trips || 0) + ' ทริป • ' + (r.activeDays || 0) + ' วันที่มีขับ';\n"
 "      document.getElementById('sum30Cost').innerText = '฿' + Math.round(Number(r.sum30Cost || 0)).toLocaleString();\n"
 "      document.getElementById('sum30Fuel').innerText = Number(r.sum30Fuel || 0).toFixed(1) + ' L • เฉลี่ย ' + (r.avgKmL || '--') + ' km/L';\n"
+"      var rb = document.getElementById('refuelRateBadge');\n"
+"      if(rb) rb.innerText = 'เรตคำนวณ ' + (r.fuelPrice || '38.14') + ' ฿/L';\n"
+"      var rs = document.getElementById('refuelSummaryTxt');\n"
+"      if(rs) rs.innerText = 'ยอดบิลเติมน้ำมัน 30 วัน: ฿' + Math.round(Number(r.refuel30Baht || 0)).toLocaleString() + ' (' + Number(r.refuel30Liters || 0).toFixed(1) + ' L • ' + (r.refuel30Count || 0) + ' ครั้ง)';\n"
+"      var rBox = document.getElementById('refuelListBox');\n"
+"      if(rBox){\n"
+"        if(Array.isArray(r.refuels) && r.refuels.length > 0){\n"
+"          rBox.innerHTML = r.refuels.map(function(rf){\n"
+"            return '<div class=\"tlog-row\" style=\"padding:5px 0;\"><span style=\"color:#ffe082;font-weight:800;\">⛽ ' + rf.date + ' • ฿' + Math.round(rf.baht).toLocaleString() + ' (' + Number(rf.liters).toFixed(2) + 'L @ ' + Number(rf.ppl).toFixed(2) + ')</span><button class=\"q-mini del\" onclick=\"delRefuelItem(\\'' + rf.id + '\\')\">✕</button></div>';\n"
+"          }).join('');\n"
+"        } else { rBox.innerHTML = ''; }\n"
+"      }\n"
 "      var dBox = document.getElementById('dailyTripList');\n"
 "      if(Array.isArray(r.days) && r.days.length > 0){\n"
 "        dBox.innerHTML = r.days.map(function(dy){\n"
@@ -1107,6 +1156,7 @@ static NSString *mutateSharedQueueJSON(NSDictionary *params) {
 }
 
 static NSString *const kMaintStatePath = @"/var/mobile/codex-car/maintenance-state.plist";
+static NSString *const kFuelRefillPath = @"/var/mobile/codex-car/fuel-refills.plist";
 static NSString *const kTelegramCfgPath = @"/var/mobile/codex-car/telegram-config.plist";
 static BOOL sendTelegramSummaryPush(NSString *kind);
 
@@ -1114,7 +1164,11 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
   @autoreleasepool {
     NSDictionary *live = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/hud-live.plist"] ?: @{};
     double trackedOdo = [live[@"odoKm"] doubleValue];
+    double curFuelPrice = [live[@"fuelPrice"] doubleValue] > 10.0 ? [live[@"fuelPrice"] doubleValue] : 38.14;
     NSMutableDictionary *mState = [[NSDictionary dictionaryWithContentsOfFile:kMaintStatePath] mutableCopy] ?: [NSMutableDictionary dictionary];
+    if ([mState[@"lastSyncedPpl"] doubleValue] >= 10.0 && [live[@"fuelPrice"] doubleValue] <= 10.0) {
+      curFuelPrice = [mState[@"lastSyncedPpl"] doubleValue];
+    }
     if (!mState[@"baseOdo"]) {
       mState[@"baseOdo"] = @180000.0;
       mState[@"trackedAtSet"] = @(trackedOdo);
@@ -1124,6 +1178,10 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
       [mState writeToFile:kMaintStatePath atomically:YES];
     }
     double currentOdo = [mState[@"baseOdo"] doubleValue] + MAX(0.0, trackedOdo - [mState[@"trackedAtSet"] doubleValue]);
+    NSDictionary *rfDoc = [NSDictionary dictionaryWithContentsOfFile:kFuelRefillPath];
+    NSMutableArray *rfItems = [rfDoc[@"items"] isKindOfClass:[NSArray class]] ? [rfDoc[@"items"] mutableCopy] : [NSMutableArray array];
+    NSString *syncedPrice = nil;
+
     NSString *op = params[@"op"] ?: @"";
     if ([op isEqualToString:@"set_odo"]) {
       double newOdo = [params[@"km"] doubleValue];
@@ -1138,6 +1196,50 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
           mState[@"atfLastOdo"] = @(newOdo);
         }
         [mState writeToFile:kMaintStatePath atomically:YES];
+      }
+    } else if ([op isEqualToString:@"add_refuel"]) {
+      double baht = [params[@"baht"] doubleValue];
+      double liters = [params[@"liters"] doubleValue];
+      if (baht > 0.0) {
+        double ppl = curFuelPrice;
+        if (liters > 0.1) {
+          double calcPpl = baht / liters;
+          if (calcPpl >= 10.0 && calcPpl <= 120.0) {
+            ppl = calcPpl;
+            curFuelPrice = ppl;
+            mState[@"lastSyncedPpl"] = @(ppl);
+            [mState writeToFile:kMaintStatePath atomically:YES];
+            syncedPrice = [NSString stringWithFormat:@"%.2f", ppl];
+          }
+        } else {
+          liters = baht / MAX(10.0, curFuelPrice);
+        }
+        NSDateFormatter *rfDf = [[NSDateFormatter alloc] init];
+        rfDf.calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+        rfDf.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        rfDf.dateFormat = @"yyyy-MM-dd HH:mm";
+        NSDictionary *entry = @{
+          @"id": [NSUUID UUID].UUIDString ?: @"rf",
+          @"ts": @([[NSDate date] timeIntervalSince1970]),
+          @"date": [rfDf stringFromDate:[NSDate date]] ?: @"",
+          @"baht": @(baht),
+          @"liters": @(liters),
+          @"ppl": @(ppl),
+          @"odo": @(currentOdo)
+        };
+        [rfItems insertObject:entry atIndex:0];
+        if (rfItems.count > 60) [rfItems removeObjectsInRange:NSMakeRange(60, rfItems.count - 60)];
+        [@{@"items": rfItems} writeToFile:kFuelRefillPath atomically:YES];
+      }
+    } else if ([op isEqualToString:@"del_refuel"]) {
+      NSString *delId = params[@"id"] ?: @"";
+      if (delId.length > 0) {
+        NSMutableArray *kept = [NSMutableArray array];
+        for (NSDictionary *it in rfItems) {
+          if (![it[@"id"] isEqualToString:delId]) [kept addObject:it];
+        }
+        rfItems = kept;
+        [@{@"items": rfItems} writeToFile:kFuelRefillPath atomically:YES];
       }
     } else if ([op isEqualToString:@"reset"]) {
       NSString *item = params[@"item"] ?: @"";
@@ -1184,8 +1286,24 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
       @{@"key": @"fan", @"title": @"🌀 ล้างพัดลม & กรองแบตไฮบริด HV", @"interval": @20000, @"lastOdo": mState[@"fanLastOdo"] ?: @(currentOdo)},
       @{@"key": @"atf", @"title": @"⚙️ น้ำมันเกียร์ไฮบริด Toyota ATF WS", @"interval": @40000, @"lastOdo": mState[@"atfLastOdo"] ?: @(currentOdo)}
     ];
+    double refuel30Baht = 0.0, refuel30Liters = 0.0;
+    NSInteger refuel30Count = 0;
+    double cutoff30 = [[NSDate date] timeIntervalSince1970] - (30.0 * 86400.0);
+    NSMutableArray *recentRefuels = [NSMutableArray array];
+    for (NSDictionary *rf in rfItems) {
+      if (![rf isKindOfClass:[NSDictionary class]]) continue;
+      double ts = [rf[@"ts"] doubleValue];
+      if (ts <= 0 || ts >= cutoff30) {
+        refuel30Baht += [rf[@"baht"] doubleValue];
+        refuel30Liters += [rf[@"liters"] doubleValue];
+        refuel30Count++;
+      }
+      if (recentRefuels.count < 8) [recentRefuels addObject:rf];
+    }
     NSDictionary *out = @{
       @"currentOdo": @(currentOdo),
+      @"fuelPrice": [NSString stringWithFormat:@"%.2f", curFuelPrice],
+      @"syncedPrice": syncedPrice ?: @"",
       @"sum30Km": @(sum30Km),
       @"sum30Fuel": @(sum30Fuel),
       @"sum30Cost": @(sum30Cost),
@@ -1193,6 +1311,10 @@ static NSString *buildCarHealthJSON(NSDictionary *params) {
       @"activeDays": @(activeDays),
       @"avgKmL": avgKmL,
       @"days": recentDays,
+      @"refuel30Baht": @(refuel30Baht),
+      @"refuel30Liters": @(refuel30Liters),
+      @"refuel30Count": @(refuel30Count),
+      @"refuels": recentRefuels,
       @"maint": maint,
       @"tgSent": @(tgSent)
     };
@@ -1740,11 +1862,13 @@ static NSString *formatPriusReportText(NSString *kind) {
     NSMutableString *ms = [NSMutableString stringWithFormat:
       @"📊 สรุปค่าน้ำมัน & การเดินทาง (30 วัน)\n"
       "• ระยะทางรวม: %.1f กม. (%ld ทริป)\n"
-      "• ค่าน้ำมันรวม: ฿%.0f (%.1f ลิตร)\n"
-      "• ประหยัดเฉลี่ย: %@ km/L\n",
+      "• ค่าน้ำมันคำนวณตามทริป: ฿%.0f (%.1f ลิตร)\n"
+      "• บิลเติมน้ำมันจริง (30 วัน): ฿%.0f (%.1f ลิตร • %ld ครั้ง)\n"
+      "• ประหยัดเฉลี่ย: %@ km/L (เรต %@ ฿/L)\n",
       [ch[@"sum30Km"] doubleValue], (long)[ch[@"sum30Trips"] integerValue],
       [ch[@"sum30Cost"] doubleValue], [ch[@"sum30Fuel"] doubleValue],
-      ch[@"avgKmL"] ?: @"--"];
+      [ch[@"refuel30Baht"] doubleValue], [ch[@"refuel30Liters"] doubleValue], (long)[ch[@"refuel30Count"] integerValue],
+      ch[@"avgKmL"] ?: @"--", ch[@"fuelPrice"] ?: @"38.14"];
     NSArray *days = [ch[@"days"] isKindOfClass:[NSArray class]] ? ch[@"days"] : @[];
     for (NSUInteger i = 0; i < MIN((NSUInteger)5, days.count); i++) {
       NSDictionary *dy = days[i];

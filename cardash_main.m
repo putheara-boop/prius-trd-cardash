@@ -5830,6 +5830,7 @@ static NSUInteger gTRDUpdateTicks=0;
    @"odoKm":@(totalOdoKm),
    @"fan":hFanStr,
    @"fuelL":[NSString stringWithFormat:@"%.1f",hObd.fuelRemainingLiters],
+   @"fuelPrice":[NSString stringWithFormat:@"%.2f",hPrice],
    @"rangeKm":[NSString stringWithFormat:@"%.0f",hRangeKm],
    @"aux12v":[NSString stringWithFormat:@"%.1f",hAux],
    @"ipadPct":@(ipadBatPct),
@@ -10932,6 +10933,13 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
   [self showVoiceToast:ok ? @"🧹 ส่งคำสั่งลบโค้ดไฟโชว์ DTC เรียบร้อย!" : @"⚠️ กรุณาบิดสวิตช์รถเชื่อมกล่อง OBD2 ก่อนลบโค้ดครับ" color:[UIColor colorWithRed:1.0 green:0.75 blue:0.25 alpha:1.0] autoHide:3.5];
  } else if([action isEqualToString:@"night_toggle"]){
   [self toggleNight];
+ } else if([action isEqualToString:@"set_fuel_price"]){
+  double pVal = [[val stringByReplacingOccurrencesOfString:@"," withString:@"."] doubleValue];
+  if(pVal >= 10.0 && pVal <= 120.0){
+   [[TRDOBDClient sharedClient] setCustomFuelPrice:(CGFloat)pVal];
+   [self syncActiveFuelRateToTripA];
+   [self showVoiceToast:[NSString stringWithFormat:@"⛽ อัปเดตราคาน้ำมันจริง %.2f ฿/ลิตร เรียบร้อย!", pVal] color:[UIColor colorWithRed:0.25 green:0.98 blue:0.65 alpha:1.0] autoHide:3.5];
+  }
  } else if([action isEqualToString:@"clean_cache"]){
   [[NSURLCache sharedURLCache] removeAllCachedResponses];
   if(!self.mapMode && !self.carplayMode && self.mapWebView){ [self teardownMapWebView]; }
