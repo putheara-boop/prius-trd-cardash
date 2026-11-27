@@ -1573,6 +1573,7 @@ static void startDynamicHostnameResponders(void) {
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGCHLD, SIG_IGN);
     startListenerOnPort(80);
     startListenerOnPort(8080);
     startListenerOnPort(8088);
