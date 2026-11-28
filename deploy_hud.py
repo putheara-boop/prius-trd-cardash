@@ -47,7 +47,7 @@ remote_sh = (
     "cd /var/mobile/h109-build && "
     "rm -f /usr/local/bin/trd-hud-server && "
     "/usr/bin/clang-10 -arch arm64 -isysroot /var/mobile/h109-build/sdks/iPhoneOS12.4.sdk "
-    "-fobjc-arc -fblocks -O2 -framework Foundation trd_hud_server.m -o /usr/local/bin/trd-hud-server && "
+    "-fobjc-arc -fblocks -O2 -lc++ -framework Foundation trd_hud_server.m -o /usr/local/bin/trd-hud-server && "
     "/usr/bin/ldid -S/var/mobile/h109-build/car-dash/TRDNetwork.entitlements /usr/local/bin/trd-hud-server && "
     "/bin/chmod 755 /usr/local/bin/trd-hud-server && "
     "/bin/chmod 644 /Library/LaunchDaemons/com.codex.trd.hudserver.plist && "
