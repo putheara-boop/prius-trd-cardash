@@ -95,6 +95,10 @@ static MPRemoteCommandHandlerStatus TRDYouTubeTransport(NSInteger kind,NSString 
    return;
   }
   CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();
+  if(kind==1 && roadAudio && (([NSDate timeIntervalSinceReferenceDate] - roadAudio.lastCommand) < 0.85)){
+   delivered=YES;
+   return;
+  }
   if(kind==TRDLastYTTransportKind&&now-TRDLastYTTransportAt<0.25){delivered=YES;return;}
   TRDLastYTTransportAt=now;TRDLastYTTransportKind=kind;
   BOOL wasPlaying=TRDYouTubeIsCurrentlyPlaying(yt);
@@ -130,8 +134,12 @@ static NSInteger TRDLastTransportKind=-1;
   if(![p respondsToSelector:@selector(hasActivePlayer)]||![p hasActivePlayer]||
      ![p respondsToSelector:@selector(playerIsPlaying)])return;
   BOOL playing=[p playerIsPlaying];
-  // iOS 9 can deliver the same accessory press through both event APIs.
+  // iOS / Prius head unit can send AVRCP Pause immediately alongside Next/Prev skip; ignore spurious pause within 0.85s of skip!
   CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();
+  if(kind==1 && roadAudio && (([NSDate timeIntervalSinceReferenceDate] - roadAudio.lastCommand) < 0.85)){
+   delivered=YES;
+   return;
+  }
   if(kind==TRDLastTransportKind&&now-TRDLastTransportAt<.25){delivered=YES;return;}
   TRDLastTransportAt=now;TRDLastTransportKind=kind;
   if(kind==1){

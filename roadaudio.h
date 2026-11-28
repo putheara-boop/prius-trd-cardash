@@ -340,7 +340,12 @@ if(player){
   return;
  }
 }
-id vc=TRDFindController(@"YTPlayerViewController");if(vc&&[vc respondsToSelector:next?@selector(playNextVideo):@selector(playPreviousVideo)]){if(next)[vc playNextVideo];else [vc playPreviousVideo];delivered=YES;}else{Class cls=NSClassFromString(@"YTQueue");id q=[cls respondsToSelector:@selector(shared)]?[cls shared]:nil;if(q&&((next&&[q hasNext])||(!next&&[q hasPrevious]))){if(next)[q playNext];else [q playPrevious];delivered=YES;}}[@{@"command":next?@"next":@"previous",@"delivered":@(delivered),@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/ytnine-remote.plist" atomically:YES];};if([NSThread isMainThread])action();else dispatch_sync(dispatch_get_main_queue(),action);return delivered?MPRemoteCommandHandlerStatusSuccess:MPRemoteCommandHandlerStatusNoActionableNowPlayingItem;}
+id vc=TRDFindController(@"YTPlayerViewController");if(vc&&[vc respondsToSelector:next?@selector(playNextVideo):@selector(playPreviousVideo)]){if(next)[vc playNextVideo];else [vc playPreviousVideo];delivered=YES;}else{Class cls=NSClassFromString(@"YTQueue");id q=[cls respondsToSelector:@selector(shared)]?[cls shared]:nil;if(q&&((next&&[q hasNext])||(!next&&[q hasPrevious]))){if(next)[q playNext];else [q playPrevious];delivered=YES;}}
+if(!delivered && [NSBundle.mainBundle.bundleIdentifier isEqual:@"com.himais0giiiin.ytnine"]){
+ notify_post(next ? "com.codex.trd.youtube.next.hw" : "com.codex.trd.youtube.previous.hw");
+ delivered=YES;
+}
+[@{@"command":next?@"next":@"previous",@"delivered":@(delivered),@"at":[NSDate date]}writeToFile:@"/var/mobile/codex-car/ytnine-remote.plist" atomically:YES];};if([NSThread isMainThread])action();else dispatch_sync(dispatch_get_main_queue(),action);return delivered?MPRemoteCommandHandlerStatusSuccess:MPRemoteCommandHandlerStatusNoActionableNowPlayingItem;}
 
 -(MPRemoteCommandHandlerStatus)next:(id)event{MPRemoteCommandHandlerStatus result=[self move:YES];if([NSBundle.mainBundle.bundleIdentifier isEqual:@"com.legacymusic.app"]){dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.35*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"next");});dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.15*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TRDCarRefreshMetadata(@"next-settled");});}return result;}
 

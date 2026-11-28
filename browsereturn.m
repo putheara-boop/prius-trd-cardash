@@ -767,7 +767,7 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   });
  }
  else if([bundle isEqual:@"com.himais0giiiin.ytnine"]){
-  static int ytToggleTok=0,ytPauseTok=0,ytPlayTok=0,ytNextTok=0,ytPrevTok=0,ytRefreshTok=0,ytSearchTok=0;
+  static int ytToggleTok=0,ytPauseTok=0,ytPlayTok=0,ytNextTok=0,ytPrevTok=0,ytNextHwTok=0,ytPrevHwTok=0,ytRefreshTok=0,ytSearchTok=0;
   static BOOL sYTSearchInFlight = NO;
   static NSMutableArray *sYTQueueItems = nil;
   static NSInteger sYTQueueIdx = -1;
@@ -901,22 +901,40 @@ __attribute__((constructor))static void Install(void){@autoreleasepool{
   notify_register_dispatch("com.codex.trd.youtube.toggle",&ytToggleTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(2,@"darwin-toggle");});
   notify_register_dispatch("com.codex.trd.youtube.pause",&ytPauseTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(1,@"darwin-pause");});
   notify_register_dispatch("com.codex.trd.youtube.play",&ytPlayTok,dispatch_get_main_queue(),^(int t){TRDYouTubeTransport(0,@"darwin-play");});
-  notify_register_dispatch("com.codex.trd.youtube.next",&ytNextTok,dispatch_get_main_queue(),^(int t){
-   if(sYTQueueItems.count > 0 && sYTQueueIdx + 1 < (NSInteger)sYTQueueItems.count){
-    sYTQueueIdx++;
-    playYTQueueEntry(sYTQueueItems[sYTQueueIdx]);
-   } else {
-    [roadAudio next:nil];
+  void (^stepYTQueue)(BOOL, BOOL) = ^(BOOL fwd, BOOL fromHw){
+   if(!sYTQueueItems || sYTQueueItems.count == 0){
+    NSDictionary *sq = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/codex-car/shared-song-queue.plist"];
+    NSArray *sqItems = [sq[@"items"] isKindOfClass:[NSArray class]] ? sq[@"items"] : nil;
+    if(sqItems.count > 0){
+     NSMutableArray *built = [NSMutableArray array];
+     for(NSDictionary *it in sqItems){
+      NSString *vid = [it[@"id"] isKindOfClass:[NSString class]] ? it[@"id"] : @"";
+      NSString *ttl = [it[@"title"] isKindOfClass:[NSString class]] ? it[@"title"] : @"";
+      if(vid.length == 11) [built addObject:vid];
+      else if(ttl.length > 0) [built addObject:ttl];
+     }
+     if(built.count > 0){
+      sYTQueueItems = built;
+      sYTQueueIdx = [sq[@"activeIdx"] integerValue];
+      if(sYTQueueIdx < 0 || sYTQueueIdx >= (NSInteger)built.count) sYTQueueIdx = 0;
+     }
+    }
    }
-  });
-  notify_register_dispatch("com.codex.trd.youtube.previous",&ytPrevTok,dispatch_get_main_queue(),^(int t){
-   if(sYTQueueItems.count > 0 && sYTQueueIdx > 0){
-    sYTQueueIdx--;
+   if(sYTQueueItems.count > 0){
+    if(fwd){
+     sYTQueueIdx = (sYTQueueIdx + 1) % (NSInteger)sYTQueueItems.count;
+    } else {
+     sYTQueueIdx = (sYTQueueIdx - 1 + (NSInteger)sYTQueueItems.count) % (NSInteger)sYTQueueItems.count;
+    }
     playYTQueueEntry(sYTQueueItems[sYTQueueIdx]);
-   } else {
-    [roadAudio previous:nil];
+   } else if(!fromHw){
+    if(fwd) [roadAudio next:nil]; else [roadAudio previous:nil];
    }
-  });
+  };
+  notify_register_dispatch("com.codex.trd.youtube.next",&ytNextTok,dispatch_get_main_queue(),^(int t){ stepYTQueue(YES, NO); });
+  notify_register_dispatch("com.codex.trd.youtube.previous",&ytPrevTok,dispatch_get_main_queue(),^(int t){ stepYTQueue(NO, NO); });
+  notify_register_dispatch("com.codex.trd.youtube.next.hw",&ytNextHwTok,dispatch_get_main_queue(),^(int t){ stepYTQueue(YES, YES); });
+  notify_register_dispatch("com.codex.trd.youtube.previous.hw",&ytPrevHwTok,dispatch_get_main_queue(),^(int t){ stepYTQueue(NO, YES); });
   dispatch_async(dispatch_get_main_queue(),^{[TRDRoadAudio install];});
   name=@"YTPlayback";selector=@"loadWatch:startAt:";replacement=(IMP)YouTube;original=(IMP *)&oldYT;a="@";b="d";
  }

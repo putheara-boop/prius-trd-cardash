@@ -5938,13 +5938,19 @@ static NSUInteger gTRDUpdateTicks=0;
  id carDevice=nil;
  if([devices isKindOfClass:[NSArray class]])for(id device in devices){NSString *name=[device respondsToSelector:@selector(name)]?[device name]:nil;if([name isKindOfClass:[NSString class]]&&[name caseInsensitiveCompare:@"CAR MULTIMEDIA"]==NSOrderedSame){paired=YES;carDevice=device;if([device respondsToSelector:@selector(connected)]){known=YES;connected=[device connected];}break;}}
  self.statusCar=!hasEnabled?@"UNKNOWN":!bt?@"BT OFF":![devices isKindOfClass:[NSArray class]]?@"UNKNOWN":!paired?@"NOT PAIRED":!known?@"UNKNOWN":connected?@"CONNECTED":@"DISCONNECTED";
- // Proactive fast reconnect to Toyota Prius "CAR MULTIMEDIA" Bluetooth speaker when powered/active!
+ // Proactive fast reconnect to Toyota Prius "CAR MULTIMEDIA" Bluetooth speaker + keep BTAvrcp alive!
  static NSTimeInterval sLastCarBTConnectAt=0;
+ static NSTimeInterval sLastAvrcpHardenAt=0;
  UIDeviceBatteryState batNow=[UIDevice currentDevice].batteryState;
  BOOL inCarPower=(batNow==UIDeviceBatteryStateCharging||batNow==UIDeviceBatteryStateFull);
  NSTimeInterval upNow=[NSProcessInfo processInfo].systemUptime;
+ if(connected && (upNow - sLastAvrcpHardenAt) >= 25.0){
+  sLastAvrcpHardenAt=upNow;
+  trd_run_bg("/usr/local/bin/trd-bt harden >/dev/null 2>&1");
+ }
  if(bt && paired && carDevice && !connected && (inCarPower || sLastCarBTConnectAt==0) && (upNow - sLastCarBTConnectAt) >= 8.0){
   sLastCarBTConnectAt=upNow;
+  trd_run_bg("/usr/local/bin/trd-bt harden >/dev/null 2>&1");
   if([carDevice respondsToSelector:@selector(connect)]){
    [carDevice performSelector:@selector(connect)];
   }else if([self.bluetooth respondsToSelector:@selector(connectDevice:)]){
@@ -6025,6 +6031,21 @@ static NSUInteger gTRDUpdateTicks=0;
    NSString *tStr=[NSString stringWithFormat:@"เล่นไป %@ / %@ (เหลือ -%@)",[self trackTimeString:curSec],[self trackTimeString:durSec],[self trackTimeString:remSec]];
    if(![self.trackTime.text isEqualToString:tStr])self.trackTime.text=tStr;
    self.trackProgress.progress=MAX(0,MIN(1,curSec/durSec));
+   if(self.offlinePlaybackActive){
+    NSDictionary *curNP=[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo;
+    double prevDur=[curNP[MPMediaItemPropertyPlaybackDuration] doubleValue];
+    double prevRate=[curNP[MPNowPlayingInfoPropertyPlaybackRate] doubleValue];
+    double targetRate=(self.radioPlayer.rate>0)?1.0:0.0;
+    if(fabs(prevDur-durSec)>0.5 || fabs(prevRate-targetRate)>0.1){
+     NSMutableDictionary *np=[NSMutableDictionary dictionaryWithDictionary:curNP?:@{}];
+     np[MPMediaItemPropertyPlaybackDuration]=@(durSec);
+     np[MPNowPlayingInfoPropertyElapsedPlaybackTime]=@(curSec);
+     np[MPNowPlayingInfoPropertyPlaybackRate]=@(targetRate);
+     np[MPNowPlayingInfoPropertyPlaybackQueueCount]=@(MAX((NSUInteger)1,self.offlineTracks.count));
+     np[MPNowPlayingInfoPropertyPlaybackQueueIndex]=@(MAX((NSInteger)0,self.offlineTrackIndex));
+     [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo=np;
+    }
+   }
    return;
   }
   if(![self.trackTime.text isEqualToString:@"LIVE STREAM · ON AIR"]){
@@ -6468,9 +6489,9 @@ static NSUInteger gTRDUpdateTicks=0;
   Dashboard *v=weak;
   if(!v||gen!=v.radioGeneration)return;
 
-  // 1. Explicitly pause any background music / YouTube players so audio never overlaps
+  // 1. Explicitly pause external music / YouTube players ONLY when CarDash wasn't already NowPlaying owner
   notify_post("com.codex.trd.youtube.pause");
-  TRDSendMediaRemoteExternal(1,^{ [weak send:@"libactivator.ipod.pause-playback"]; });
+  notify_post("com.codex.trd.music.pause");
 
   // 2. Configure exclusive AVAudioSession (NO MixWithOthers!) off the main thread
   AVAudioSession *session=[AVAudioSession sharedInstance];
@@ -8565,7 +8586,15 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  NSMutableDictionary *np=[NSMutableDictionary dictionaryWithDictionary:[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo?:@{}];
  np[MPMediaItemPropertyTitle]=title?:(self.currentRadioStation?:@"Offline Music");
  np[MPMediaItemPropertyArtist]=artist?:(self.currentOfflineArtist?:@"Offline Music");
- np[MPNowPlayingInfoPropertyPlaybackRate]=@(1.0);
+ np[MPNowPlayingInfoPropertyPlaybackRate]=@((self.radioPlayer && self.radioPlayer.rate <= 0.0f) ? 0.0 : 1.0);
+ AVPlayerItem *curIt=self.radioPlayer.currentItem;
+ double dSec=(curIt && CMTIME_IS_NUMERIC(curIt.duration))?CMTimeGetSeconds(curIt.duration):0.0;
+ double cSec=(self.radioPlayer && CMTIME_IS_NUMERIC(self.radioPlayer.currentTime))?MAX(0.0,CMTimeGetSeconds(self.radioPlayer.currentTime)):0.0;
+ if(dSec > 0.5) np[MPMediaItemPropertyPlaybackDuration]=@(dSec);
+ else if(!np[MPMediaItemPropertyPlaybackDuration]) np[MPMediaItemPropertyPlaybackDuration]=@(240.0);
+ np[MPNowPlayingInfoPropertyElapsedPlaybackTime]=@(cSec);
+ np[MPNowPlayingInfoPropertyPlaybackQueueCount]=@(MAX((NSUInteger)1,self.offlineTracks.count));
+ np[MPNowPlayingInfoPropertyPlaybackQueueIndex]=@(MAX((NSInteger)0,self.offlineTrackIndex));
  MPMediaItemArtwork *mpArt=[[MPMediaItemArtwork alloc]initWithImage:img];
  if(mpArt)np[MPMediaItemPropertyArtwork]=mpArt;
  [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo=np;
@@ -8638,13 +8667,15 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
  NSUInteger gen=++self.radioGeneration;
  [[NSNotificationCenter defaultCenter]removeObserver:self name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
- if(self.radioPlayer){
-  [self.radioPlayer pause];
-  [self.radioPlayer replaceCurrentItemWithPlayerItem:nil];
-  self.radioPlayer=nil;
+ BOOL alreadyOwnedByCarDash = (self.radioPlayer != nil);
+ if(!alreadyOwnedByCarDash){
+  notify_post("com.codex.trd.youtube.pause");
+  notify_post("com.codex.trd.music.pause");
+  TRDSendMediaRemoteExternal(1,^{ [self send:@"libactivator.ipod.pause-playback"]; });
+ } else {
+  notify_post("com.codex.trd.youtube.pause");
+  notify_post("com.codex.trd.music.pause");
  }
- notify_post("com.codex.trd.youtube.pause");
- TRDSendMediaRemoteExternal(1,^{ [self send:@"libactivator.ipod.pause-playback"]; });
 
  AVAudioSession *session=[AVAudioSession sharedInstance];
  [session setCategory:AVAudioSessionCategoryPlayback error:nil];
@@ -8657,20 +8688,31 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 
  AVPlayerItem *item=[AVPlayerItem playerItemWithURL:[NSURL fileURLWithPath:audioPath]];
  [[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(offlineTrackDidFinish:) name:AVPlayerItemDidPlayToEndTimeNotification object:item];
- AVPlayer *player=[AVPlayer playerWithPlayerItem:item];
- self.radioPlayer=player;
+ if(self.radioPlayer){
+  [self.radioPlayer replaceCurrentItemWithPlayerItem:item];
+ } else {
+  self.radioPlayer=[AVPlayer playerWithPlayerItem:item];
+ }
+ self.radioPlayer.volume = 1.0f;
  [self.radioPlayer play];
 
  // Clear any stale pending download-play-request so audioNINJA never hijacks on next open
  [[NSFileManager defaultManager]removeItemAtPath:@"/var/mobile/codex-car/download-play-request.plist" error:nil];
 
  [self setCarDashRemoteControlEnabled:YES];
+ [self becomeFirstResponder];
  self.song.text=title;
  self.artist.text=self.currentOfflineArtist;
  self.sourceBadge.text=@"OFFLINE";
+ AVURLAsset *durAsset=[AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:audioPath] options:nil];
+ double assetDur=CMTIME_IS_NUMERIC(durAsset.duration)?CMTimeGetSeconds(durAsset.duration):0.0;
  [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo=@{
   MPMediaItemPropertyTitle:title,
   MPMediaItemPropertyArtist:self.currentOfflineArtist,
+  MPMediaItemPropertyPlaybackDuration:@(assetDur>0?assetDur:240.0),
+  MPNowPlayingInfoPropertyElapsedPlaybackTime:@(0.0),
+  MPNowPlayingInfoPropertyPlaybackQueueCount:@(MAX((NSUInteger)1,self.offlineTracks.count)),
+  MPNowPlayingInfoPropertyPlaybackQueueIndex:@(MAX((NSInteger)0,index)),
   MPNowPlayingInfoPropertyPlaybackRate:@(1.0)
  };
  [self loadOfflineArtworkForTrack:track audioPath:audioPath expectedIndex:index generation:gen];
@@ -8787,7 +8829,9 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  }
 }
 -(BOOL)canBecomeFirstResponder{return self.radioPlayer!=nil;}
+static NSTimeInterval gLastCarDashSkipAt = 0;
 -(MPRemoteCommandHandlerStatus)carRemoteNext:(id)event{
+ gLastCarDashSkipAt = TRDMonotonic();
  if(self.radioPlayer){if(self.offlinePlaybackActive)[self nextOfflineTrack];return MPRemoteCommandHandlerStatusSuccess;}
  static NSTimeInterval lastNext=0;
  NSTimeInterval now=TRDMonotonic();
@@ -8799,6 +8843,7 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(MPRemoteCommandHandlerStatus)carRemotePrev:(id)event{
+ gLastCarDashSkipAt = TRDMonotonic();
  if(self.radioPlayer){if(self.offlinePlaybackActive)[self prevOfflineTrack];return MPRemoteCommandHandlerStatusSuccess;}
  static NSTimeInterval lastPrev=0;
  NSTimeInterval now=TRDMonotonic();
@@ -8842,6 +8887,10 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
 }
 -(MPRemoteCommandHandlerStatus)carRemotePause:(id)event{
  if(self.radioPlayer){
+  if((TRDMonotonic() - gLastCarDashSkipAt) < 0.85){
+   if(self.radioPlayer.rate <= 0.0f) [self.radioPlayer play];
+   return MPRemoteCommandHandlerStatusSuccess;
+  }
   if(self.radioPlayer.rate>0){
    [self.radioPlayer pause];
    self.song.text=[NSString stringWithFormat:@"[PAUSED] %@",self.currentRadioStation?:(self.offlinePlaybackActive?@"Offline":@"Radio")];
@@ -8861,8 +8910,16 @@ static UIImage *TRDDecodeArtworkData(NSData *data){
  return MPRemoteCommandHandlerStatusSuccess;
 }
 -(void)remoteControlReceivedWithEvent:(UIEvent *)event{
- // Handled via MPRemoteCommandCenter targets; never re-broadcast MRMediaRemoteSendCommand here to avoid self-loop.
- (void)event;
+ if(!event || event.type != UIEventTypeRemoteControl) return;
+ switch(event.subtype){
+  case UIEventSubtypeRemoteControlNextTrack: [self carRemoteNext:event]; break;
+  case UIEventSubtypeRemoteControlPreviousTrack: [self carRemotePrev:event]; break;
+  case UIEventSubtypeRemoteControlTogglePlayPause: [self carRemoteToggle:event]; break;
+  case UIEventSubtypeRemoteControlPlay: [self carRemotePlay:event]; break;
+  case UIEventSubtypeRemoteControlPause:
+  case UIEventSubtypeRemoteControlStop: [self carRemotePause:event]; break;
+  default: break;
+ }
 }
 
 -(void)carStatusTapped{
