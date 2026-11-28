@@ -45,6 +45,7 @@ remote_sh = (
     "/usr/sbin/scutil --set HostName cardash.local && "
     "killall -HUP mDNSResponder 2>/dev/null || true; "
     "cd /var/mobile/h109-build && "
+    "rm -f /usr/local/bin/trd-hud-server && "
     "/usr/bin/clang-10 -arch arm64 -isysroot /var/mobile/h109-build/sdks/iPhoneOS12.4.sdk "
     "-fobjc-arc -fblocks -O2 -framework Foundation trd_hud_server.m -o /usr/local/bin/trd-hud-server && "
     "/usr/bin/ldid -S/var/mobile/h109-build/car-dash/TRDNetwork.entitlements /usr/local/bin/trd-hud-server && "
